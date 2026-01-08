@@ -1,10 +1,7 @@
 services:
-  - type: web
+  - type: worker
     name: animuse-bot
     runtime: node
-    env: node
-    region: oregon
-    plan: free
     buildCommand: npm install
     startCommand: node index.js
     
@@ -32,10 +29,3 @@ services:
       
       - key: NODE_ENV
         value: production
-    
-    # Auto-deploy settings
-    autoDeploy: true
-    
-    # Health check configuration
-    # Note: Discord bots don't have HTTP endpoints, so health is based on process running
-    healthCheckPath: /
