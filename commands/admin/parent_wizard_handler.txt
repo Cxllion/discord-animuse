@@ -1,0 +1,92 @@
+            else if (action === 'protocol_setup_wizard') {
+                // Setup Wizard Confirmation
+                const confirmEmbed = new EmbedBuilder()
+                    .setTitle('📚 Library Setup Wizard')
+                    .setDescription('This will create all essential server roles with one click.')
+                    .setColor('#F39C12')
+                    .addFields(
+                        {
+                            name: '🔒 Moderation Roles (4)',
+                            value: '> **Head Librarian** - Owners\n> **Senior Librarian** - Admins\n> **Librarian** - Moder ators\n> **Library Council** - Special Council',
+                            inline: false
+                        },
+                        {
+                            name: '💎 Premium Role (1)',
+                            value: '> **Premium** - Premium members',
+                            inline: false
+                        },
+                        {
+                            name: '📊 Total',
+                            value: '**5 roles** will be created',
+                            inline: false
+                        }
+                    )
+                    .setFooter({ text: 'All roles will be created with appropriate permissions and colors' });
+
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('wizard_proceed')
+                        .setLabel('Proceed')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('✅'),
+                    new ButtonBuilder()
+                        .setCustomId('wizard_cancel')
+                        .setLabel('Cancel')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('❌')
+                );
+
+                await i.reply({ embeds: [confirmEmbed], components: [confirmRow], flags: MessageFlags.Ephemeral });
+                const confirmResponse = await i.fetchReply();
+
+                const confirmCollector = confirmResponse.createMessageComponentCollector({ time: 60000 });
+
+                confirmCollector.on('collect', async wizardI => {
+                    if (wizardI.customId === 'wizard_cancel') {
+                        await wizardI.update({ content: '❌ Setup wizard cancelled.', embeds: [], components: [] });
+                        return;
+                    }
+
+                    if (wizardI.customId === 'wizard_proceed') {
+                        await wizardI.deferUpdate();
+
+                        try {
+                            // Run setup wizard
+                            await wizardI.editReply({ content: '⚙️ Creating roles... Please wait...', embeds: [], components: [] });
+                            
+                            const createdRoles = await setupEssentialRoles(i.guild);
+                            
+                            // Success message
+                            const completionEmbed = new EmbedBuilder()
+                                .setTitle('✅ Setup Complete!')
+                                .setDescription('All essential server roles have been created.')
+                                .setColor('#2ECC71')
+                                .addFields(
+                                    {
+                                        name: '🔒 Moderation Roles',
+                                        value: createdRoles.moderation.map(r => `✅ \u003c@\u0026${r.id}\u003e`).join('\n'),
+                                        inline: false
+                                    },
+                                    {
+                                        name: '💎 Premium Role',
+                                        value: `✅ \u003c@\u0026${createdRoles.premium.id}\u003e`,
+                                        inline: false
+                                    },
+                                    {
+                                        name: '📚 Next Steps',
+                                        value: '• Assign moderation roles to staff\n• Use Organize Role Hierarchy to position roles\n• Configure permissions as needed',
+                                        inline: false
+                                    }
+                                )
+                                .setFooter({ text: `Created ${createdRoles.moderation.length + 1} roles • AniMuse Setup Wizard` });
+
+                            await wizardI.editReply({ content: null, embeds: [completionEmbed], components: [] });
+
+                        } catch (error) {
+                            const logger = require('../../utils/core/logger');
+                            logger.error('Setup wizard failed:', error, 'SetupWizard');
+                            await wizardI.editReply({ content: `❌ **Setup failed**: ${error.message}`, embeds: [], components: [] });
+                        }
+                    }
+                });
+            }

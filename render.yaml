@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: animuse-bot
+    runtime: node
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      
+      - key: CLIENT_ID
+        sync: false
+      
+      - key: SUPABASE_URL
+        sync: false
+      
+      - key: SUPABASE_KEY
+        sync: false
+      
+      - key: DATABASE_URL
+        sync: false
+      
+      - key: ANILIST_CLIENT_ID
+        sync: false
+      
+      - key: DEPLOY_ON_START
+        value: false
+      
+      - key: NODE_ENV
+        value: production
+    
+    # Auto-deploy settings
+    autoDeploy: true
+    
+    # Health check configuration
+    # Note: Discord bots don't have HTTP endpoints, so health is based on process running
+    healthCheckPath: /

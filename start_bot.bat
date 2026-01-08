@@ -1,0 +1,6 @@
+@echo off
+echo [Monitor] Killing previous instances...
+taskkill /F /IM node.exe >nul 2>&1
+echo [Monitor] Starting AniMuse...
+node index.js
+pause
