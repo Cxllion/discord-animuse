@@ -540,7 +540,10 @@ module.exports = {
 
                         const next = await renderDashboard(targetCardId);
                         await submitted.editReply({ content: `✅ Card renamed to **${newTitle}**!`, ...next });
-                    } catch (e) { /* Timeout or close */ }
+                    } catch (e) {
+                        logger.error('Modal submission error (rename):', e, 'Bingo');
+                        // Modal was closed or timed out - this is expected behavior, no action needed
+                    }
                 }
 
                 else if (i.customId === 'bingo_resize_modal') {
@@ -575,7 +578,10 @@ module.exports = {
 
                         const next = await renderDashboard(targetCardId);
                         await submitted.editReply({ content: `✅ Grid resized to **${newSize}x${newSize}**!`, ...next });
-                    } catch (e) { /* Timeout or close */ }
+                    } catch (e) {
+                        logger.error('Modal submission error (resize):', e, 'Bingo');
+                        // Modal was closed or timed out - this is expected behavior, no action needed
+                    }
                 }
 
                 else if (i.customId === 'bingo_add_modal') {
@@ -620,7 +626,10 @@ module.exports = {
                             return await submitted.editReply({ content: `❌ **Failed**: ${result.error}`, ...next });
                         }
                         await submitted.editReply({ content: `✅ Added **${result.media.title.english || result.media.title.romaji}**!`, ...next });
-                    } catch (e) { /* Timeout or close */ }
+                    } catch (e) {
+                        logger.error('Modal submission error (add anime):', e, 'Bingo');
+                        // Modal was closed or timed out - this is expected behavior, no action needed
+                    }
                 }
 
                 else if (i.customId === 'delete_bingo') {
