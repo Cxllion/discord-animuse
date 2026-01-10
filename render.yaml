@@ -2,7 +2,7 @@ services:
   - type: web
     name: animuse-bot
     runtime: node
-    buildCommand: npm install
+    buildCommand: chmod +x install-fonts.sh && ./install-fonts.sh && npm install
     startCommand: node index.js
     
     envVars:
