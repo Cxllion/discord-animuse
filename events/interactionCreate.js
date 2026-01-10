@@ -1,6 +1,14 @@
 const { Events } = require('discord.js');
 const { routeInteraction } = require('../utils/handlers/router');
 const logger = require('../utils/core/logger');
+const cooldownManager = require('../utils/core/cooldownManager');
+const { checkBotPermissions, checkUserPermissions } = require('../utils/core/permissionChecker');
+const {
+    createCooldownEmbed,
+    createBotPermissionEmbed,
+    createUserPermissionEmbed,
+    handleCommandError
+} = require('../utils/core/errorHandler');
 
 module.exports = {
     name: Events.InteractionCreate,
@@ -21,7 +29,47 @@ module.exports = {
             if (!command) return;
 
             try {
+                // Check if user is owner (for cooldown bypass)
+                const isOwner = interaction.client.application?.owner?.id === interaction.user.id;
+
+                // 1a. Check cooldowns
+                const cooldown = command.cooldown || 3; // Default 3 seconds
+                if (!cooldownManager.check(interaction.user.id, interaction.commandName, cooldown, isOwner)) {
+                    const remaining = cooldownManager.getRemainingTime(interaction.user.id, interaction.commandName);
+                    return await interaction.reply({
+                        embeds: [createCooldownEmbed(remaining, interaction.commandName)],
+                        ephemeral: true
+                    });
+                }
+
+                // 1b. Check bot permissions
+                if (command.botPermissions && command.botPermissions.length > 0) {
+                    const permCheck = await checkBotPermissions(interaction, command.botPermissions);
+                    if (!permCheck.success) {
+                        return await interaction.reply({
+                            embeds: [createBotPermissionEmbed(permCheck.missing)],
+                            ephemeral: true
+                        });
+                    }
+                }
+
+                // 1c. Check user permissions
+                if (command.userPermissions && command.userPermissions.length > 0) {
+                    const permCheck = await checkUserPermissions(interaction, command.userPermissions);
+                    if (!permCheck.success) {
+                        return await interaction.reply({
+                            embeds: [createUserPermissionEmbed(permCheck.missing)],
+                            ephemeral: true
+                        });
+                    }
+                }
+
+                // 1d. Set cooldown (after all checks pass)
+                cooldownManager.set(interaction.user.id, interaction.commandName, cooldown);
+
+                // 1e. Execute command
                 await command.execute(interaction);
+
             } catch (error) {
                 const isUnknownInteraction = error.code === 10062 || error.code === 40060 ||
                     error.rawError?.code === 10062 || error.rawError?.code === 40060 ||
@@ -29,17 +77,8 @@ module.exports = {
 
                 if (isUnknownInteraction) return;
 
-                logger.error(`Error executing command ${interaction.commandName}:`, error, 'Interaction');
-
-                try {
-                    if (interaction.replied || interaction.deferred) {
-                        await interaction.followUp({ content: 'There was an error executing this command!', flags: 64 });
-                    } else {
-                        await interaction.reply({ content: 'There was an error executing this command!', flags: 64 });
-                    }
-                } catch (e) {
-                    // Ignore follow-up errors
-                }
+                // Use themed error handler
+                await handleCommandError(interaction, error, interaction.commandName);
             }
         }
         // 2. Autocomplete
