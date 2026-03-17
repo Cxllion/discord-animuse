@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleError } = require('../../utils/handlers/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
@@ -19,7 +19,7 @@ module.exports = {
 
     async execute(interaction) {
         try {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
             const targetUser = interaction.options.getUser('user');
             const reason = interaction.options.getString('reason') || 'No reason provided';

@@ -24,7 +24,7 @@ const loadCommands = (client) => {
                     const command = require(filePath);
                     if ('data' in command && 'execute' in command) {
                         client.commands.set(command.data.name, command);
-                        logger.info(`Loaded command: ${command.data.name}`, 'Loader');
+                        logger.debug(`Loaded command: ${command.data.name}`, 'Loader');
                     } else {
                         logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`, 'Loader');
                     }
@@ -34,6 +34,7 @@ const loadCommands = (client) => {
             }
         }
     }
+    logger.info(`Successfully curated ${client.commands.size} command volumes.`, 'Loader');
 };
 
 const loadEvents = (client) => {
@@ -56,11 +57,12 @@ const loadEvents = (client) => {
             } else {
                 client.on(event.name, (...args) => event.execute(...args));
             }
-            logger.info(`Loaded event: ${event.name}`, 'Loader');
+            logger.debug(`Loaded event: ${event.name}`, 'Loader');
         } catch (e) {
             logger.error(`Failed to load event ${file}:`, e, 'Loader');
         }
     }
+    logger.info(`Successfully bound ${eventFiles.length} runtime events.`, 'Loader');
 };
 
 module.exports = { loadCommands, loadEvents };

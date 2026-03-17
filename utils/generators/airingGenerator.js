@@ -1,5 +1,6 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { normalizeColor, parseMetadata } = require('../core/visualUtils');
+const logger = require('../core/logger');
 
 /**
  * ARCHIVIST AIRING GENERATOR - V2 (Redesigned)
@@ -36,7 +37,7 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
         try {
             bgImg = await loadImage(bgUrl);
         } catch (e) {
-            console.error('[AiringGen] BG Load Failed:', e.message);
+            logger.warn('AiringGen BG Load Failed: ' + e.message, 'AiringGenerator');
         }
     }
 
@@ -45,7 +46,7 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
         try {
             coverImg = await loadImage(coverUrl);
         } catch (e) {
-            console.error('[AiringGen] Cover Load Failed:', e.message);
+            logger.warn('AiringGen Cover Load Failed: ' + e.message, 'AiringGenerator');
         }
     }
 
@@ -67,7 +68,7 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
             ctx.filter = 'blur(60px) brightness(0.25) saturate(1.4)';
             ctx.drawImage(bgImg, x, y, bgImg.width * imgScale, bgImg.height * imgScale);
             ctx.restore();
-        } catch (e) { console.error('[AiringGen] BG Draw Error:', e); }
+        } catch (e) { logger.error('AiringGen BG Draw Error:', e, 'AiringGenerator'); }
     }
 
     // --- 3. THE POSTER ---
@@ -88,7 +89,7 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
             ctx.clip();
             ctx.drawImage(coverImg, posterX, posterY, posterW, posterH);
             ctx.restore();
-        } catch (e) { console.error('[AiringGen] Poster Draw Error:', e); }
+        } catch (e) { logger.error('AiringGen Poster Draw Error:', e, 'AiringGenerator'); }
     }
 
     // --- 4. THE CONTENT GRID ---

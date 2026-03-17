@@ -22,6 +22,7 @@ module.exports = {
         );
 
         // Max 25 choices for Discord Autocomplete
+        if (interaction.responded) return;
         await interaction.respond(filtered.slice(0, 25));
     },
 

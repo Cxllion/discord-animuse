@@ -7,6 +7,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('serverinfo')
         .setDescription('Displays the guild\'s registration card.'),
+    dbRequired: false,
 
     async execute(interaction) {
         try {

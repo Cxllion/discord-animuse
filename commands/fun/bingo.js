@@ -39,6 +39,7 @@ const cache = require('../../utils/core/cache');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    cooldown: 15, // Canvas generation heavy
     data: new SlashCommandBuilder()
         .setName('bingo')
         .setDescription('Manage your anime bingo cards.')
@@ -87,7 +88,8 @@ module.exports = {
             }
 
             try {
-                const results = await searchMedia(query, mode);
+                const results = await searchMedia(focusedOption.value, mode);
+                if (interaction.responded) return; // Safeguard
                 await interaction.respond(
                     results.slice(0, 25).map(m => ({
                         name: `[${m.format || '?'}] ${(m.title.english || m.title.romaji).substring(0, 90)}`,
@@ -95,7 +97,8 @@ module.exports = {
                     }))
                 );
             } catch (e) {
-                await interaction.respond([]);
+                if (interaction.responded) return;
+                try { await interaction.respond([]); } catch (err) { }
             }
         } else if (focusedOption.name === 'card') {
             // Suggest User's Cards
@@ -105,6 +108,7 @@ module.exports = {
             const query = focusedOption.value.toLowerCase();
 
             const filtered = cards.filter(c => c.title.toLowerCase().includes(query));
+            if (interaction.responded) return;
             await interaction.respond(
                 filtered.slice(0, 25).map(c => ({
                     name: `${c.title} (${c.size}x${c.size})`,

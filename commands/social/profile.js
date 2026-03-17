@@ -10,8 +10,10 @@ const {
     updateUserColor
 } = require('../../utils/core/database');
 const { generateProfileCard } = require('../../utils/generators/profileGenerator');
+const { getDynamicUserTitle } = require('../../utils/core/userMeta');
 
 module.exports = {
+    cooldown: 10, // Canvas generation
     data: new SlashCommandBuilder()
         .setName('profile')
         .setDescription('Inspect a Patron\'s Identity Card within the Archives.')
@@ -51,13 +53,21 @@ module.exports = {
         const level = rankData ? parseInt(rankData.level) : 0;
         const progress = getLevelProgress(xp, level);
 
-        // Calculate Ranks & Stats
-        let knowledgeRank = 'Novice';
-        if (level >= 5) knowledgeRank = 'Apprentice';
-        if (level >= 10) knowledgeRank = 'Scholar';
-        if (level >= 20) knowledgeRank = 'Sage';
-        if (level >= 30) knowledgeRank = 'Archivist';
-        if (level >= 50) knowledgeRank = 'Muse';
+        // Calculate Muse Rank (Dynamic based on bound level roles)
+        const { getLevelRoles } = require('../../utils/core/database');
+        const levelRoles = await getLevelRoles(guildId);
+        
+        // Find highest earned role
+        const earnedRoles = levelRoles.filter(lr => lr.level <= level);
+        let knowledgeRank = 'Patron'; // Default
+        
+        if (earnedRoles.length > 0) {
+            const highestRole = earnedRoles[earnedRoles.length - 1];
+            const roleObj = interaction.guild.roles.cache.get(highestRole.role_id);
+            let name = roleObj ? roleObj.name : `Level ${highestRole.level} Muse`;
+            // Remove number prefix (e.g., "10 | Scribe Muse" -> "Scribe Muse")
+            knowledgeRank = name.replace(/^\d+\s*\|\s*/, '');
+        }
 
         const joinedDate = member ? member.joinedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Unknown';
         const messages = Math.floor(xp / 20);
@@ -76,6 +86,7 @@ module.exports = {
             }
         }
 
+        const titleVal = await getDynamicUserTitle(member);
         const userData = {
             xp,
             level,
@@ -83,11 +94,10 @@ module.exports = {
             current: progress.current,
             required: progress.required,
             percent: progress.percent,
-            title: (title && title !== 'Muse Reader') ? title : 'Muse Reader',
+            title: (title && !title.includes('Muse Reader') && !title.includes('Muse Manager')) ? title : `Muse ${titleVal}`,
             joinedDate,
             messages,
             knowledgeRank,
-            anilist_synced: !!linkedUsername,
             anilist_synced: !!linkedUsername,
             anilist: anilistStats,
             avatarConfig: avatarConfig,

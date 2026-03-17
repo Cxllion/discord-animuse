@@ -3,6 +3,7 @@ const { getUserColor } = require('../core/database');
 const { generateSearchCard } = require('./searchGenerator');
 const baseEmbed = require('./baseEmbed');
 const { COLORS, FOOTERS } = require('../core/constants');
+const logger = require('../core/logger');
 
 /**
  * Creates a detailed response object (Attachment + Components) for a media item.
@@ -35,7 +36,7 @@ async function createMediaResponse(media, userId, guildId) {
         };
 
     } catch (e) {
-        console.error('Search Image Gen Error:', e);
+        logger.error('Search Image Gen Error:', e, 'MediaResponse');
         // FALLBACK: Old Embed Logic
         let description = media.description || 'No summary available.';
         description = description.replace(/<[^>]*>?/gm, '').trim();

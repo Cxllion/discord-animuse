@@ -1,4 +1,5 @@
 const supabase = require('./supabaseClient');
+const logger = require('./logger');
 
 // Simple in-memory cache for guild configs
 // Key: guildId, Value: { data: object, timestamp: number }
@@ -31,7 +32,7 @@ const fetchConfig = async (guildId) => {
         .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 is "The result contains 0 rows"
-        console.error(`[DB Error] fetching config for ${guildId}:`, error);
+        logger.error(`DB Error fetching config for ${guildId}:`, error, 'Database');
     }
 
     let configData = data;
@@ -47,7 +48,9 @@ const fetchConfig = async (guildId) => {
             muse_role_id: null,
             member_role_id: null,
             mod_role_id: null,
-            mute_role_id: null
+            mute_role_id: null,
+            booster_role_id: null,
+            premium_role_id: null
         };
     }
 
@@ -74,7 +77,7 @@ const upsertConfig = async (guildId, updates) => {
         .single();
 
     if (error) {
-        console.error(`[DB Error] upserting config for ${guildId}:`, error);
+        logger.error(`DB Error upserting config for ${guildId}:`, error, 'Database');
         return { error };
     }
 
@@ -91,7 +94,7 @@ const { Client } = require('pg');
  */
 const initializeDatabase = async () => {
     if (!process.env.DATABASE_URL) {
-        console.warn('⚠️ DATABASE_URL missing. Skipping auto-migration.');
+        logger.warn('DATABASE_URL missing. Skipping auto-migration.', 'Database');
         return;
     }
 
@@ -116,29 +119,56 @@ const initializeDatabase = async () => {
                 member_role_id text,
                 bot_role_id text,
                 super_bot_role_id text,
+                booster_role_id text,
                 mod_role_id text,
-                mute_role_id text
+                mute_role_id text,
+                airing_channel_id text
             );
         `);
 
-        // 1b. Alter guild_configs specifically for member_role_id migration AND general hardening
+        // 1b. Alter guild_configs specifically for key standardization and hardening
         try {
-            // Hardening: Ensure base columns exist
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS welcome_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS greeting_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS logs_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS gallery_channel_ids text[];`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS xp_enabled boolean DEFAULT true;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS muse_role_id text;`);
-
-            // Migrations found previously
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS member_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS bot_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS super_bot_role_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS booster_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS airing_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS mod_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS mute_role_id text;`);
-        } catch (e) { /* Ignore */ }
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS leveling_enabled boolean DEFAULT true;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS level_up_channel_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS archive_mirror_channel_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS xp_level_up_emoji text DEFAULT '<a:level_up:1483138860417286358>';`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS auto_role_member text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS auto_role_bot text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS premium_role_id text;`);
+            
+            // Boutique Persistence
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_channel_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_message_id text;`);
+
+            // Migration: Transfer data from redundant keys if they exist and target is null
+            await client.query(`
+                UPDATE public.guild_configs 
+                SET member_role_id = COALESCE(member_role_id, auto_role_member)
+                WHERE auto_role_member IS NOT NULL AND member_role_id IS NULL;
+            `);
+            await client.query(`
+                UPDATE public.guild_configs 
+                SET bot_role_id = COALESCE(bot_role_id, auto_role_bot)
+                WHERE auto_role_bot IS NOT NULL AND bot_role_id IS NULL;
+            `);
+
+        } catch (e) { 
+            console.error('[Database Migration] Error in Harden:', e);
+        }
 
         // 2. Create users if not exists (Updated with anilist_username)
         await client.query(`
@@ -348,32 +378,71 @@ const initializeDatabase = async () => {
             await client.query(`ALTER TABLE public.bingo_cards ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();`);
 
             // Legacy Clean-up (Fix for "period" and "grid_size" column errors)
-            try { await client.query(`ALTER TABLE public.bingo_cards ALTER COLUMN period DROP NOT NULL;`); } catch (e) { console.warn('Legacy period fix skipped:', e.message); }
+            try { await client.query(`ALTER TABLE public.bingo_cards ALTER COLUMN period DROP NOT NULL;`); } catch (e) { logger.warn('Legacy period fix skipped: ' + e.message, 'Database'); }
             try {
-                console.log('Attempting to drop NOT NULL from grid_size...');
                 await client.query(`ALTER TABLE public.bingo_cards ALTER COLUMN grid_size DROP NOT NULL;`);
-                console.log('Successfully dropped NOT NULL from grid_size.');
             } catch (e) {
-                console.warn('Legacy grid_size fix FAILED:', e.message);
+                // Ignore silent migration
             }
         } catch (e) {
-            console.warn('⚠️ Manual migration step failed:', e.message);
+            logger.warn('Manual migration step failed: ' + e.message, 'Database');
         }
 
-        // 13. PERFORMANCE INDICES
+        // 13. Create Role Management Tables
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.role_categories (
+                id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                guild_id text NOT NULL,
+                name text NOT NULL,
+                created_at timestamp with time zone DEFAULT now(),
+                CONSTRAINT unique_guild_category UNIQUE (guild_id, name)
+            );
+        `);
+        try { await client.query(`ALTER TABLE public.role_categories ADD COLUMN IF NOT EXISTS name text;`); } catch(e) {}
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.server_roles (
+                role_id text PRIMARY KEY,
+                guild_id text NOT NULL,
+                category_id bigint REFERENCES public.role_categories(id) ON DELETE CASCADE,
+                created_at timestamp with time zone DEFAULT now()
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.level_roles (
+                guild_id text NOT NULL,
+                level integer NOT NULL,
+                role_id text NOT NULL,
+                PRIMARY KEY (guild_id, level)
+            );
+        `);
+
+        // 14. Create guild_channels (Hybrid Sorting & Activity Tracking)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.guild_channels (
+                guild_id text NOT NULL,
+                channel_id text NOT NULL,
+                pinned_position integer DEFAULT -1, -- -1 means not pinned
+                last_active_at timestamp with time zone DEFAULT now(),
+                PRIMARY KEY (guild_id, channel_id)
+            );
+        `);
+
+        // 15. PERFORMANCE INDICES
         await client.query(`CREATE INDEX IF NOT EXISTS idx_subs_anilist_id ON public.subscriptions(anilist_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_tracked_next_airing ON public.tracked_anime_state(next_airing);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_users_guild_user ON public.users(guild_id, user_id);`);
 
         // 14. RELOAD SCHEMA CACHE (Critical for Supabase/PostgREST to see new columns immediately)
         await client.query("NOTIFY pgrst, 'reload schema';");
-
-        console.log('The archives have been organized. (Auto-Migration Complete)');
+        
+        logger.info('Database archives verified. Auto-Migration complete.', 'Database');
         return true;
 
     } catch (err) {
-        console.warn('⚠️ [Offline Mode] Could not connect to the archives (DB Start Failed).');
-        console.warn('   Reason:', err.message);
+        logger.warn('Offline Mode - Could not connect to the archives (DB Start Failed)', 'Database');
+        logger.warn('Reason: ' + err.message, 'Database');
         return false;
     } finally {
         // Ensure client is closed only if it was connected or attempted
@@ -454,7 +523,7 @@ const getUserBackground = async (userId, guildId) => {
         .eq('guild_id', guildId)
         .single();
 
-    if (error && error.code !== 'PGRST116') console.error('DB Error [getUserBackground]:', error.message);
+    if (error && error.code !== 'PGRST116') logger.error('DB Error getUserBackground: ' + error.message, null, 'Database');
     return data ? data.background_url : null;
 };
 
@@ -467,7 +536,7 @@ const getUserTitle = async (userId, guildId) => {
         .eq('guild_id', guildId)
         .single();
 
-    if (error && error.code !== 'PGRST116') console.error('DB Error [getUserTitle]:', error.message);
+    if (error && error.code !== 'PGRST116') logger.error('DB Error getUserTitle: ' + error.message, null, 'Database');
 
     let t = data ? (data.selected_title || 'Muse Reader') : 'Muse Reader';
     if (t === 'Muse Player') t = 'Muse Reader';
@@ -489,7 +558,7 @@ const getUserColor = async (userId, guildId) => {
         .eq('guild_id', guildId)
         .single();
 
-    if (error && error.code !== 'PGRST116') console.error('DB Error [getUserColor]:', error.message);
+    if (error && error.code !== 'PGRST116') logger.error('DB Error getUserColor: ' + error.message, null, 'Database');
     return data ? (data.primary_color || '#FFACD1') : '#FFACD1';
 };
 
@@ -835,6 +904,137 @@ const deleteBingoCard = async (cardId) => {
         .eq('id', cardId);
 };
 
+// --- Role Management ---
+const getRoleCategories = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('role_categories').select('*').eq('guild_id', guildId).order('created_at', { ascending: true });
+    return data || [];
+};
+const createRoleCategory = async (guildId, name) => {
+    if (!supabase) return null;
+    return await supabase.from('role_categories').insert({ guild_id: guildId, name }).select().single();
+};
+const deleteRoleCategory = async (categoryId) => {
+    if (!supabase) return;
+    await supabase.from('role_categories').delete().eq('id', categoryId);
+};
+const seedRoleCategories = async (guildId) => {
+    if (!supabase) return;
+    const defaults = [
+        'Council',
+        'Colors (Premium)',
+        'Colors (Basic)',
+        'Profile (Pronouns)',
+        'Profile (Age)',
+        'Profile (Region)',
+        'Levels',
+        'Pings',
+        'Extra'
+    ];
+    
+    const existing = await getRoleCategories(guildId);
+    const existingNames = existing.map(c => c.name);
+    
+    const toInsert = defaults.filter(name => !existingNames.includes(name)).map(name => ({ guild_id: guildId, name }));
+    
+    if (toInsert.length > 0) {
+        await supabase.from('role_categories').insert(toInsert);
+    }
+    return await getRoleCategories(guildId);
+};
+const getServerRoles = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('server_roles').select('*, category:role_categories(*)').eq('guild_id', guildId);
+    return data || [];
+};
+const registerServerRole = async (guildId, roleId, categoryId = null) => {
+    if (!supabase) return;
+    return await supabase.from('server_roles').upsert({ role_id: roleId, guild_id: guildId, category_id: categoryId });
+};
+const registerServerRoles = async (records) => {
+    if (!supabase || !records.length) return;
+    return await supabase.from('server_roles').upsert(records);
+};
+const unregisterServerRole = async (roleId) => {
+    if (!supabase) return;
+    await supabase.from('server_roles').delete().eq('role_id', roleId);
+};
+const getLevelRoles = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('level_roles').select('*').eq('guild_id', guildId).order('level', { ascending: true });
+    return data || [];
+};
+const setLevelRole = async (guildId, level, roleId) => {
+    if (!supabase) return;
+    return await supabase.from('level_roles').upsert({ guild_id: guildId, level, role_id: roleId });
+};
+const removeLevelRole = async (guildId, level) => {
+    if (!supabase) return;
+    await supabase.from('level_roles').delete().eq('guild_id', guildId).eq('level', level);
+};
+
+
+/**
+ * Updates the last active timestamp for a channel.
+ * @param {string} guildId 
+ * @param {string} channelId 
+ */
+const pulseChannelActivity = async (guildId, channelId) => {
+    if (!supabase) return;
+    await supabase.from('guild_channels').upsert({
+        guild_id: guildId,
+        channel_id: channelId,
+        last_active_at: new Date().toISOString()
+    }, { onConflict: 'guild_id, channel_id' });
+};
+
+/**
+ * Sets a pinned position for a channel within its category.
+ * @param {string} guildId 
+ * @param {string} channelId 
+ * @param {number} position 
+ */
+const pinChannelPosition = async (guildId, channelId, position) => {
+    if (!supabase) return;
+    await supabase.from('guild_channels').upsert({
+        guild_id: guildId,
+        channel_id: channelId,
+        pinned_position: position
+    }, { onConflict: 'guild_id, channel_id' });
+};
+
+/**
+ * Fetches activity and pin data for all channels in a guild.
+ * @param {string} guildId 
+ */
+const getGuildChannelData = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('guild_channels').select('*').eq('guild_id', guildId);
+    return data || [];
+};
+
+/**
+ * Centralized channel assignment update.
+ * @param {string} guildId 
+ * @param {string} key Configuration key (e.g., welcome_channel_id)
+ * @param {string|null} channelId 
+ */
+const assignChannel = async (guildId, key, channelId) => {
+    if (!supabase) return;
+    const updates = { [key]: channelId };
+    await supabase.from('guild_configs').update(updates).eq('guild_id', guildId);
+};
+
+/**
+ * Fetches all pinned messages from a channel and mirrors them (Manual sync).
+ * @param {string} guildId 
+ * @param {string} channelId 
+ */
+const getArchiveSettings = async (guildId) => {
+    const config = await fetchConfig(guildId);
+    return config?.archive_mirror_channel_id;
+};
+
 
 module.exports = {
     fetchConfig,
@@ -883,5 +1083,21 @@ module.exports = {
     getBingoCardById,
     updateBingoEntries,
     updateBingoCard,
-    deleteBingoCard
+    deleteBingoCard,
+    // Role Management
+    getRoleCategories,
+    createRoleCategory,
+    deleteRoleCategory,
+    seedRoleCategories,
+    getServerRoles,
+    registerServerRole,
+    registerServerRoles,
+    unregisterServerRole,
+    getLevelRoles,
+    setLevelRole,
+    removeLevelRole,
+    pulseChannelActivity,
+    pinChannelPosition,
+    getGuildChannelData,
+    assignChannel
 };

@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, EmbedBuilder } = require('discord.js');
 const { fetchConfig, upsertConfig } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -91,7 +92,7 @@ module.exports = {
                 }
 
             } catch (error) {
-                console.error('[Command Error] /channel assign', error);
+                logger.error('Command Error: /channel assign', error, 'ChannelCommand');
                 await interaction.editReply({ content: '❌ An internal error occurred while saving configuration.' });
             }
         }
@@ -123,7 +124,7 @@ module.exports = {
                 await interaction.editReply({ embeds: [embed] });
 
             } catch (error) {
-                console.error('[Command Error] /channel overview', error);
+                logger.error('Command Error: /channel overview', error, 'ChannelCommand');
                 await interaction.editReply({ content: '❌ An internal error occurred while fetching configuration.' });
             }
         }

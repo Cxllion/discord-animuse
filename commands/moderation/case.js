@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleError } = require('../../utils/handlers/errorHandler');
 const { getModerationLogs } = require('../../utils/core/database');
@@ -16,7 +16,7 @@ module.exports = {
 
     async execute(interaction) {
         try {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
             const targetUser = interaction.options.getUser('user');
             const logs = await getModerationLogs(interaction.guild.id, targetUser.id);

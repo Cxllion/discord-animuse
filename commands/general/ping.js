@@ -5,6 +5,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('ping')
         .setDescription('Checks Animuse\'s latency.'),
+    dbRequired: false,
     async execute(interaction) {
         const sent = await interaction.reply({ content: 'Pinging...', withResponse: true });
         // Note: withResponse returns an object { resource: Message, ... } so we access resource.createdTimestamp

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../core/logger');
 
 const anilistClient = axios.create({
     baseURL: 'https://graphql.anilist.co',
@@ -35,11 +36,11 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
             if (isRetryable && attempt < retries) {
                 attempt++;
                 const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-                console.warn(`[AniList] Request failed (${status || error.code}). Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                logger.warn(`AniList Request failed (${status || error.code}). Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`, 'AniList');
                 await new Promise(res => setTimeout(res, delay));
             } else {
-                console.error('[AniList] Request Failed:', status ? `Status ${status}` : error.message);
-                if (attempt >= retries) console.error('[AniList] Max retries reached.');
+                logger.error('AniList Request Failed: ' + (status ? `Status ${status}` : error.message), null, 'AniList');
+                if (attempt >= retries) logger.error('AniList Max retries reached', null, 'AniList');
                 // Return null instead of throwing to prevent bot crash, callers must handle null
                 // Actually, throwing might be better for the caller to know it failed, but we promised grace.
                 // Let's throw, but ensure top-level handlers catch it.

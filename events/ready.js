@@ -10,13 +10,17 @@ module.exports = {
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'System');
         logger.info(`Animuse is now online and serving in ${client.guilds.cache.size} guilds.`, 'System');
 
+        // Set Presence
+        client.user.setPresence({
+            activities: [{ name: 'Watching the Library...', type: 3 }], // Type 3 is WATCHING
+            status: 'online'
+        });
+
         // Deploy Commands (Conditional)
         const shouldDeploy = process.env.DEPLOY_ON_START === 'true';
         if (shouldDeploy) {
             try {
-                logger.info('Syncing archives with the main hall...', 'Deployer');
                 await deployCommands(client);
-                logger.info('Archives synchronized.', 'Deployer');
             } catch (e) {
                 logger.error('Command deployment failure:', e, 'Deployer');
             }
@@ -26,18 +30,23 @@ module.exports = {
 
         client.isSystemsGo = true;
 
-        // Run scheduler shortly after startup (30s)
-        setTimeout(() => {
-            logger.info('Starting initial airing check...', 'Scheduler');
-            checkAiringAnime(client).catch(err => logger.error('Initial airing check failed:', err, 'Scheduler'));
-        }, 30 * 1000);
+        if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
+            // Run scheduler shortly after startup (5 mins)
+            // This prevents conflicts with administrative tasks like /deploy which run at startup
+            setTimeout(() => {
+                logger.info('Starting initial airing check...', 'Scheduler');
+                checkAiringAnime(client).catch(err => logger.error('Initial airing check failed:', err, 'Scheduler'));
+            }, 300 * 1000);
 
-        setInterval(async () => {
-            try {
-                await checkAiringAnime(client);
-            } catch (error) {
-                logger.error('Notification loop failure:', error, 'Scheduler');
-            }
-        }, 10 * 60 * 1000);
+            setInterval(async () => {
+                try {
+                    await checkAiringAnime(client);
+                } catch (error) {
+                    logger.error('Notification loop failure:', error, 'Scheduler');
+                }
+            }, 10 * 60 * 1000);
+        } else {
+            logger.info('Internal Scheduler disabled. Assuming external cron via worker.js', 'System');
+        }
     },
 };

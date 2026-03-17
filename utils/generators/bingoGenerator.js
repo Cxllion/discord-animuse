@@ -1,6 +1,7 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const { lightenColor } = require('../config/colorConfig');
+const logger = require('../core/logger');
 
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 1750; // Increased for better header spacing
@@ -234,7 +235,7 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
                 const img = await loadImage(url);
                 return { url, img };
             } catch (e) {
-                console.error('Failed to load image:', url);
+                logger.warn('BingoGen Failed to load image: ' + url, 'BingoGenerator');
                 return null;
             }
         })

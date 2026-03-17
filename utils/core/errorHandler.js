@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder , MessageFlags } = require('discord.js');
 const logger = require('./logger');
 const { formatPermission, getPermissionSuggestion } = require('./permissionChecker');
 
@@ -191,9 +191,9 @@ const handleCommandError = async (interaction, error, commandName) => {
     // Try to send error message
     try {
         if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ embeds: [embed], ephemeral: true });
+            await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
         } else {
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
     } catch (followUpError) {
         logger.error('Could not send error message:', followUpError, 'ErrorHandler');

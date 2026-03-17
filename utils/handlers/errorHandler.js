@@ -1,5 +1,6 @@
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const CONFIG = require('../config');
+const logger = require('../core/logger');
 
 /**
  * Standardized Error Handler for Interactions
@@ -8,7 +9,7 @@ const CONFIG = require('../config');
  * @param {string} customMessage Optional custom message to show user
  */
 const handleError = async (interaction, error, customMessage = null) => {
-    console.error(`[Command Error] ${interaction.commandName}:`, error);
+    logger.error(`Command Error ${interaction.commandName}:`, error, 'ErrorHandler');
 
     const embed = new EmbedBuilder()
         .setColor(CONFIG.COLORS.ERROR)
@@ -23,7 +24,7 @@ const handleError = async (interaction, error, customMessage = null) => {
             await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
     } catch (e) {
-        console.error('Failed to send error message to user:', e);
+        logger.error('Failed to send error message to user:', e, 'ErrorHandler');
     }
 };
 

@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const CONFIG = require('../config');
 const { logModerationAction } = require('../core/database');
+const logger = require('../core/logger');
 
 /**
  * Logs a moderation action to the database and the guild's log channel.
@@ -12,7 +13,7 @@ const { logModerationAction } = require('../core/database');
  */
 const logAction = async (guild, targetUser, moderator, actionType, reason) => {
     // 1. Log to Database
-    await logModerationAction(guild.id, targetUser.id, moderator.id, actionType, reason).catch(console.error);
+    await logModerationAction(guild.id, targetUser.id, moderator.id, actionType, reason).catch(e => logger.error('DB Log Failed', e, 'ModerationLogger'));
 
     // 2. Log to Channel
     try {
@@ -42,7 +43,7 @@ const logAction = async (guild, targetUser, moderator, actionType, reason) => {
             }
         }
     } catch (e) {
-        console.error('Failed to send log to channel:', e);
+        logger.error('Failed to send log to channel:', e, 'ModerationLogger');
     }
 };
 

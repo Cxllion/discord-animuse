@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const { unlinkAnilistAccount, getLinkedAnilist } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -24,7 +25,7 @@ module.exports = {
         const { error } = await unlinkAnilistAccount(interaction.user.id, interaction.guild.id);
 
         if (error) {
-            console.error('Unlink Error:', error);
+            logger.error('Unlink Error:', error, 'UnlinkCommand');
             const embed = baseEmbed()
                 .setDescription('An error occurred while attempting to sever the spiritual link. The bond remains.')
                 .setColor('#FF0000');

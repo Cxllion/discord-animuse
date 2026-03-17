@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const { getAnilistUser } = require('../../utils/services/anilistService');
 const { linkAnilistAccount } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -32,7 +33,7 @@ module.exports = {
         const { error } = await linkAnilistAccount(interaction.user.id, interaction.guild.id, anilistUser.name);
 
         if (error) {
-            console.error('Link Error:', error);
+            logger.error('Link Error:', error, 'LinkCommand');
             const embed = baseEmbed()
                 .setDescription('The archives are currently in disarray. I successfully initiated the link, but the ink smudged. Please try again.')
                 .setColor('#FF0000');

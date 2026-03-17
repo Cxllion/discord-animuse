@@ -28,7 +28,7 @@ const initializeBot = async (client) => {
                 // We don't force offline mode here if migration passed, but it's likely related.
                 // But let's keep it safe.
             } else {
-                logger.info('The records for this wing of the library have been successfully updated, Manager. (DB Connected)', 'Database');
+                logger.debug('The records for this wing of the library have been successfully updated, Manager. (DB Connected)', 'Database');
             }
         } else {
             logger.warn('Supabase client not initialized.', 'Database');

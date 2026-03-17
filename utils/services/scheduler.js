@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder , MessageFlags } = require('discord.js');
 const { generateAiringCard } = require('../generators/airingGenerator');
 const { watchInteraction } = require('../handlers/interactionManager');
 const { queryAnilist } = require('./anilistService');
@@ -57,6 +57,10 @@ const processBatch = async (client, ids) => {
 
     try {
         const data = await queryAnilist(query, { ids });
+        if (!data || !data.Page || !data.Page.media) {
+            logger.warn(`[Scheduler] Batch query returned empty or invalid data. Skipping batch.`, 'Scheduler');
+            return;
+        }
         const mediaList = data.Page.media;
 
         for (const media of mediaList) {
@@ -165,7 +169,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
 
             watchInteraction(msg, TIMEOUT_MS, async (i) => {
                 if (i.customId === subButtonId) {
-                    await i.deferReply({ ephemeral: true });
+                    await i.deferReply({ flags: MessageFlags.Ephemeral });
                     const res = await addTracker(guildId, i.user.id, media.id, title);
                     if (res.error) {
                         await i.editReply('❌ Failed to start tracking.');

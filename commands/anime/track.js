@@ -38,6 +38,7 @@ module.exports = {
             if (!query || query.length < 2) return await interaction.respond([]);
             // Search AniList
             const results = await searchMedia(query, 'ANIME');
+            if (interaction.responded) return;
             await interaction.respond(
                 results.map(media => ({
                     name: (media.title.english || media.title.romaji).substring(0, 100),
@@ -49,6 +50,7 @@ module.exports = {
             const subs = await getUserTrackedAnime(interaction.guild.id, interaction.user.id);
             // Filter by query
             const filtered = subs.filter(s => s.anime_title.toLowerCase().includes(query.toLowerCase()));
+            if (interaction.responded) return;
             await interaction.respond(
                 filtered.map(s => ({
                     name: s.anime_title.substring(0, 100),
@@ -114,39 +116,72 @@ module.exports = {
                 });
             }
 
-            // 1. Build Options for Select Menu
-            // Select Menu Limit is 25 options. If user has more, we might need pages (future scope) or just show top 25.
-            const options = subs.slice(0, 25).map(s => ({
-                label: s.anime_title.substring(0, 100),
-                value: s.anilist_id.toString(),
-                description: `ID: ${s.anilist_id}`,
-                emoji: '🗑️' // Trash icon for untracking
-            }));
+            let currentPage = 0;
+            const maxPerPage = 25;
 
-            // 2. Build Component
-            const row = new ActionRowBuilder()
-                .addComponents(
+            const generateUI = (page) => {
+                const totalPages = Math.ceil(subs.length / maxPerPage);
+                if (page >= totalPages && page > 0) page = totalPages - 1;
+                currentPage = page; // update current page in state
+
+                if (subs.length === 0) {
+                    return { content: 'You are no longer tracking any anime.', embeds: [], components: [] };
+                }
+
+                const start = page * maxPerPage;
+                const end = start + maxPerPage;
+                const pageSubs = subs.slice(start, end);
+
+                const desc = pageSubs.map(s => `• **${s.anime_title}**`).join('\n');
+                const embed = new EmbedBuilder()
+                    .setColor('#FFACD1')
+                    .setTitle(`Your Track List (${subs.length})`)
+                    .setDescription(desc.substring(0, 4000) || 'None left on this page.')
+                    .setFooter({ text: `Page ${page + 1}/${totalPages} • Use the dropdown below to stop tracking.` });
+
+                const options = pageSubs.map(s => ({
+                    label: s.anime_title.substring(0, 100),
+                    value: s.anilist_id.toString(),
+                    description: `ID: ${s.anilist_id}`,
+                    emoji: '🗑️'
+                }));
+
+                const row1 = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId('untrack_select')
                         .setPlaceholder('Select to Untrack')
                         .addOptions(options)
                 );
 
-            // 3. Build Embed
-            const desc = subs.map(s => `• **${s.anime_title}**`).join('\n');
-            const embed = new EmbedBuilder()
-                .setColor('#FFACD1')
-                .setTitle(`Your Track List (${subs.length})`)
-                .setDescription(desc.substring(0, 4000))
-                .setFooter({ text: 'Use the dropdown below to stop tracking an anime.' });
+                if (totalPages > 1) {
+                    const row2 = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('prev_page')
+                            .setLabel('Previous')
+                            .setStyle(ButtonStyle.Primary)
+                            .setDisabled(page === 0),
+                        new ButtonBuilder()
+                            .setCustomId('next_page')
+                            .setLabel('Next')
+                            .setStyle(ButtonStyle.Primary)
+                            .setDisabled(page === totalPages - 1)
+                    );
+                    return { content: '', embeds: [embed], components: [row1, row2] };
+                }
+                return { content: '', embeds: [embed], components: [row1] };
+            };
 
-            const msg = await interaction.editReply({ embeds: [embed], components: [row] });
+            const payload = generateUI(currentPage);
+            const msg = await interaction.editReply(payload);
 
-            // 4. Collector for Untracking
-            const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 60000 });
+            const collector = msg.createMessageComponentCollector({ time: 60000 });
 
             collector.on('collect', async i => {
-                if (i.customId === 'untrack_select') {
+                if (i.customId === 'prev_page') {
+                    await i.update(generateUI(currentPage - 1));
+                } else if (i.customId === 'next_page') {
+                    await i.update(generateUI(currentPage + 1));
+                } else if (i.customId === 'untrack_select') {
                     const animeId = parseInt(i.values[0]);
                     const selected = subs.find(s => s.anilist_id === animeId);
 
@@ -157,34 +192,12 @@ module.exports = {
                         const index = subs.findIndex(s => s.anilist_id === animeId);
                         if (index > -1) subs.splice(index, 1);
 
-                        // Rebuild UI
-                        if (subs.length === 0) {
-                            await i.update({ content: 'You are no longer tracking any anime.', embeds: [], components: [] });
-                            return;
+                        const responsePayload = generateUI(currentPage);
+                        if (responsePayload.content === '') {
+                             responsePayload.content = `✅ Untracked **${selected.anime_title}**`;
                         }
-
-                        const newDesc = subs.map(s => `• **${s.anime_title}**`).join('\n');
-                        const newEmbed = new EmbedBuilder()
-                            .setColor('#FFACD1')
-                            .setTitle(`Your Track List (${subs.length})`)
-                            .setDescription(newDesc.substring(0, 4000))
-                            .setFooter({ text: 'Use the dropdown below to stop tracking an anime.' });
-
-                        const newOptions = subs.slice(0, 25).map(s => ({
-                            label: s.anime_title.substring(0, 100),
-                            value: s.anilist_id.toString(),
-                            description: `ID: ${s.anilist_id}`,
-                            emoji: '🗑️'
-                        }));
-
-                        const newRow = new ActionRowBuilder().addComponents(
-                            new StringSelectMenuBuilder()
-                                .setCustomId('untrack_select')
-                                .setPlaceholder('Select to Untrack')
-                                .addOptions(newOptions)
-                        );
-
-                        await i.update({ content: `✅ Untracked **${selected.anime_title}**`, embeds: [newEmbed], components: [newRow] });
+                        
+                        await i.update(responsePayload);
                     } else {
                         await i.reply({ content: '❌ That record seems to have already vanished from the archives.', flags: MessageFlags.Ephemeral });
                     }
@@ -192,7 +205,6 @@ module.exports = {
             });
 
             collector.on('end', async () => {
-                // Remove components on timeout
                 const freshMsg = await interaction.fetchReply().catch(() => null);
                 if (freshMsg) {
                     await interaction.editReply({ components: [] });

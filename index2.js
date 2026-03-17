@@ -12,11 +12,12 @@ if (require.cache[deployerPath]) {
     delete require.cache[deployerPath];
 }
 
-// Override CLIENT_ID before any imports
+// Override CLIENT_ID and DISCORD_TOKEN before any imports
 process.env.CLIENT_ID = process.env.TEST_CLIENT_ID;
+process.env.DISCORD_TOKEN = process.env.TEST_DISCORD_TOKEN;
 
-// Disable command deployment for test bot (commands already exist from production bot)
-process.env.DEPLOY_ON_START = 'false';
+// Enable command deployment for test bot (so commands appear)
+process.env.DEPLOY_ON_START = 'true';
 
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/processHandlers');

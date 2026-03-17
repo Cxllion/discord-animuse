@@ -5,6 +5,7 @@ const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
 const { getMediaById, getTrendingAnime, getAniListProfile } = require('../../utils/services/anilistService');
 const { sendNotifications } = require('../../utils/services/scheduler');
 const { getUserColor, getUserAvatarConfig, getLinkedAnilist } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -126,7 +127,7 @@ module.exports = {
                         await sendNotifications(interaction.client, media, episode, { forceGuildId: interaction.guild.id });
                         await interaction.followUp({ content: '✅ **Simulation Triggered**\nCheck your configured Airing Channel.', flags: MessageFlags.Ephemeral });
                     } catch (e) {
-                        console.error(e);
+                        logger.error('Airing Test Error:', e, 'FeatureCommand');
                         await interaction.followUp({ content: '❌ Error during trigger execution.', flags: MessageFlags.Ephemeral });
                     }
                 }
@@ -192,7 +193,7 @@ module.exports = {
                             });
 
                         } catch (e) {
-                            console.error(`Failed to generate ${size}x${size}:`, e);
+                            logger.error(`Failed to generate ${size}x${size}:`, e, 'FeatureCommand');
                             await interaction.followUp({ content: `❌ Failed to generate ${size}x${size}: ${e.message}` });
                         }
 
@@ -201,7 +202,7 @@ module.exports = {
                 }
 
             } catch (error) {
-                console.error('[Command Error] /feature test', error);
+                logger.error('Command Error: /feature test', error, 'FeatureCommand');
                 await interaction.editReply({ content: '❌ An internal error occurred while running the diagnostic.' });
             }
         }

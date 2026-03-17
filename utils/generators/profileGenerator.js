@@ -330,20 +330,24 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         // Label
         ctx.textAlign = 'left';
         ctx.font = '900 10px sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.45)'; // Lighter for readability on custom
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'; 
         ctx.letterSpacing = '1px';
         ctx.fillText(label.toUpperCase(), leftX, y);
 
         // Value
         ctx.textAlign = 'right';
-        ctx.font = '900 15px sans-serif';
-        ctx.fillStyle = color;
         ctx.letterSpacing = '0px';
 
         if (isCustom) {
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 5;
         }
+
+        // AUTO-SIZING FOR STAT VALUES
+        const maxValWidth = island2.w - (ctx.measureText(label.toUpperCase()).width + 80);
+        const fontSize = fitText(ctx, value, maxValWidth, 15);
+        ctx.font = `900 ${fontSize}px sans-serif`;
+        ctx.fillStyle = color;
 
         ctx.fillText(value, island2.x + island2.w - 35, y + 2);
 

@@ -1,7 +1,9 @@
 const { REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+
 const crypto = require('crypto');
+const logger = require('./logger');
 
 const HASH_FILE = path.join(__dirname, '../../.deploy_hash');
 
@@ -33,7 +35,7 @@ const deployCommands = async (client) => {
                 if ('data' in command && 'execute' in command) {
                     commands.push(command.data.toJSON());
                 } else {
-                    console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+                    logger.warn(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`, 'CommandDeployer');
                 }
             }
         }
@@ -46,21 +48,22 @@ const deployCommands = async (client) => {
     }
 
     if (process.env.DEPLOY_ON_START !== 'true' && currentHash === storedHash) {
-        console.log('The library index is up to date.');
+        logger.info('The library index is up to date.', 'CommandDeployer');
         return;
     }
 
     const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
     try {
-        console.log(`Started refreshing ${commands.length} application (/) commands.`);
+
+        logger.info(`Syncing ${commands.length} commands with Discord API...`, 'CommandDeployer');
 
         // Clear Global Commands (to prevent duplicates if switching from global to guild)
         await rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: [] },
         );
-        console.log('Global commands cleared.');
+        logger.debug('Global commands cleared.', 'CommandDeployer');
 
         // Deploy to ALL guilds
         const guilds = client.guilds.cache.map(guild => guild.id);
@@ -73,11 +76,12 @@ const deployCommands = async (client) => {
         }
 
         fs.writeFileSync(HASH_FILE, currentHash);
-        console.log('The library index has been synchronized with the main hall. ♡');
+
+        logger.info('The library index has been successfully synchronized. ♡', 'CommandDeployer');
 
     } catch (error) {
-        console.error(error);
+        logger.error('Deploy Commands Error', error, 'CommandDeployer');
     }
-};
+}
 
 module.exports = { deployCommands };

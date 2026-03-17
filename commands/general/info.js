@@ -5,6 +5,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('info')
         .setDescription('📊 View bot statistics and information'),
+    dbRequired: false,
     cooldown: 10,
     botPermissions: ['SendMessages', 'EmbedLinks'],
 

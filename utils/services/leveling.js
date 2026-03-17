@@ -1,5 +1,6 @@
 const supabase = require('../core/supabaseClient');
 const { Collection } = require('discord.js');
+const logger = require('../core/logger');
 
 const cooldowns = new Collection();
 
@@ -36,8 +37,10 @@ const getLevelProgress = (xp, level) => {
  * Adds XP to a user. Handles cooldowns and DB updates.
  * @param {string} userId 
  * @param {string} guildId 
+ * @param {import('discord.js').GuildMember} [member=null]
+ * @param {import('discord.js').Message} [message=null]
  */
-const addXp = async (userId, guildId) => {
+const addXp = async (userId, guildId, member = null, message = null) => {
     if (!supabase) return;
 
     const key = `${guildId}-${userId}`;
@@ -57,13 +60,6 @@ const addXp = async (userId, guildId) => {
     const xpToAdd = Math.floor(Math.random() * (25 - 15 + 1)) + 15;
 
     try {
-        // Fetch current user data
-        // Note: Creating a constraint in SQL (unique on user_id, guild_id) implies we can upsert.
-        // However, to add to existing value properly without race conditions, usually RPC is best.
-        // For simplicity without RPC, we fetch-then-update or use upsert if we knew the old value.
-        // Let's safe-bet with fetch first or try to use Supabase upsert logic.
-
-        // Better approach: Select first.
         const { data: user, error } = await supabase
             .from('users')
             .select('xp, level')
@@ -93,16 +89,77 @@ const addXp = async (userId, guildId) => {
             }, { onConflict: 'user_id, guild_id' });
 
         if (upsertError) {
-            console.error('[XP Error] DB update failed:', upsertError);
-        } else if (newLevel > oldLevel && oldLevel !== 0) {
-            // Using 0 as check to avoid spam on first DB entry
-            // We could emit a 'LevelUp' event here if we wanted to notify the user.
-            // For now, silent tracking as requested, or maybe we will add notifications later.
-            // console.log(`[Level Up] ${userId} reached Level ${newLevel}!`);
+            logger.error('XP Error - DB update failed:', upsertError, 'Leveling');
+        } else if (newLevel > oldLevel) {
+            const { getLevelRoles, fetchConfig } = require('../core/database');
+            const [levelRoles, config] = await Promise.all([
+                getLevelRoles(guildId),
+                fetchConfig(guildId)
+            ]);
+
+            // --- Standard Level Up: Reaction ---
+            if (message && config?.xp_level_up_emoji) {
+                try {
+                    // Try to react with the configured emoji
+                    await message.react(config.xp_level_up_emoji).catch(() => null);
+                } catch (e) {
+                    // Fallback or ignore
+                }
+            }
+
+            // --- Milestone Check & Role Assignment ---
+            if (member) {
+                // Find all roles the user should have based on new level
+                const qualifyingRoles = levelRoles.filter(lr => lr.level <= newLevel);
+                let newTierEarned = null;
+
+                for (const lr of qualifyingRoles) {
+                    if (!member.roles.cache.has(lr.role_id)) {
+                        const role = member.guild.roles.cache.get(lr.role_id);
+                        const botMember = member.guild.members.me;
+                        
+                        if (role && botMember.permissions.has('ManageRoles') && role.position < botMember.roles.highest.position) {
+                            try {
+                                const cleanName = role.name.replace(/^\d+\s*\|\s*/, '');
+                                await member.roles.add(role);
+                                logger.info(`Assigned Level ${lr.level} Role ${cleanName} to ${member.user.tag}`, 'Leveling');
+                                if (lr.level === newLevel) newTierEarned = role;
+                            } catch (e) {
+                                logger.error(`Failed to assign level role ${lr.level} to ${member.user.tag}:`, e, 'Leveling');
+                            }
+                        }
+                    }
+                }
+
+                // --- Milestone Announcement (Themed Embed in SAME channel) ---
+                if (newTierEarned && message) {
+                    const { EmbedBuilder } = require('discord.js');
+                    const { getDynamicUserTitle } = require('../core/userMeta');
+                    const title = await getDynamicUserTitle(member);
+                    
+                    const presets = [
+                        { title: '✨ Muse Ascension', text: `${title} **${member.displayName}** has unlocked a new volume of influence.`, footer: 'The Archives resonate with your progress.' },
+                        { title: '📖 Chapter Unlocked', text: `A new tier of the library has opened for ${title} **${member.displayName}**.`, footer: 'Your story is being written in golden ink.' },
+                        { title: '🌟 Celestial Recognition', text: `The Muse tiers shift to accommodate ${title} **${member.displayName}**'s growth.`, footer: 'Premium records have been updated.' }
+                    ];
+                    
+                    const preset = presets[Math.floor(Math.random() * presets.length)];
+
+                    const tierName = newTierEarned.name.replace(/^\d+\s*\|\s*/, '');
+                    const embed = new EmbedBuilder()
+                        .setTitle(preset.title)
+                        .setDescription(`${preset.text}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`)
+                        .setThumbnail(member.user.displayAvatarURL({ extension: 'png' }))
+                        .setColor('#A78BFA')
+                        .setFooter({ text: preset.footer });
+
+                    await message.channel.send({ content: `<@${userId}>`, embeds: [embed] }).catch(() => null);
+                }
+            }
         }
 
     } catch (err) {
-        console.error('[XP Error] Unexpected error:', err);
+        logger.error('XP Error - Unexpected error:', err, 'Leveling');
     }
 };
 
@@ -122,7 +179,7 @@ const getUserRank = async (userId, guildId) => {
         .single();
 
     if (error) {
-        if (error.code !== 'PGRST116') console.error('XP Error [getUserRank]:', error.message);
+        if (error.code !== 'PGRST116') logger.error('XP Error getUserRank: ' + error.message, null, 'Leveling');
         return { xp: 0, level: 0, rank: 0 };
     }
     if (!data) return { xp: 0, level: 0, rank: 0 };

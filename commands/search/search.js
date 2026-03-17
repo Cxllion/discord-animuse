@@ -2,8 +2,10 @@ const { SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuil
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const { searchMedia, getMediaById } = require('../../utils/services/anilistService');
 const { createMediaResponse } = require('../../utils/generators/mediaResponse');
+const logger = require('../../utils/core/logger');
 
 module.exports = {
+    cooldown: 8, // API calls
     data: new SlashCommandBuilder()
         .setName('search')
         .setDescription('Consult the archives for an Anime or Manga.')
@@ -73,7 +75,7 @@ module.exports = {
             await interaction.editReply({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            console.error('Search Error:', error);
+            logger.error('Search Command Error:', error, 'SearchCommand');
             const embed = baseEmbed()
                 .setDescription('Pardon the intrusion, but the archives seem temporarily inaccessible. Please try again shortly.')
                 .setColor('#FF0000');

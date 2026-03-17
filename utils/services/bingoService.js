@@ -9,6 +9,7 @@ const {
     getLinkedAnilist
 } = require('../core/database');
 const { searchMedia, getPlanningList, getMediaById } = require('./anilistService');
+const logger = require('../core/logger');
 
 /**
  * Validates and creates a new Bingo Card.
@@ -39,7 +40,7 @@ const createUserBingo = async (userId, guildId, title, type, size, mode = 'ANIME
         }
         return { data };
     } catch (e) {
-        console.error('Error creating bingo:', e);
+        logger.error('Error creating bingo:', e, 'BingoService');
         return { error: 'Database error occurred.' };
     }
 };
@@ -219,7 +220,7 @@ const renameBingoCard = async (cardId, newTitle) => {
         }
         return { data };
     } catch (e) {
-        console.error('Error renaming bingo:', e);
+        logger.error('Error renaming bingo:', e, 'BingoService');
         return { error: 'Database error occurred.' };
     }
 };

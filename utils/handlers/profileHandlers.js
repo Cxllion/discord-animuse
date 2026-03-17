@@ -5,6 +5,7 @@ const { updateUserColor, updateUserTitle, updateUserBackground, getOwnedTitles, 
 const { generateProfileCard, getDominantColor } = require('../generators/profileGenerator');
 const { getUserRank, getLevelProgress } = require('../services/leveling');
 const { getAniListProfile } = require('../services/anilistService');
+const logger = require('../core/logger');
 
 const BASIC_COLORS = {
     'Pink': '#FFACD1',
@@ -42,7 +43,7 @@ const safeReply = async (interaction, payload) => {
         }
     } catch (e) {
         if (e.code === 10062 || e.code === 40060) return;
-        console.error('SafeReply Error:', e);
+        logger.error('SafeReply Error:', e, 'ProfileHandlers');
     }
 };
 
@@ -129,12 +130,12 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
         await interaction.followUp({
             content: msgs[Math.floor(Math.random() * msgs.length)],
             files: [attachment],
-            flags: 64
+            flags: MessageFlags.Ephemeral
         });
 
     } catch (err) {
         if (err.code === 10062 || err.code === 40060) return;
-        console.error('Preview Gen Error:', err);
+        logger.error('Preview Gen Error:', err, 'ProfileHandlers');
     }
 };
 
@@ -209,7 +210,7 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
         content: '',
         embeds: [embed],
         components: [row1, row2],
-        flags: 64
+        flags: MessageFlags.Ephemeral
     };
 
     await safeReply(interaction, payload);
@@ -218,7 +219,7 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
 // --- BACKGROUND MENU ---
 const showBackgroundMenu = async (interaction) => {
     if (!hasPremium(interaction.member)) {
-        return interaction.reply({ content: '🔒 **Premium Feature**\nCustom backgrounds are available to "Library Benefactors".', flags: 64 });
+        return interaction.reply({ content: '🔒 **Premium Feature**\nCustom backgrounds are available to "Library Benefactors".', flags: MessageFlags.Ephemeral });
     }
 
     const userId = interaction.user.id;
@@ -429,7 +430,7 @@ const handleProfileInteraction = async (interaction) => {
         if (id === 'profile_pfp_anilist') {
             const linked = await getLinkedAnilist(userId, guildId);
             if (!linked) {
-                return interaction.followUp({ content: '❌ You must link an AniList account first.', ephemeral: true });
+                return interaction.followUp({ content: '❌ You must link an AniList account first.', flags: MessageFlags.Ephemeral });
             }
             source = 'ANILIST';
         }
@@ -441,7 +442,7 @@ const handleProfileInteraction = async (interaction) => {
 
     if (id === 'profile_pfp_custom') {
         if (!hasPremium(interaction.member)) {
-            return interaction.reply({ content: '🔒 Custom Avatars are a premium feature.', ephemeral: true });
+            return interaction.reply({ content: '🔒 Custom Avatars are a premium feature.', flags: MessageFlags.Ephemeral });
         }
 
         const modal = new ModalBuilder().setCustomId('profile_modal_pfp').setTitle('Custom Avatar Upload');
@@ -515,7 +516,7 @@ const handleProfileInteraction = async (interaction) => {
     if (id === 'profile_color_sync') {
         const roleColor = interaction.member.displayHexColor;
         if (roleColor === '#000000') {
-            return interaction.reply({ content: '⚠️ Your role has no color set.', ephemeral: true });
+            return interaction.reply({ content: '⚠️ Your role has no color set.', flags: MessageFlags.Ephemeral });
         }
         await safeDefer(interaction);
         await updateUserColor(userId, guildId, roleColor);
@@ -554,7 +555,7 @@ const handleProfileModals = async (interaction) => {
         if (interaction.customId === 'profile_modal_hex') {
             const hex = interaction.fields.getTextInputValue('hex');
             if (!/^#[0-9A-F]{6}$/i.test(hex) && !/^#[0-9A-F]{3}$/i.test(hex)) {
-                return interaction.reply({ content: '❌ Invalid Hex Code.', ephemeral: true });
+                return interaction.reply({ content: '❌ Invalid Hex Code.', flags: MessageFlags.Ephemeral });
             }
             await updateUserColor(interaction.user.id, interaction.guild.id, hex);
 
@@ -566,7 +567,7 @@ const handleProfileModals = async (interaction) => {
 
         if (interaction.customId === 'profile_modal_bg') {
             const url = interaction.fields.getTextInputValue('url');
-            if (!url.startsWith('http')) return interaction.reply({ content: '❌ Invalid URL.', ephemeral: true });
+            if (!url.startsWith('http')) return interaction.reply({ content: '❌ Invalid URL.', flags: MessageFlags.Ephemeral });
 
             await updateUserBackground(interaction.user.id, interaction.guild.id, url);
 
@@ -577,7 +578,7 @@ const handleProfileModals = async (interaction) => {
         }
         if (interaction.customId === 'profile_modal_pfp') {
             const url = interaction.fields.getTextInputValue('url');
-            if (!url.startsWith('http')) return interaction.reply({ content: '❌ Invalid URL.', ephemeral: true });
+            if (!url.startsWith('http')) return interaction.reply({ content: '❌ Invalid URL.', flags: MessageFlags.Ephemeral });
 
             await updateUserAvatarConfig(interaction.user.id, interaction.guild.id, 'CUSTOM', url);
 
@@ -588,7 +589,7 @@ const handleProfileModals = async (interaction) => {
         }
     } catch (err) {
         if (err.code === 10062 || err.code === 40060) return;
-        console.error('Profile Modal Error:', err);
+        logger.error('Profile Modal Error:', err, 'ProfileHandlers');
     }
 };
 

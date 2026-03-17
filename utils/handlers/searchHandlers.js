@@ -1,6 +1,7 @@
 const { getMediaById } = require('../services/anilistService');
 // Import helper from the shared generator to reuse logic
 const { createMediaResponse } = require('../generators/mediaResponse');
+const logger = require('../core/logger');
 
 /**
  * Handles the selection of a media item from the "search_result_select" dropdown.
@@ -18,7 +19,7 @@ const handleSearchInteraction = async (interaction) => {
             const media = await getMediaById(mediaId);
 
             if (!media) {
-                return await interaction.followUp({ content: '❌ **Error**: Could not retrieve record details.', ephemeral: true });
+                return await interaction.followUp({ content: '❌ **Error**: Could not retrieve record details.', flags: MessageFlags.Ephemeral });
             }
 
             // 2. Immediate Feedback & Clear Dropdown
@@ -41,8 +42,8 @@ const handleSearchInteraction = async (interaction) => {
             });
 
         } catch (error) {
-            console.error('[SearchHandler] Error:', error);
-            await interaction.followUp({ content: '❌ An error occurred while fetching the record.', ephemeral: true });
+            logger.error('SearchHandler Error:', error, 'SearchHandlers');
+            await interaction.followUp({ content: '❌ An error occurred while fetching the record.', flags: MessageFlags.Ephemeral });
         }
     }
 };
