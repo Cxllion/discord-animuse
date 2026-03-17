@@ -56,7 +56,10 @@ module.exports = {
 
         // --- Gallery Mode ---
         if (config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
-            if (message.attachments.size > 0) {
+            const urlRegex = /https?:\/\/[^\s]+/;
+            const hasLink = urlRegex.test(message.content);
+
+            if (message.attachments.size > 0 || hasLink) {
                 // Valid post: Create thread
                 try {
                     await message.startThread({
@@ -83,6 +86,8 @@ module.exports = {
                         }, 5000);
                     }
                 } catch (error) {
+                    // 10008 = Unknown Message (Already deleted)
+                    if (error.code === 10008) return;
                     logger.error(`[Gallery Error] Could not delete message in ${message.channel.id}:`, error, 'MessageEvent');
                 }
             }
