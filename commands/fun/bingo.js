@@ -27,11 +27,24 @@ const {
 const {
     getUserColor: retrieveColor,
     getUserAvatarConfig: retrieveAvatarConfig,
-    getLinkedAnilist
+    getLinkedAnilist,
+    updateBingoCard
 } = require('../../utils/core/database');
 
-const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
-const { searchMedia, getAniListProfile } = require('../../utils/services/anilistService');
+const { hasPremium } = require('../../utils/core/auth');
+
+const { 
+    generateBingoCard 
+} = require('../../utils/generators/bingoGenerator');
+const { 
+    searchMedia, 
+    getAniListProfile 
+} = require('../../utils/services/anilistService');
+const { 
+    syncBingoEntriesFromAnilist,
+    updateBingoEntryStatus,
+    shuffleBingoCard
+} = require('../../utils/services/bingoService');
 const { watchInteraction } = require('../../utils/handlers/interactionManager');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const { getLoadingMessage } = require('../../utils/config/loadingMessages');
@@ -53,12 +66,12 @@ module.exports = {
             sub.setName('create')
                 .setDescription('Create a new bingo card using a wizard.')
         )
-        .addSubcommand(sub =>
-            sub.setName('add')
-                .setDescription('Add an anime to your bingo card.')
-                .addStringOption(opt => opt.setName('anime').setDescription('Anime name to search.').setRequired(true).setAutocomplete(true))
-                .addStringOption(opt => opt.setName('card').setDescription('Target card (default: latest).').setAutocomplete(true))
-                .addIntegerOption(opt => opt.setName('slot').setDescription('Specific slot number (1-25).'))
+        .addSubcommand(sub => sub
+                .setName('add')
+                .setDescription('Add anime/manga to a bingo card')
+                .addStringOption(opt => opt.setName('anime').setDescription('Anime/Manga to add').setAutocomplete(true).setRequired(false))
+                .addStringOption(opt => opt.setName('card').setDescription('Bingo card to add to').setAutocomplete(true).setRequired(false))
+                .addIntegerOption(opt => opt.setName('slot').setDescription('Slot number (1-25)').setMinValue(1).setMaxValue(25).setRequired(false))
         )
         .addSubcommand(sub =>
             sub.setName('fetch')
@@ -133,154 +146,164 @@ module.exports = {
         if (subcommand === 'create') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-            // Step 0: Mode Selection
-            const rowMode = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('ANIME').setLabel('Anime').setStyle(ButtonStyle.Primary).setEmoji('📺'),
-                new ButtonBuilder().setCustomId('MANGA').setLabel('Manga').setStyle(ButtonStyle.Success).setEmoji('📖')
-            );
-
-            const msg = await interaction.editReply({
-                content: '🧩 **Let\'s build a new Bingo Card!**\nFirst, choose your media type:',
-                components: [rowMode]
-            });
-
             // Wizard State
+            let currentStep = 'MODE'; // MODE, SIZE, TYPE
             let mode = 'ANIME';
             let size = 3;
             let type = 'custom';
-            let title = '';
 
-            const filter = i => i.user.id === interaction.user.id;
-
-            try {
-                // Wait for Mode
-                const modeInt = await msg.awaitMessageComponent({ filter, componentType: ComponentType.Button, time: 60000 });
-                mode = modeInt.customId;
-                await modeInt.deferUpdate();
-
-                // Step 1: Size Selection
-                const rowSize = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId('bingo_size_select')
-                        .setPlaceholder('Select Grid Size')
-                        .addOptions([
-                            { label: '2x2 (Tiny)', value: '2', emoji: '🌱' },
-                            { label: '3x3 (Casual)', value: '3', emoji: '🥉' },
-                            { label: '4x4 (Standard)', value: '4', emoji: '🥈' },
-                            { label: '5x5 (Hardcore)', value: '5', emoji: '🥇' }
-                        ])
-                );
-
-                await interaction.editReply({
-                    content: `✅ **${mode === 'ANIME' ? 'Anime' : 'Manga'} Mode** selected.\nNow, choose your grid size:`,
-                    components: [rowSize]
-                });
-
-                // Wait for Size
-                const sizeInt = await msg.awaitMessageComponent({ filter, componentType: ComponentType.StringSelect, time: 60000 });
-                size = parseInt(sizeInt.values[0]);
-                await sizeInt.deferUpdate();
-
-                // Step 2: Type Selection
-                const rowType = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('monthly').setLabel('Monthly').setStyle(ButtonStyle.Primary).setEmoji('📅'),
-                    new ButtonBuilder().setCustomId('yearly').setLabel('Yearly').setStyle(ButtonStyle.Success).setEmoji('🗓️'),
-                    new ButtonBuilder().setCustomId('custom').setLabel('Custom').setStyle(ButtonStyle.Secondary).setEmoji('✨')
-                );
-
-                await interaction.editReply({
-                    content: `👍 **${size}x${size} Grid** selected.\nNow, what kind of bingo is this?`,
-                    components: [rowType]
-                });
-
-                const typeInt = await msg.awaitMessageComponent({ filter, componentType: ComponentType.Button, time: 60000 });
-                type = typeInt.customId;
-
-                // Step 3: Title (Modal)
-                const modal = new ModalBuilder()
-                    .setCustomId('bingo_title_modal')
-                    .setTitle('Name your Bingo Card');
-
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('title_input')
-                    .setLabel("Card Title")
-                    .setStyle(TextInputStyle.Short)
-                    .setMaxLength(40) // Increased slightly for names
-                    .setRequired(true);
-
-                // Auto-fill suggestions
-                const now = new Date();
-                const month = now.toLocaleString('default', { month: 'long' });
-                const year = now.getFullYear();
-                const displayName = interaction.member?.displayName || interaction.user.displayName;
-
-                if (type === 'monthly') titleInput.setValue(`${displayName}'s ${month} ${year} ${mode === 'MANGA' ? 'Manga' : 'Bingo'}`);
-                if (type === 'yearly') titleInput.setValue(`${displayName}'s ${year} ${mode === 'MANGA' ? 'Readlog' : 'Watchlog'}`);
-                if (type === 'custom') titleInput.setValue(`${displayName}'s Custom Bingo`);
-
-                modal.addComponents(new ActionRowBuilder().addComponents(titleInput));
-
-                await typeInt.showModal(modal);
-
-                // Wait for Modal
-                const modalSubmit = await typeInt.awaitModalSubmit({ filter, time: 120000 });
-                title = modalSubmit.fields.getTextInputValue('title_input');
-                await modalSubmit.deferUpdate();
-
-                // Finalize
-                await interaction.editReply({ content: '🔨 **Crafting your card...**', components: [] });
-
-                const result = await createUserBingo(interaction.user.id, interaction.guild.id, title, type, size, mode);
-
-                if (result.error) {
-                    return await interaction.editReply({ content: `❌ **Error**: ${result.error}` });
+            const getWizardPayload = () => {
+                if (currentStep === 'MODE') {
+                    const rowMode = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('ANIME').setLabel('Anime').setStyle(ButtonStyle.Primary).setEmoji('📺'),
+                        new ButtonBuilder().setCustomId('MANGA').setLabel('Manga').setStyle(ButtonStyle.Success).setEmoji('📖')
+                    );
+                    return {
+                        content: '🧩 **Let\'s build a new Bingo Card!**\nFirst, choose your media type:',
+                        components: [rowMode]
+                    };
                 }
 
-                await interaction.editReply({
-                    content: `✅ **Success!** Created **${title}** (${size}x${size} ${mode}).\nUse \`/bingo add\` or \`/bingo fetch\` to fill it!`
-                });
+                if (currentStep === 'SIZE') {
+                    const rowSize = new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId('bingo_size_select')
+                            .setPlaceholder('Select Grid Size')
+                            .addOptions([
+                                { label: '2x2 (Tiny)', value: '2', emoji: '🌱' },
+                                { label: '3x3 (Casual)', value: '3', emoji: '🥉' },
+                                { label: '4x4 (Standard)', value: '4', emoji: '🥈' },
+                                { label: '5x5 (Hardcore)', value: '5', emoji: '🥇' }
+                            ])
+                    );
+                    const rowBack = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('BACK_MODE').setLabel('Back').setStyle(ButtonStyle.Secondary)
+                    );
+                    return {
+                        content: `✅ **${mode === 'ANIME' ? 'Anime' : 'Manga'} Mode** selected.\nNow, choose your grid size:`,
+                        components: [rowSize, rowBack]
+                    };
+                }
 
-                // FETCH CUSTOMIZATIONS
-                const [themeColor, avatarConfig] = await Promise.all([
-                    retrieveColor(interaction.user.id, interaction.guild.id),
-                    retrieveAvatarConfig(interaction.user.id, interaction.guild.id)
-                ]);
+                if (currentStep === 'TYPE') {
+                    const rowType = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('monthly').setLabel('Monthly').setStyle(ButtonStyle.Primary).setEmoji('📅'),
+                        new ButtonBuilder().setCustomId('yearly').setLabel('Yearly').setStyle(ButtonStyle.Success).setEmoji('🗓️'),
+                        new ButtonBuilder().setCustomId('custom').setLabel('Custom').setStyle(ButtonStyle.Secondary).setEmoji('✨')
+                    );
+                    const rowBack = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('BACK_SIZE').setLabel('Back').setStyle(ButtonStyle.Secondary)
+                    );
+                    return {
+                        content: `👍 **${size}x${size} Grid** selected.\nNow, what kind of bingo is this?`,
+                        components: [rowType, rowBack]
+                    };
+                }
+            };
 
-                // Resolve Avatar URL
-                let avatarUrl = interaction.user.displayAvatarURL({ extension: 'png' });
-                if (avatarConfig) {
-                    if (avatarConfig.source === 'CUSTOM' && avatarConfig.customUrl) {
-                        avatarUrl = avatarConfig.customUrl;
-                    } else if (avatarConfig.source === 'ANILIST') {
-                        const linkedUser = await getLinkedAnilist(interaction.user.id, interaction.guild.id);
-                        if (linkedUser) {
-                            const { avatar } = await getAniListProfile(linkedUser);
-                            if (avatar) avatarUrl = avatar;
+            const msg = await interaction.editReply(getWizardPayload());
+            const filter = i => i.user.id === interaction.user.id;
+            const collector = msg.createMessageComponentCollector({ filter, time: 300000 });
+
+            collector.on('collect', async i => {
+                // Step Transitions
+                if (i.customId === 'ANIME' || i.customId === 'MANGA') {
+                    mode = i.customId;
+                    currentStep = 'SIZE';
+                    return await i.update(getWizardPayload());
+                }
+
+                if (i.customId === 'BACK_MODE') {
+                    currentStep = 'MODE';
+                    return await i.update(getWizardPayload());
+                }
+
+                if (i.customId === 'bingo_size_select') {
+                    size = parseInt(i.values[0]);
+                    currentStep = 'TYPE';
+                    return await i.update(getWizardPayload());
+                }
+
+                if (i.customId === 'BACK_SIZE') {
+                    currentStep = 'SIZE';
+                    return await i.update(getWizardPayload());
+                }
+
+                // Final Step: Type + Modal
+                if (['monthly', 'yearly', 'custom'].includes(i.customId)) {
+                    type = i.customId;
+
+                    const modal = new ModalBuilder()
+                        .setCustomId('bingo_title_modal')
+                        .setTitle('Name your Bingo Card');
+
+                    const titleInput = new TextInputBuilder()
+                        .setCustomId('title_input')
+                        .setLabel("Card Title")
+                        .setStyle(TextInputStyle.Short)
+                        .setMaxLength(40)
+                        .setRequired(true);
+
+                    // Auto-fill suggestions
+                    const now = new Date();
+                    const month = now.toLocaleString('default', { month: 'long' });
+                    const year = now.getFullYear();
+                    const displayName = (interaction.member?.displayName || interaction.user.displayName).substring(0, 20);
+
+                    if (type === 'monthly') titleInput.setValue(`${displayName}'s ${month} ${year} ${mode === 'MANGA' ? 'Manga' : 'Bingo'}`);
+                    if (type === 'yearly') titleInput.setValue(`${displayName}'s ${year} ${mode === 'MANGA' ? 'Readlog' : 'Watchlog'}`);
+                    if (type === 'custom') titleInput.setValue(`${displayName}'s Custom Bingo`);
+
+                    modal.addComponents(new ActionRowBuilder().addComponents(titleInput));
+
+                    await i.showModal(modal);
+
+                    try {
+                        const modalSubmit = await i.awaitModalSubmit({ filter, time: 120000 });
+                        const title = modalSubmit.fields.getTextInputValue('title_input');
+                        await modalSubmit.deferUpdate();
+                        
+                        // Stop collector as we are finishing
+                        currentStep = 'FINISHED';
+                        collector.stop();
+
+                        const LoadingManager = require('../../utils/ui/LoadingManager');
+                        const loader = new LoadingManager(interaction);
+                        await loader.startThemedSteps('BINGO', 5, 1200);
+
+                        const result = await createUserBingo(interaction.user.id, interaction.guild.id, title, type, size, mode);
+                        await loader.stop();
+
+                        if (result.error) {
+                            return await interaction.editReply({ content: `❌ **Error**: ${result.error}`, embeds: [], components: [] });
                         }
-                    } else if (avatarConfig.source === 'DISCORD_GUILD') {
-                        if (interaction.member) avatarUrl = interaction.member.displayAvatarURL({ extension: 'png' });
+
+                        await interaction.editReply({
+                            content: `✅ **Success!** Created **${title}** (${size}x${size} ${mode}).\nUse \`/bingo add\` or \`/bingo fetch\` to fill it!`,
+                            embeds: [],
+                            components: []
+                        });
+
+                    } catch (err) {
+                        // Modal timed out or ignored, nothing to do, user can click another button
                     }
                 }
+            });
 
-                // Show the empty card immediately?
-                // The verification plan says "Verify Customization (Generate Card)".
-                // Usually create just confirms. But let's verify if we should show it.
-                // The previous code didn't show it. But let's stick to the plan: modify generator signature.
-                // Actual generation happens in 'view'. Wait, the prompted code block was for 'create'.
-                // Ah, 'create' doesn't call generateBingoCard in the original code.
-                // Let's checking the original code again.
-
-
-            } catch (e) {
-                logger.error('Bingo creation wizard error:', e, 'Bingo');
-                await interaction.editReply({ content: '❌ **Timeout**: Bingo creation cancelled.', components: [] });
-            }
+            collector.on('end', (collected, reason) => {
+                if (reason === 'time' && currentStep !== 'FINISHED') {
+                    interaction.editReply({ content: '❌ **Timeout**: Bingo creation cancelled.', components: [] }).catch(() => null);
+                }
+            });
         }
 
         // --- VIEW ---
         else if (subcommand === 'view') {
             await interaction.deferReply();
-            await interaction.editReply({ content: `⏳ **${getLoadingMessage('BINGO')}**` });
+            const LoadingManager = require('../../utils/ui/LoadingManager');
+            const loader = new LoadingManager(interaction);
+            await loader.startProgress('Sketching Bingo Card...', 5); // ~5s
+            
             const targetUser = interaction.options.getUser('user') || interaction.user;
             const cardIdStr = interaction.options.getString('card');
 
@@ -338,6 +361,10 @@ module.exports = {
                     buffer = await generateBingoCard(c, targetUser, themeColor, avatarUrl);
                     cache.set(cacheKey, buffer, 300000); // 5 minutes cache
                 }
+                
+// 364: } 
+// Removed separate loader.stop() to allow merged delivery
+
                 const att = new AttachmentBuilder(buffer, { name: 'bingo.png' });
 
                 // Dropdown for switching
@@ -359,8 +386,8 @@ module.exports = {
             };
 
             const initialPayload = await render(card);
-            // Explicitly clear content
-            const sentMsg = await interaction.editReply({ content: '', ...initialPayload });
+            // MERGED DELIVERY: 100% + Bingo Card in one call
+            const sentMsg = await loader.stop(initialPayload);
 
             // Interaction Watcher for switching
             watchInteraction(sentMsg, 60000, async (i) => {
@@ -449,11 +476,56 @@ module.exports = {
                 .setTitle(`⚙️ Dashboard: ${card.title}`)
                 .setDescription(`Manage your bingo progress. Total Filled: **${filledEntries.length}/${card.size * card.size}**\n\n` +
                     (filledEntries.length > 0 ? "Select items below to remove them." : "_No items added yet._"))
-                .addFields(
-                    { name: 'Grid', value: `${card.size}x${card.size} ${card.mode || 'ANIME'}`, inline: true },
-                    { name: 'Type', value: card.type.toUpperCase(), inline: true }
-                )
                 .setImage('attachment://bingo_live.png');
+
+            // 1a. Progress Bar & Win Detection
+            const completed = filledEntries.filter(e => (e.status === 'COMPLETED' || e.status === 'FINISHED')).length;
+            const total = card.size * card.size;
+            const pct = Math.floor((completed / total) * 100);
+            
+            const barSize = 12;
+            const filled = Math.round((completed / total) * barSize);
+            const bar = '▓'.repeat(filled) + '░'.repeat(barSize - filled);
+            
+            // Check for Bingo Win
+            const size = card.size;
+            const entries = card.entries || [];
+            const isDone = (idx) => entries[idx] && (entries[idx].status === 'COMPLETED' || entries[idx].status === 'FINISHED');
+            
+            let bingos = 0;
+            // Rows
+            for (let r = 0; r < size; r++) {
+                let rowFull = true;
+                for (let c = 0; c < size; c++) {
+                    if (!isDone(r * size + c)) { rowFull = false; break; }
+                }
+                if (rowFull) bingos++;
+            }
+            // Cols
+            for (let c = 0; c < size; c++) {
+                let colFull = true;
+                for (let r = 0; r < size; r++) {
+                    if (!isDone(r * size + c)) { colFull = false; break; }
+                }
+                if (colFull) bingos++;
+            }
+            // Diagonals
+            let d1Full = true;
+            let d2Full = true;
+            for (let i = 0; i < size; i++) {
+                if (!isDone(i * size + i)) d1Full = false;
+                if (!isDone(i * size + (size - 1 - i))) d2Full = false;
+            }
+            if (d1Full) bingos++;
+            if (d2Full) bingos++;
+
+            const bingoText = bingos > 0 ? `\n🏆 **BINGO DETECTED!** (${bingos} Line${bingos > 1 ? 's' : ''})` : '';
+
+            embed.spliceFields(0, 0, 
+                { name: 'Grid', value: `${card.size}x${card.size} ${card.mode || 'ANIME'}`, inline: true },
+                { name: 'Type', value: card.type.toUpperCase(), inline: true },
+                { name: 'Progress', value: `\`[${bar}]\` **${pct}%** (${completed}/${total})${bingoText}`, inline: true }
+            );
 
             const rows = [];
 
@@ -476,12 +548,18 @@ module.exports = {
             // 3. Action Buttons
             const buttons = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('bingo_add_modal').setLabel(`Add ${card.mode === 'MANGA' ? 'Manga' : 'Anime'}`).setStyle(ButtonStyle.Primary).setEmoji('➕'),
-                new ButtonBuilder().setCustomId('bingo_refetch').setLabel('Fetch AniList').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
-                new ButtonBuilder().setCustomId('bingo_rename_modal').setLabel('Rename').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
-                new ButtonBuilder().setCustomId('bingo_resize_modal').setLabel('Resize').setStyle(ButtonStyle.Secondary).setEmoji('📏'),
-                new ButtonBuilder().setCustomId('delete_bingo').setLabel('Delete Card').setStyle(ButtonStyle.Danger).setEmoji('💥')
+                new ButtonBuilder().setCustomId('bingo_sync').setLabel('Sync AniList').setStyle(ButtonStyle.Success).setEmoji('🔄'),
+                new ButtonBuilder().setCustomId('bingo_status_pick').setLabel('Set Status').setStyle(ButtonStyle.Secondary).setEmoji('🔖'),
+                new ButtonBuilder().setCustomId('bingo_bg_modal').setLabel('Background').setStyle(ButtonStyle.Secondary).setEmoji(await hasPremium(interaction.member) ? '🖼️' : '🔒'),
+                new ButtonBuilder().setCustomId('bingo_switch_card').setLabel('Switch Card').setStyle(ButtonStyle.Secondary).setEmoji('📂')
             );
             rows.push(buttons);
+            
+            // 4. Secondary Row (Mobile UX or overflow)
+            const settings = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('bingo_more_opts').setLabel('Settings & Shuffle').setStyle(ButtonStyle.Secondary).setEmoji('⚙️')
+            );
+            rows.push(settings);
 
             return { content: '', embeds: [embed], components: rows, files: [attachment] };
         };
@@ -502,8 +580,170 @@ module.exports = {
                     await i.editReply({ content: `✅ Removed **${i.values.length}** items and blacklisted them for future syncs.`, ...next });
                 }
 
+                else if (i.customId === 'bingo_sync') {
+                    const LoadingManager = require('../../utils/ui/LoadingManager');
+                    const loader = new LoadingManager(i);
+                    await loader.start('Synchronizing data...');
+                    
+                    const res = await syncBingoEntriesFromAnilist(targetCardId, interaction.user.id, interaction.guild.id);
+                    await loader.stop();
+
+                    const next = await renderDashboard(targetCardId);
+                    if (res.error) {
+                        return await i.editReply({ content: `❌ **Sync Failed**: ${res.error}`, ...next });
+                    }
+                    
+                    let summary = `✅ **Sync Complete**! Updated **${res.count}** titles.`;
+                    if (res.changes && res.changes.length > 0) {
+                        summary += '\n\n**Notable Changes:**\n' + res.changes.slice(0, 5).map(c => `• **${c.title}**: ${c.to}`).join('\n');
+                        if (res.changes.length > 5) summary += `\n*...and ${res.changes.length - 5} more.*`;
+                    }
+                    await i.editReply({ content: summary, ...next });
+                }
+
+                else if (i.customId === 'bingo_switch_card') {
+                    // Re-trigger card selection
+                    const cards = await getBingoCards(interaction.user.id, interaction.guild.id);
+                    if (cards.length <= 1) {
+                        return i.reply({ content: 'You only have one card!', flags: MessageFlags.Ephemeral });
+                    }
+
+                    const row = new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId('bingo_select_helper') // This will be caught by the same collector
+                            .setPlaceholder('Switch to which card?')
+                            .addOptions(cards.map(c => ({
+                                label: `${c.title} (${c.size}x${c.size})`,
+                                value: c.id.toString()
+                            })))
+                    );
+                    await i.update({ content: 'Select a card to switch focus:', components: [row], embeds: [] });
+                }
+
+                else if (i.customId === 'bingo_select_helper') {
+                    // Update targetCardId for the collector loop
+                    targetCardId = parseInt(i.values[0]);
+                    await i.update({ content: `⏳ **Switching context...**`, components: [] });
+                    const next = await renderDashboard(targetCardId);
+                    await i.editReply(next);
+                }
+
+                else if (i.customId === 'bingo_status_pick') {
+                    const card = await getBingoCardById(targetCardId);
+                    const filled = (card.entries || []).filter(e => e !== null);
+                    if (filled.length === 0) return i.reply({ content: 'No items on this card yet!', flags: MessageFlags.Ephemeral });
+
+                    // Stage 1: Pick Item
+                    const select = new StringSelectMenuBuilder()
+                        .setCustomId('bingo_status_media_select')
+                        .setPlaceholder('Which title are you updating?')
+                        .addOptions(filled.slice(0, 25).map(e => ({
+                            label: e.title.substring(0, 50),
+                            value: e.mediaId.toString()
+                        })));
+                    
+                    await i.update({ components: [new ActionRowBuilder().addComponents(select)] });
+                }
+
+                else if (i.customId === 'bingo_status_media_select') {
+                    const mediaId = i.values[0];
+                    // Stage 2: Pick Status
+                    const statuses = [
+                        { label: 'Completed', value: 'COMPLETED', emoji: '✅' },
+                        { label: 'Current / Watching', value: 'CURRENT', emoji: '📺' },
+                        { label: 'Paused', value: 'PAUSED', emoji: '⏸️' },
+                        { label: 'Dropped', value: 'DROPPED', emoji: '❌' },
+                        { label: 'Planning', value: 'PLANNING', emoji: '📅' }
+                    ];
+
+                    const select = new StringSelectMenuBuilder()
+                        .setCustomId(`bingo_status_final_${mediaId}`)
+                        .setPlaceholder('Select the new status')
+                        .addOptions(statuses);
+
+                    await i.update({ components: [new ActionRowBuilder().addComponents(select)] });
+                }
+
+                else if (i.customId.startsWith('bingo_status_final_')) {
+                    const mediaId = parseInt(i.customId.replace('bingo_status_final_', ''));
+                    const status = i.values[0];
+                    
+                    await i.deferUpdate();
+                    await updateBingoEntryStatus(targetCardId, mediaId, status);
+                    
+                    const next = await renderDashboard(targetCardId);
+                    await i.editReply({ content: `✅ Status updated to **${status}**!`, ...next });
+                }
+
+                else if (i.customId === 'bingo_bg_modal') {
+                    if (!await hasPremium(interaction.member)) {
+                        return i.reply({ 
+                            content: '🔒 **Premium Feature**\nUploading custom backgrounds for Bingo cards requires being a "Library Benefactor".', 
+                            flags: MessageFlags.Ephemeral 
+                        });
+                    }
+
+                    const modal = new ModalBuilder()
+                        .setCustomId('bingo_edit_bg_modal')
+                        .setTitle('Custom Bingo Background')
+                        .addComponents(
+                            new ActionRowBuilder().addComponents(
+                                new TextInputBuilder()
+                                    .setCustomId('bg_url')
+                                    .setLabel('Image URL (Direct Link)')
+                                    .setStyle(TextInputStyle.Short)
+                                    .setPlaceholder('https://example.com/anime_wallpaper.png')
+                                    .setRequired(true)
+                            )
+                        );
+                    await i.showModal(modal);
+
+                    try {
+                        const submitted = await i.awaitModalSubmit({ time: 60000 });
+                        const url = submitted.fields.getTextInputValue('bg_url');
+                        
+                        await submitted.deferUpdate();
+                        await updateBingoCard(targetCardId, { background_url: url });
+
+                        const next = await renderDashboard(targetCardId);
+                        await submitted.editReply({ content: '✅ Background updated successfully!', ...next });
+                    } catch (e) {
+                        // Modal closed
+                    }
+                }
+
+                else if (i.customId === 'bingo_more_opts') {
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('bingo_shuffle').setLabel('Shuffle Grid').setStyle(ButtonStyle.Primary).setEmoji('🔀'),
+                        new ButtonBuilder().setCustomId('bingo_refetch').setLabel('Auto-Fill Empty').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
+                        new ButtonBuilder().setCustomId('bingo_rename_modal').setLabel('Rename').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
+                        new ButtonBuilder().setCustomId('bingo_resize_modal').setLabel('Resize').setStyle(ButtonStyle.Secondary).setEmoji('📏')
+                    );
+                    const row2 = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('delete_bingo').setLabel('Delete Card').setStyle(ButtonStyle.Danger).setEmoji('💥'),
+                        new ButtonBuilder().setCustomId('bingo_home').setLabel('Back to Dashboard').setStyle(ButtonStyle.Secondary)
+                    );
+                    await i.update({ content: '🛠️ **Advanced Operations & Layout**', components: [row, row2] });
+                }
+
+                else if (i.customId === 'bingo_home') {
+                    await i.update({ content: '⏳ **Returning...**', components: [] });
+                    const next = await renderDashboard(targetCardId);
+                    await i.editReply(next);
+                }
+
+                else if (i.customId === 'bingo_shuffle') {
+                    await i.update({ content: '⏳ **Shuffling grid...**', components: [] });
+                    await shuffleBingoCard(targetCardId);
+                    const next = await renderDashboard(targetCardId);
+                    await i.editReply({ 
+                        content: '✨ **Layout Reorganized!** The entries have been shuffled across the grid.', 
+                        ...next 
+                    });
+                }
+
                 else if (i.customId === 'bingo_refetch') {
-                    await i.update({ content: `⏳ **${getLoadingMessage('BINGO')}**`, components: [] });
+                    await i.update({ content: `⏳ **Fetching from your planning list...**`, components: [] });
                     const res = await fetchAndFillBingo(targetCardId, interaction.user.id, interaction.guild.id);
 
                     const next = await renderDashboard(targetCardId);
@@ -637,9 +877,20 @@ module.exports = {
                 }
 
                 else if (i.customId === 'delete_bingo') {
-                    const card = await getBingoCardById(targetCardId);
+                    const confirmRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('delete_bingo_confirm').setLabel('Yes, Delete Forever').setStyle(ButtonStyle.Danger),
+                        new ButtonBuilder().setCustomId('bingo_home').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+                    );
+                    await i.update({
+                        content: '⚠️ **Are you sure?** This will permanently delete this bingo card and all its progress.',
+                        components: [confirmRow],
+                        embeds: []
+                    });
+                }
+
+                else if (i.customId === 'delete_bingo_confirm') {
                     await deleteBingoCard(targetCardId);
-                    await i.update({ content: `🗑️ **Deleted** bingo card: ${card?.title || 'Unknown'}.`, embeds: [], components: [] });
+                    await i.update({ content: '💥 **The card has been scrubbed from the archives.**', embeds: [], components: [] });
                     collector.stop();
                 }
             });
@@ -652,16 +903,67 @@ module.exports = {
         // --- ADD ---
         if (subcommand === 'add') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            const animeQuery = interaction.options.getString('anime');
-            const slot = interaction.options.getInteger('slot');
 
-            const targetCard = await resolveCardInteraction(interaction, "Which card should we add to?");
+            const targetCard = await resolveCardInteraction(interaction, "Choose the card to add media to:");
             if (!targetCard) return;
+
+            let animeQuery = interaction.options.getString('anime');
+            const slot = interaction.options.getInteger('slot');
+            const slotIndex = slot ? slot - 1 : null;
+
+            // QUICK PICK: If no anime provided, fetch choices from Planning List
+            if (!animeQuery) {
+                const anilistUser = await getLinkedAnilist(interaction.user.id, interaction.guild.id);
+                if (!anilistUser) {
+                    return await interaction.editReply('❌ Please provide an anime name, or link your AniList account with `/anilist link` to pick from your planning list.');
+                }
+
+                await interaction.editReply({ content: '⏳ **Fetching your Planning list...**', components: [] });
+                const planningList = await getPlanningList(anilistUser, targetCard.mode || 'ANIME');
+
+                if (!planningList || planningList.length === 0) {
+                    return await interaction.editReply('📭 Your AniList Planning list is empty! Add some titles there or search for one directly here.');
+                }
+
+                // Filter out already added IDs
+                const existingIds = (targetCard.entries || []).filter(e => e !== null).map(e => e.mediaId);
+                const available = planningList.filter(m => !existingIds.includes(m.id)).slice(0, 25);
+
+                if (available.length === 0) {
+                    return await interaction.editReply('✅ Your planning list items are already on this card! Search for something new.');
+                }
+
+                const row = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId('bingo_quick_add_select')
+                        .setPlaceholder('Pick a title to add...')
+                        .addOptions(available.map(m => ({
+                            label: (m.title.english || m.title.romaji).substring(0, 100),
+                            value: m.id.toString(),
+                            description: m.format ? `Format: ${m.format}` : undefined
+                        })))
+                );
+
+                const msg = await interaction.editReply({
+                    content: '📑 **Quick Add**: Select a title from your planning list:',
+                    components: [row]
+                });
+
+                try {
+                    const selection = await msg.awaitMessageComponent({
+                        filter: i => i.user.id === interaction.user.id && i.customId === 'bingo_quick_add_select',
+                        time: 30000,
+                        componentType: ComponentType.StringSelect
+                    });
+                    animeQuery = selection.values[0];
+                    await selection.deferUpdate();
+                } catch (e) {
+                    return await interaction.editReply({ content: '❌ Selection timed out.', components: [] });
+                }
+            }
 
             try {
                 const queryVal = /^\d+$/.test(animeQuery) ? parseInt(animeQuery) : animeQuery;
-                const slotIndex = slot ? slot - 1 : null;
-
                 const result = await addAnimeToBingo(targetCard.id, queryVal, slotIndex);
 
                 const next = await renderDashboard(targetCard.id);

@@ -84,7 +84,7 @@ const addAnimeToBingo = async (cardId, animeQuery, slotIndex = null) => {
         mediaId: media.id,
         title: media.title.english || media.title.romaji,
         coverImage: media.coverImage.extraLarge || media.coverImage.large,
-        status: media.status,
+        status: 'PLANNING', // Default user state is Planning, not Media Aired status
         filledAt: new Date().toISOString()
     };
 
@@ -164,7 +164,7 @@ const fetchAndFillBingo = async (cardId, userId, guildId) => {
                 mediaId: media.id,
                 title: media.title.english || media.title.romaji,
                 coverImage: media.coverImage.extraLarge || media.coverImage.large,
-                status: media.status,
+                status: 'PLANNING', // Default to Planning list state
                 filledAt: new Date().toISOString()
             };
             modified = true;
@@ -176,6 +176,96 @@ const fetchAndFillBingo = async (cardId, userId, guildId) => {
     // 5. Save
     const { data, error } = await updateBingoEntries(cardId, entries);
     return { data, count: animeIdx, error };
+};
+
+/**
+ * Syncs the current status (Completed, Paused, Dropped) for all entries on a Bingo Card via AniList.
+ * @param {string} cardId
+ * @param {string} userId
+ * @param {string} guildId
+ */
+const syncBingoEntriesFromAnilist = async (cardId, userId, guildId) => {
+    // 1. Get Card
+    const card = await getBingoCardById(cardId);
+    if (!card) return { error: 'Bingo card not found.' };
+
+    const entries = card.entries || [];
+    if (entries.length === 0) return { count: 0 };
+
+    // 2. Get Linked User
+    const anilistUsername = await getLinkedAnilist(userId, guildId);
+    if (!anilistUsername) return { error: 'No linked AniList account.' };
+
+    // 3. Get Media List Collection for the user
+    // We could either fetch individual media by ID (lots of requests)
+    // or fetch the entire collection (one large request). 
+    // Fetching entire collection is usually better for overall sync.
+    const query = `
+    query ($username: String, $type: MediaType) {
+        MediaListCollection(userName: $username, type: $type) {
+            lists {
+                entries {
+                    mediaId
+                    status
+                    progress
+                    score
+                }
+            }
+        }
+    }
+    `;
+
+    const anilist = require('./anilistService');
+    const data = await anilist.queryAnilist(query, { username: anilistUsername, type: card.mode || 'ANIME' });
+    if (!data.MediaListCollection.lists) return { error: 'Failed to fetch your list from AniList.' };
+
+    // Map all entries from all lists (Completed, Watching, Planning, etc)
+    const listMap = new Map();
+    data.MediaListCollection.lists.forEach(l => {
+        l.entries.forEach(e => listMap.set(e.mediaId, e));
+    });
+
+    // 4. Update Entries Statuses
+    let updatedCount = 0;
+    const changedTitles = [];
+    const newEntries = entries.map(entry => {
+        if (!entry) return null;
+        const currentData = listMap.get(entry.mediaId);
+        if (currentData) {
+            // Update status if it changed
+            if (entry.status !== currentData.status) {
+                const oldStatus = entry.status || 'PLANNING';
+                entry.status = currentData.status;
+                updatedCount++;
+                changedTitles.push({ title: entry.title, from: oldStatus, to: entry.status });
+            }
+        }
+        return entry;
+    });
+
+    if (updatedCount > 0) {
+        await updateBingoEntries(cardId, newEntries);
+    }
+
+    return { count: updatedCount, data: newEntries, changes: changedTitles };
+};
+
+/**
+ * Manually updates the status of an entry in a Bingo Card.
+ * @param {string} cardId
+ * @param {number} mediaId
+ * @param {string} status - New status (e.g. 'COMPLETED', 'DROPPED', 'PAUSED')
+ */
+const updateBingoEntryStatus = async (cardId, mediaId, status) => {
+    const card = await getBingoCardById(cardId);
+    if (!card) return { error: 'Bingo card not found.' };
+
+    let entries = card.entries || [];
+    const idx = entries.findIndex(e => e && e.mediaId === mediaId);
+    if (idx === -1) return { error: 'Entry not found on this card.' };
+
+    entries[idx].status = status;
+    return await updateBingoEntries(cardId, entries);
 };
 
 /**
@@ -260,6 +350,27 @@ const resizeBingoCard = async (cardId, newSize) => {
     return await updateBingoCard(cardId, { size: newSize, entries });
 };
 
+/**
+ * Shuffles the existing entries on a Bingo Card.
+ * @param {string} cardId
+ */
+const shuffleBingoCard = async (cardId) => {
+    const card = await getBingoCardById(cardId);
+    if (!card) return { error: 'Card not found.' };
+
+    const entries = card.entries || [];
+    if (entries.length <= 1) return { count: 0 };
+
+    // Simple Fisher-Yates Shuffle for existing items
+    const shuffled = [...entries];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    return await updateBingoEntries(cardId, shuffled);
+};
+
 module.exports = {
     createUserBingo,
     addAnimeToBingo,
@@ -269,5 +380,9 @@ module.exports = {
     resizeBingoCard,
     getBingoCards,
     deleteBingoCard,
-    getBingoCardById
+    getBingoCardById,
+    syncBingoEntriesFromAnilist,
+    updateBingoEntryStatus,
+    shuffleBingoCard
 };
+

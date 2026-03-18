@@ -125,12 +125,44 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
     ctx.fillStyle = '#101015'; // Deep dark base
     ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
+    // Custom Background (Premium Feature)
+    if (card.background_url) {
+        try {
+            const bgImg = await loadImage(card.background_url);
+            // Cover logic for background
+            const bgRatio = bgImg.width / bgImg.height;
+            const canvasRatio = CARD_WIDTH / CARD_HEIGHT;
+            let drawW, drawH, drawX, drawY;
+
+            if (bgRatio > canvasRatio) {
+                drawH = CARD_HEIGHT;
+                drawW = CARD_HEIGHT * bgRatio;
+                drawX = (CARD_WIDTH - drawW) / 2;
+                drawY = 0;
+            } else {
+                drawW = CARD_WIDTH;
+                drawH = CARD_WIDTH / bgRatio;
+                drawX = 0;
+                drawY = (CARD_HEIGHT - drawH) / 2;
+            }
+            ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
+
+            // Darken/Blur Overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // Heavy dim for readability
+            ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+        } catch (e) {
+            logger.warn('Failed to load bingo background: ' + card.background_url, 'BingoGenerator');
+        }
+    }
+
     // Ambient Gradients (Material/Glassy feel)
     const gradient = ctx.createLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT);
     gradient.addColorStop(0, '#101015');
     gradient.addColorStop(1, '#1a1a24');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+    if (!card.background_url) {
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+    }
 
     // Accent Orbs (Blurred)
     ctx.save();
@@ -308,23 +340,31 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
                     ctx.fillRect(x, y, finalBoxWidth, finalBoxHeight);
                 }
             } else {
-                // Empty Slot Design
+                // Empty Slot Design (Refined)
                 ctx.fillStyle = 'rgba(255,255,255,0.02)';
                 ctx.fillRect(x, y, finalBoxWidth, finalBoxHeight);
 
-                // Plus Icon or Number
-                ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                ctx.textAlign = 'center';
-                ctx.font = `900 ${Math.floor(finalBoxWidth / 3)}px sans-serif`;
-                ctx.fillText((idx + 1).toString(), x + finalBoxWidth / 2, y + finalBoxHeight / 2 + finalBoxHeight / 10);
+                // Plus Icon Design
+                const centerX = x + finalBoxWidth / 2;
+                const centerY = y + finalBoxHeight / 2;
+                const size = Math.floor(finalBoxWidth / 4);
+                
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.beginPath();
+                // Horizontal
+                ctx.moveTo(centerX - size/2, centerY);
+                ctx.lineTo(centerX + size/2, centerY);
+                // Vertical
+                ctx.moveTo(centerX, centerY - size/2);
+                ctx.lineTo(centerX, centerY + size/2);
+                ctx.stroke();
             }
             ctx.restore();
 
             // Overlay Text (Title) - Outside Clip, Inside Grid logic
             if (entry) {
                 ctx.save();
-                // Ensure text doesn't flow out
-                ctx.beginPath();
                 // Ensure text doesn't flow out
                 ctx.beginPath();
                 ctx.rect(x, y, finalBoxWidth, finalBoxHeight);
@@ -367,6 +407,121 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
                 ctx.strokeStyle = themeColor;
                 ctx.stroke();
                 ctx.restore();
+
+                // --- STAMP SYSTEM ---
+                if (entry.status && entry.status !== 'PLANNING') {
+                    ctx.save();
+                    const stampSize = finalBoxWidth * 0.45;
+                    const sX = x + finalBoxWidth - stampSize - 5;
+                    const sY = y + 5;
+                    
+                    // Stamp Container
+                    ctx.globalAlpha = 0.9;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                    
+                    // Stamp Rendering Data
+                    let stampColor = '#FFFFFF';
+                    let hasStamp = true;
+                    
+                    if (entry.status === 'COMPLETED') {
+                        stampColor = '#4ADE80'; // Green
+                    } else if (entry.status === 'PAUSED') {
+                        stampColor = '#FACC15'; // Yellow
+                    } else if (entry.status === 'DROPPED') {
+                        stampColor = '#F87171'; // Red
+                    } else if (entry.status === 'CURRENT' || entry.status === 'WATCHING') {
+                        stampColor = themeColor;
+                    } else {
+                        hasStamp = false;
+                    }
+
+                    if (hasStamp) {
+                        const midX = sX + stampSize/2;
+                        const midY = sY + stampSize/2;
+                        const radius = stampSize/2;
+
+                        // Draw Circle Backing (Glassy)
+                        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                        ctx.beginPath();
+                        ctx.arc(midX, midY, radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        ctx.strokeStyle = stampColor;
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        // --- DRAW VECTOR ICONS (Achievement Badge Style) ---
+                        ctx.strokeStyle = '#FFFFFF';
+                        ctx.lineWidth = 4; // Bold achievement feel
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        const iconSize = radius * 0.55;
+
+                        // Add subtle shadow to the icon itself
+                        ctx.shadowBlur = 4;
+                        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+
+                        if (entry.status === 'COMPLETED') {
+                            // GLOWING SUCCESS
+                            ctx.strokeStyle = '#FFFFFF'; // White center for high contrast
+                            ctx.shadowBlur = 10;
+                            ctx.shadowColor = '#4ADE80'; // Emerald Glow
+                            
+                            ctx.beginPath();
+                            ctx.moveTo(midX - iconSize/1.1, midY);
+                            ctx.lineTo(midX - iconSize/4, midY + iconSize/1.2);
+                            ctx.lineTo(midX + iconSize/1.1, midY - iconSize/1.2);
+                            ctx.stroke();
+
+                            // Sparkles ✨
+                            ctx.shadowBlur = 0;
+                            ctx.fillStyle = '#FFFFFF';
+                            const s = iconSize * 0.15;
+                            const drawSparkle = (sx, sy) => {
+                                ctx.fillRect(sx - s/2, sy - s/2, s, s);
+                            };
+                            drawSparkle(midX + iconSize, midY + iconSize/2);
+                            drawSparkle(midX - iconSize, midY - iconSize/1.5);
+                            drawSparkle(midX + iconSize/2, midY - iconSize);
+                        } else if (entry.status === 'PAUSED') {
+                            ctx.strokeStyle = '#FACC15'; // Amber
+                            ctx.shadowColor = 'rgba(250, 204, 21, 0.4)';
+                            ctx.beginPath();
+                            ctx.moveTo(midX - iconSize/2.5, midY - iconSize/1.2);
+                            ctx.lineTo(midX - iconSize/2.5, midY + iconSize/1.2);
+                            ctx.moveTo(midX + iconSize/2.5, midY - iconSize/1.2);
+                            ctx.lineTo(midX + iconSize/2.5, midY + iconSize/1.2);
+                            ctx.stroke();
+                        } else if (entry.status === 'DROPPED') {
+                            ctx.strokeStyle = '#F87171'; // Red
+                            ctx.lineWidth = 4.5;
+                            ctx.beginPath();
+                            ctx.moveTo(midX - iconSize/1.2, midY - iconSize/1.2);
+                            ctx.lineTo(midX + iconSize/1.2, midY + iconSize/1.2);
+                            ctx.moveTo(midX + iconSize/1.2, midY - iconSize/1.2);
+                            ctx.lineTo(midX - iconSize/1.2, midY + iconSize/1.2);
+                            ctx.stroke();
+                        } else if (entry.status === 'CURRENT' || entry.status === 'WATCHING') {
+                            ctx.strokeStyle = '#FFFFFF';
+                            ctx.shadowColor = 'rgba(255,255,255,0.4)';
+                            ctx.beginPath();
+                            const visualOffset = iconSize * 0.15;
+                            ctx.moveTo(midX - iconSize/2.5 + visualOffset, midY - iconSize/1.1);
+                            ctx.lineTo(midX + iconSize/1.2 + visualOffset, midY);
+                            ctx.lineTo(midX - iconSize/2.5 + visualOffset, midY + iconSize/1.1);
+                            ctx.closePath();
+                            ctx.stroke();
+                            
+                            // Pulse dot (like recording)
+                            ctx.fillStyle = '#F87171';
+                            ctx.beginPath();
+                            ctx.arc(midX - iconSize/1.2, midY - iconSize/1.2, radius * 0.1, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                    ctx.restore();
+                }
             }
         }
     }
