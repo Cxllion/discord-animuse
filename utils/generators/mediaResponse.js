@@ -28,7 +28,6 @@ async function createMediaResponse(media, userId, guildId) {
         row.addComponents(
             new ButtonBuilder()
                 .setLabel('AniList')
-                .setEmoji('🔗')
                 .setStyle(ButtonStyle.Link)
                 .setURL(media.siteUrl)
         );
