@@ -8,6 +8,10 @@ const http = require('http');
 // Setup Process Safety
 setupProcessHandlers();
 
+// Load Custom Custom Fonts (for Render consistency)
+const { loadCustomFonts } = require('./utils/core/fonts');
+loadCustomFonts();
+
 // Validate Required Environment Variables
 const requiredEnvVars = ['DISCORD_TOKEN', 'CLIENT_ID', 'DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_KEY'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);

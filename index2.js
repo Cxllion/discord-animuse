@@ -27,6 +27,10 @@ const logger = require('./utils/core/logger');
 // Setup Process Safety
 setupProcessHandlers();
 
+// Load Custom Custom Fonts (for Render consistency)
+const { loadCustomFonts } = require('./utils/core/fonts');
+loadCustomFonts();
+
 // Validate Required Environment Variables (TEST versions)
 const requiredEnvVars = ['TEST_DISCORD_TOKEN', 'TEST_CLIENT_ID'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
