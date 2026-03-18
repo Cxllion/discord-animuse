@@ -65,15 +65,15 @@ const deployCommands = async (client) => {
         );
         logger.debug('Global commands cleared.', 'CommandDeployer');
 
-        // Deploy to ALL guilds
+        // Deploy to ALL guilds (Parallel for performance)
         const guilds = client.guilds.cache.map(guild => guild.id);
-
-        for (const guildId of guilds) {
-            await rest.put(
+        
+        await Promise.all(guilds.map(guildId => 
+            rest.put(
                 Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
                 { body: commands },
-            );
-        }
+            )
+        ));
 
         fs.writeFileSync(HASH_FILE, currentHash);
 

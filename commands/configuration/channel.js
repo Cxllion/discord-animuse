@@ -45,6 +45,18 @@ module.exports = {
             const guildId = interaction.guild.id;
 
             try {
+                // 0. Permission Verification
+                const me = interaction.guild.members.me;
+                const permissions = channel.permissionsFor(me);
+                const required = ['ViewChannel', 'SendMessages', 'EmbedLinks'];
+                const missing = required.filter(p => !permissions.has(p));
+
+                if (missing.length > 0) {
+                    return await interaction.editReply({
+                        content: `❌ **Permission Denied**: I cannot be assigned to ${channel} because I am missing the following permissions there:\n${missing.map(p => `• \`${p}\``).join('\n')}\n\nPlease update my permissions for that channel and try again.`
+                    });
+                }
+
                 // 1. Fetch current config
                 const config = await fetchConfig(guildId);
 

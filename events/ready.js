@@ -10,6 +10,10 @@ module.exports = {
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'System');
         logger.info(`Animuse is now online and serving in ${client.guilds.cache.size} guilds.`, 'System');
 
+        // Clear Caches to ensure V3 visuals are immediate
+        const { flushAniListCache } = require('../utils/services/anilistService');
+        flushAniListCache();
+
         // Set Presence
         client.user.setPresence({
             activities: [{ name: 'Watching the Library...', type: 3 }], // Type 3 is WATCHING

@@ -1,5 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { normalizeColor, parseMetadata } = require('../core/visualUtils');
+const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
 
 /**
  * ARCHIVIST SEARCH GENERATOR - V2 (Premium Redesign)
@@ -7,8 +7,8 @@ const { normalizeColor, parseMetadata } = require('../core/visualUtils');
  */
 const generateSearchCard = async (media, userColor = '#FFACD1') => {
     const SCALE = 2;
-    const baseW = 930;
-    const baseH = 500;
+    const baseW = 1280; 
+    const baseH = 720; // 16:9 Cinematic
     const width = baseW * SCALE;
     const height = baseH * SCALE;
 
@@ -16,306 +16,494 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    const primary = normalizeColor(media.coverImage?.color || userColor);
-    const surfaceColor = '#0A0A0E';
-    const onSurface = '#FFFFFF';
-    const onSurfaceMuted = 'rgba(255, 255, 255, 0.45)';
-
-    // --- 1. THE CANVAS ---
-    ctx.fillStyle = surfaceColor;
+    const tokens = generateColorTokens(media.coverImage?.color || userColor);
+    
+    // --- 1. THE CANVAS (GLOBAL EDGE) ---
+    ctx.save(); // Protect global state
+    ctx.beginPath();
+    ctx.roundRect(0, 0, baseW, baseH, 40);
+    ctx.clip(); // All contents clipped to 40px radius
+    ctx.fillStyle = tokens.surface;
     ctx.fillRect(0, 0, baseW, baseH);
 
-    // DRAW BACKGROUND
+    // --- 2. THE BACKGROUND (FULL-BLEED CINEMATIC) ---
     try {
         const bgUrl = media.bannerImage || media.coverImage?.extraLarge;
         if (bgUrl) {
             const bgImg = await loadImage(bgUrl);
             ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(0, 0, baseW, baseH, 40);
-            ctx.clip();
-            const imgScale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
-            const x = (baseW / 2) - (bgImg.width / 2) * imgScale;
-            const y = (baseH / 2) - (bgImg.height / 2) * imgScale;
-            ctx.filter = 'blur(60px) brightness(0.25) saturate(1.4)';
-            ctx.drawImage(bgImg, x, y, bgImg.width * imgScale, bgImg.height * imgScale);
+            const scale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
+            const x = (baseW - bgImg.width * scale) / 2;
+            const y = (baseH - bgImg.height * scale) / 2;
+            ctx.drawImage(bgImg, x, y, bgImg.width * scale, bgImg.height * scale);
+            
+            // Atmospheric Bloom & Depth
+            ctx.filter = 'blur(40px) saturate(1.8)';
+            ctx.globalAlpha = 0.6;
+            ctx.drawImage(bgImg, x, y, baseW, baseH);
+            
+            // The Dark Curtain (Vignette)
+            const v = ctx.createLinearGradient(0, 0, 0, baseH);
+            v.addColorStop(0, 'rgba(0,0,0,0.2)');
+            v.addColorStop(0.6, 'rgba(0,0,0,0.7)');
+            v.addColorStop(1, tokens.surface);
+            ctx.fillStyle = v;
+            ctx.globalAlpha = 1.0;
+            ctx.fillRect(0, 0, baseW, baseH);
             ctx.restore();
         }
     } catch (e) { }
 
-    // --- 2. THE POSTER ---
-    const margin = 35;
-    const posterH = baseH - (margin * 2);
-    const posterW = posterH * 0.70;
-    const posterX = margin;
-    const posterY = margin;
+    // Layering: Mesh Accents
+    const g1 = ctx.createRadialGradient(baseW * 0.8, baseH * 0.2, 0, baseW * 0.8, baseH * 0.2, baseW * 0.6);
+    g1.addColorStop(0, tokens.primary + '30');
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, baseW, baseH);
 
-    try {
-        const coverImg = await loadImage(media.coverImage?.extraLarge || media.coverImage?.large);
-        ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.85)';
-        ctx.shadowBlur = 55;
-        ctx.beginPath();
-        ctx.roundRect(posterX, posterY, posterW, posterH, 28);
-        ctx.clip();
-        ctx.drawImage(coverImg, posterX, posterY, posterW, posterH);
-        ctx.restore();
-    } catch (e) { }
-
-    // --- 3. FORMAT ICON ---
-    const iconX = baseW - margin - 30;
-    const iconY = margin + 5;
-    const isManga = ['MANGA', 'ONE_SHOT', 'NOVEL'].includes(media.format);
-
+    // Material Noise
     ctx.save();
-    ctx.strokeStyle = onSurfaceMuted;
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-
-    if (isManga) {
-        ctx.beginPath();
-        ctx.roundRect(iconX, iconY, 24, 30, 3);
-        ctx.moveTo(iconX + 6, iconY + 8); ctx.lineTo(iconX + 18, iconY + 8);
-        ctx.moveTo(iconX + 6, iconY + 15); ctx.lineTo(iconX + 18, iconY + 15);
-        ctx.stroke();
-    } else {
-        ctx.beginPath();
-        ctx.roundRect(iconX - 2, iconY + 6, 28, 20, 4);
-        ctx.moveTo(iconX + 4, iconY); ctx.lineTo(iconX + 12, iconY + 6);
-        ctx.moveTo(iconX + 22, iconY); ctx.lineTo(iconX + 14, iconY + 6);
-        ctx.stroke();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = 0.04;
+    for (let i = 0; i < 3000; i++) {
+        ctx.fillStyle = '#FFF';
+        ctx.fillRect(Math.random() * baseW, Math.random() * baseH, 1, 1);
     }
     ctx.restore();
 
-    // --- 4. THE CONTENT GRID ---
-    const anchorX = posterX + posterW + 45;
-    const contentW = baseW - anchorX - margin - 50; // Increased padding to 50 for safety
+    // --- 3. THE HERO POSTER (CENTERED VERTICALLY) ---
+    const pH = 560; // Elevated Presence
+    const pW = pH * 0.7;
+    const pX = 80;
+    const pY = 60; // Elevated for vertical balance
 
-    // A. SMART EXTRACTION
-    const { title: fullTitle, tags: extraTags } = parseMetadata(media.title.english || media.title.romaji);
+    const { title: cleanTitle, tags: metadataTags } = parseMetadata(media.title.english || media.title.romaji);
 
-    // B. HEADER
-    const headerY = posterY + 5;
-    const formatLabel = (media.format || 'TV').replace(/_/g, ' ');
-    const yearLabel = media.startDate?.year || 'TBA';
-
-    let headerText = `${formatLabel}  •  ${yearLabel}`;
-    if (!isManga) {
-        const studio = media.studios?.nodes?.[0]?.name;
-        if (studio) headerText += `  •  ${studio}`;
-    }
-
-    ctx.font = '900 13px sans-serif';
-    ctx.letterSpacing = '5px';
-    ctx.fillStyle = onSurfaceMuted;
-    ctx.textBaseline = 'top';
-    ctx.fillText(headerText.toUpperCase(), anchorX, headerY);
-
-    // C. TRIPLE-TIER ELASTIC TITLE
-    const titleStartY = posterY + 38;
-    const titleW = contentW - 50;
-
-    let fontSize = 48;
-    let titleLines = [];
-    let leading = 0;
-
-    while (fontSize > 16) {
-        ctx.font = `900 ${fontSize}px sans-serif`;
-        ctx.letterSpacing = '-1.2px';
-        const words = fullTitle.split(' ');
-        titleLines = [];
-        let cur = '';
-        for (let w of words) {
-            let t = cur + w + ' ';
-            if (ctx.measureText(t).width > titleW) {
-                titleLines.push(cur.trim()); cur = w + ' ';
-            } else { cur = t; }
-        }
-        titleLines.push(cur.trim());
-        leading = fontSize * 1.1;
-        if (titleLines.length <= 3) break;
-        fontSize -= 2;
-    }
-
-    ctx.fillStyle = onSurface;
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    titleLines.forEach((line, i) => {
-        ctx.fillText(line, anchorX, titleStartY + (i * leading));
-    });
-
-    const titleBottom = titleStartY + (titleLines.length * leading);
-
-    // --- D. THE DYNAMIC METADATA ROW (Below Name) ---
-    let metaOffset = 0;
-    if (extraTags.length > 0) {
-        metaOffset = 35;
-        const metaY = titleBottom + 12;
-        let pX = anchorX;
-
-        ctx.font = 'bold 11px sans-serif';
-        ctx.letterSpacing = '0px';
-
-        extraTags.forEach(tag => {
-            const tagText = tag.toUpperCase();
-            const tagW = ctx.measureText(tagText).width + 16;
-            const tagH = 22;
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(pX, metaY, tagW, tagH, 6);
-            ctx.fillStyle = primary;
-            ctx.fill();
-
-            ctx.fillStyle = '#FFFFFF';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(tagText, pX + (tagW / 2), metaY + (tagH / 2) + 1);
-            ctx.restore();
-
-            pX += tagW + 10;
-        });
-    }
-
-    // --- E. THE PRECISION DATA ROW (Score & Status) ---
-    const dataRowY = titleBottom + 18 + metaOffset;
-    const scoreVal = media.meanScore || 0;
-    const statusVal = (media.status || 'TBA').replace(/_/g, ' ').toUpperCase();
-    const chipH = 46;
-    const centerY = dataRowY + (chipH / 2);
-
-    let statusX = anchorX;
-
-    // 1. STAR RATING PILL (Only if score > 0)
-    if (scoreVal > 0) {
-        const starCount = Math.round((scoreVal / 20) * 2) / 2;
-        const fullStars = Math.floor(starCount);
-        const hasHalf = starCount % 1 !== 0;
-        const totalSlots = Math.ceil(starCount);
-
-        const starSize = 13;
-        const starGap = 6;
-        const starAreaW = (totalSlots * (starSize * 2)) + ((totalSlots - 1) * starGap);
-        const chipW = Math.max(70, starAreaW + 36);
-
+    try {
+        const cImg = await loadImage(media.coverImage?.extraLarge || media.coverImage?.large);
         ctx.save();
+        
+        // Poster Shadow
+        ctx.shadowColor = 'rgba(0,0,0,1)';
+        ctx.shadowBlur = 120;
+        ctx.shadowOffsetY = 40;
+        
         ctx.beginPath();
-        ctx.roundRect(anchorX, dataRowY, chipW, chipH, 23);
-        ctx.fillStyle = primary;
+        ctx.roundRect(pX, pY, pW, pH, 30);
+        ctx.fillStyle = '#000';
         ctx.fill();
+        ctx.clip();
+        
+        ctx.shadowColor = 'transparent';
+        ctx.drawImage(cImg, pX, pY, pW, pH);
 
-        const drawStar = (x, y, size, fillPercent) => {
+        // --- Poster-Locked Metadata Tags (V10.5 Glass Pillars) ---
+        if (metadataTags && metadataTags.length > 0) {
+            const isSolo = metadataTags.length === 1;
+            const th = isSolo ? 40 : 32;
+            const fontSize = isSolo ? 20 : 15;
+            const radius = th / 2;
+            const horizontalPadding = isSolo ? 48 : 34;
+            
+            let tagY = pY + 15;
+            metadataTags.slice(0, 3).forEach(tag => {
+                ctx.font = `900 ${fontSize}px sans-serif`;
+                ctx.letterSpacing = '1px';
+                const tagText = tag.toUpperCase();
+                const tw = ctx.measureText(tagText).width + horizontalPadding;
+                const tagX = pX + pW - tw - 15;
+
+                ctx.save();
+                // Tag Backdrop (More transparent glass)
+                ctx.beginPath();
+                ctx.roundRect(tagX, tagY, tw, th, radius); 
+                ctx.fillStyle = 'rgba(0,0,0,0.32)';
+                ctx.fill();
+                
+                // Diffused Gloss
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Tag Text (With visibility shadow)
+                ctx.fillStyle = '#FFF';
+                ctx.shadowColor = 'rgba(0,0,0,0.4)';
+                ctx.shadowBlur = 8;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(tagText, tagX + tw/2, tagY + th/2); 
+                ctx.restore();
+
+                tagY += th + 12; // Adjusted rhythm for larger pills
+            });
+        }
+
+        // Highlight stroke
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+    } catch (e) { }
+
+    // --- 4. THE GRID (SMART POSITIONING ENGINE) ---
+    const gridMargin = 85;
+    const contentX = pX + pW + gridMargin; 
+    const contentW = baseW - contentX - gridMargin;
+
+    // A. CONTENT SHIELD (Enhanced Contrast)
+    ctx.save();
+    const maskG = ctx.createLinearGradient(contentX - 60, 0, baseW, 0);
+    maskG.addColorStop(0, 'rgba(0,0,0,0)');
+    maskG.addColorStop(0.3, 'rgba(0,0,0,0.5)');
+    maskG.addColorStop(1, 'rgba(0,0,0,0.7)');
+    ctx.fillStyle = maskG;
+    ctx.fillRect(contentX - 60, 0, baseW, baseH);
+    ctx.restore();
+
+    // B. Metadata HUD (V8.6 Media-Aware Architecture)
+    const isManga = media.type === 'MANGA';
+    const format = (media.format || (isManga ? 'MANGA' : 'TV')).replace(/_/g, ' ');
+    const year = media.seasonYear || media.startDate?.year || 'TBA';
+    
+    let baseMeta = '';
+    let extraCount = 0;
+    let studioNodes = [];
+
+    if (isManga) {
+        baseMeta = `${format}  •  ${year}`;
+    } else {
+        studioNodes = media.studios?.nodes || [];
+        const rawStudio = studioNodes[0]?.name || 'TBA';
+        const studio = rawStudio.replace(/studio/gi, '').trim().split(' ')[0] || 'TBA';
+        extraCount = studioNodes.length - 1;
+        baseMeta = `${format}  •  ${year}  •  ${studio.toUpperCase()}`;
+    }
+
+    ctx.save();
+    ctx.font = '900 18px sans-serif'; 
+    ctx.letterSpacing = '10px';
+    const baseMetaW = ctx.measureText(baseMeta).width;
+    
+    // Calculate Extra Pill if needed (Anime only)
+    let extraPillW = 0;
+    const extraPillH = 18; // Matched to studio name font size (18px)
+    if (!isManga && extraCount > 0) {
+        ctx.font = '900 11px sans-serif'; // Tighter font for the smaller pill
+        ctx.letterSpacing = '1px';
+        extraPillW = ctx.measureText(`+${extraCount}`).width + 14; 
+    }
+
+    const totalTargetW = baseMetaW + (extraCount > 0 ? extraPillW + 12 : 0);
+    const pillW = totalTargetW + 160;
+    const pillH = 60; 
+    
+    // The Bleeding Path
+    ctx.beginPath();
+    ctx.moveTo(baseW, 0); 
+    ctx.lineTo(baseW - pillW, 0); 
+    ctx.lineTo(baseW - pillW, pillH - 30); 
+    ctx.arcTo(baseW - pillW, pillH, baseW - pillW + 30, pillH, 30); 
+    ctx.lineTo(baseW, pillH); 
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fill();
+
+    // Draw Main Metadata (Centering within tab with optical offset)
+    ctx.font = '900 18px sans-serif'; 
+    ctx.letterSpacing = '10px';
+    ctx.fillStyle = '#FFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const startX = baseW - (pillW/2) - (totalTargetW/2) + 20; 
+    ctx.fillText(baseMeta, startX, pillH/2 + 2);
+
+    // Draw Extra Cluster Pill (V8.8 Matched Scale)
+    if (extraCount > 0) {
+        const pillX = startX + baseMetaW + 2; 
+        const pillY = pillH/2 - (extraPillH/2) + 2; // Precise sync with 18px text
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, extraPillW, extraPillH, 9);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fill();
+        
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        ctx.font = '900 11px sans-serif';
+        ctx.letterSpacing = '1px';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFF';
+        ctx.fillText(`+${extraCount}`, pillX + extraPillW/2, pillY + extraPillH/2 + 1);
+    }
+    ctx.restore();
+
+    // C. DYNAMIC HUB ORCHESTRATION (PERIMETER LOCK)
+    let fSize = 100;
+    let lines = [];
+    let lH = 0;
+    while (fSize > 40) {
+        ctx.font = `900 ${fSize}px sans-serif`;
+        ctx.letterSpacing = '-5px';
+        lines = []; let cur = '';
+        for (let w of cleanTitle.split(' ')) {
+            if (ctx.measureText(cur + w + ' ').width > contentW) { lines.push(cur.trim()); cur = w + ' '; }
+            else cur += w + ' ';
+        }
+        lines.push(cur.trim());
+        lH = fSize * 0.95;
+        if (lines.length <= 2) break;
+        fSize -= 5;
+    }
+
+    // Grid Metrics
+    const titleH = lines.length * lH;
+    const podH = 60;
+    const gap = 30;
+    
+    // Calculate Synopsis space within the 560px Poster Perimeter
+    const synH = Math.min(260, pH - titleH - podH - (gap * 2) - 20); 
+    const totalContentH = titleH + gap + podH + gap + synH;
+    
+    // Perfect Centering within Poster Height (pY=60 to 620)
+    const startY = pY + (pH - totalContentH) / 2;
+
+    // Draw Title
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#FFF';
+    lines.forEach((l, i) => {
+        ctx.fillText(l, contentX, startY + (i * lH)); 
+    });
+    let curY = startY + titleH + gap;
+    let podX = contentX;
+
+    // C. STAT CLOUD (V9.6 UNIVERSAL ARCHITECTURE)
+    const sVal = media.meanScore || media.averageScore;
+    if (sVal) {
+        const score10 = (sVal / 10).toFixed(1);
+        const stars = sVal / 20; 
+        
+        const drawStar = (x, y, size, fill) => {
             ctx.save();
             ctx.translate(x, y);
             ctx.beginPath();
             for (let i = 0; i < 5; i++) {
-                const rot = (Math.PI / 180) * (18 + i * 72);
-                ctx.lineTo(Math.cos(rot) * size, -Math.sin(rot) * size);
-                const innerRot = (Math.PI / 180) * (54 + i * 72);
-                ctx.lineTo(Math.cos(innerRot) * (size * 0.45), -Math.sin(innerRot) * (size * 0.45));
+                ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * size, 
+                           -Math.sin((18 + i * 72) / 180 * Math.PI) * size);
+                ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * (size * 0.5), 
+                           -Math.sin((54 + i * 72) / 180 * Math.PI) * (size * 0.5));
             }
             ctx.closePath();
-
-            if (fillPercent >= 1) {
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fill();
-            } else if (fillPercent > 0) {
+            
+            // Empty part (Subtle indent)
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            ctx.fill();
+            
+            // Filled part
+            if (fill > 0) {
                 ctx.save();
                 ctx.clip();
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(-size, -size, size, size * 2);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.fillRect(0, -size, size, size * 2);
+                ctx.fillStyle = tokens.surface; 
+                ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
                 ctx.restore();
             }
             ctx.restore();
         };
 
-        let currentStarX = anchorX + 18 + starSize;
-        for (let i = 0; i < fullStars; i++) {
-            drawStar(currentStarX, centerY, starSize, 1);
-            currentStarX += (starSize * 2) + starGap;
-        }
-        if (hasHalf) {
-            drawStar(currentStarX, centerY, starSize, 0.5);
-        }
-        ctx.restore();
-
-        // Push status text to the right of the pill
-        statusX = anchorX + chipW + 16;
-    }
-
-    // 2. Status Text
-    ctx.font = '900 24px sans-serif';
-    ctx.fillStyle = onSurface;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(statusVal, statusX, centerY + 1);
-
-    // --- F. SYNOPSIS ---
-    const synopsisY = dataRowY + 70;
-    const maxSHeight = baseH - synopsisY - margin - 35;
-
-    ctx.font = '16px sans-serif';
-    ctx.fillStyle = onSurfaceMuted;
-    ctx.textBaseline = 'top';
-
-    // Sanitize Description: 
-    // 1. Replace <br> with spaces to prevent word merges
-    // 2. Strip HTML tags
-    // 3. Flatten whitespace/newlines to single spaces
-    let rawDesc = (media.description || 'No record found.')
-        .replace(/<br\s*\/?>/gi, ' ')
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    let sLines = [];
-    let words = rawDesc.split(' ');
-    let curLine = '';
-
-    for (let w of words) {
-        let t = curLine + w + ' ';
-        if (ctx.measureText(t).width > contentW) {
-            sLines.push(curLine.trim());
-            curLine = w + ' ';
-        } else curLine = t;
-    }
-    sLines.push(curLine.trim());
-
-    const sLeading = 24;
-    const fitCount = Math.floor(maxSHeight / sLeading);
-    sLines.slice(0, fitCount).forEach((line, i) => {
-        if (i === fitCount - 1 && sLines.length > fitCount) line += '...';
-        ctx.fillText(line, anchorX, synopsisY + (i * sLeading));
-    });
-
-    // --- G. GENRES ---
-    const genres = media.genres || [];
-    let gpX = anchorX;
-    const gpY = baseH - margin - 26;
-
-    ctx.font = '900 11px sans-serif';
-    ctx.textAlign = 'left';
-
-    for (let i = 0; i < Math.min(genres.length, 4); i++) {
-        const text = genres[i].toUpperCase();
-        const gW = ctx.measureText(text).width + 30;
-
+        const starSize = 12;
+        const starGap = 10; 
+        const starBlockW = (5 * starSize * 2) + (4 * starGap);
+        
+        ctx.font = '900 22px sans-serif'; 
+        const scoreW = ctx.measureText(score10).width;
+        const innerPillPadding = 40; // Substantial horizontal presence
+        const innerPillW = scoreW + (innerPillPadding * 2);
+        const innerPillH = 40; 
+        const innerPillMargin = 10; 
+        
+        const leftPadding = 28;
+        const midGap = 15; // Move closer to stars to occupy the space
+        const sw = leftPadding + starBlockW + midGap + innerPillW + innerPillMargin;
+        
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(gpX, gpY, gW, 26, 8);
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.roundRect(podX, curY, sw, 60, 30);
+        const g = ctx.createLinearGradient(podX, curY, podX + sw, curY);
+        g.addColorStop(0, tokens.primary);
+        g.addColorStop(1, tokens.glow);
+        ctx.fillStyle = g;
         ctx.fill();
-        ctx.fillStyle = onSurfaceMuted;
+
+        // Stars (Optical Centering +1.5px)
+        let sx = podX + leftPadding + starSize;
+        const sy = curY + 30 + 1.5; 
+        for (let i = 0; i < 5; i++) {
+            const fill = Math.max(0, Math.min(1, stars - i));
+            drawStar(sx, sy, starSize, fill);
+            sx += (starSize * 2) + starGap;
+        }
+
+        // Expanded Inner Pill for Numerals
+        const innerX = podX + sw - innerPillW - innerPillMargin;
+        const innerY = curY + innerPillMargin;
+        ctx.beginPath();
+        ctx.roundRect(innerX, innerY, innerPillW, innerPillH, 20);
+        ctx.fillStyle = 'rgba(0,0,0,0.14)';
+        ctx.fill();
+
+        // Centered Numerals
+        ctx.fillStyle = tokens.surface;
+        ctx.textAlign = 'center'; 
+        ctx.textBaseline = 'middle';
+        ctx.letterSpacing = '0px'; 
+        ctx.fillText(score10, innerX + innerPillW/2, innerY + innerPillH/2 + 1); 
+        ctx.restore();
+        
+        podX += sw + 20; // Advance grid
+    }
+
+    // --- Status Pod (Independent) ---
+    const statusRaw = media.status || 'TBA';
+    const statusClean = statusRaw.replace(/_/g, ' ').toUpperCase();
+    
+    // Dynamic Status Color Map
+    const statusMap = {
+        'FINISHED': { base: '#2ECC71', bg: 'rgba(46, 204, 113, 0.14)' },
+        'RELEASING': { base: '#3498DB', bg: 'rgba(52, 152, 219, 0.14)' },
+        'NOT_YET_RELEASED': { base: '#F1C40F', bg: 'rgba(241, 196, 15, 0.14)' },
+        'CANCELLED': { base: '#E74C3C', bg: 'rgba(231, 76, 60, 0.14)' },
+        'HIATUS': { base: '#9B59B6', bg: 'rgba(155, 89, 182, 0.14)' }
+    };
+    const theme = statusMap[statusRaw] || { base: '#FFF', bg: 'rgba(255, 255, 255, 0.06)' };
+
+    ctx.font = '900 15px sans-serif'; 
+    ctx.letterSpacing = '4px';
+    const stW = ctx.measureText(statusClean).width + 60;
+    
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(podX, curY, stW, 60, 30);
+    ctx.fillStyle = theme.bg;
+    ctx.fill();
+    
+    // Subtle inner glow/border for the color
+    ctx.strokeStyle = theme.base + '33'; 
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = theme.base; // Tinted text for premium feel
+    ctx.globalAlpha = 0.8; 
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(statusClean, podX + stW/2, curY + 30);
+    ctx.restore();
+
+    curY += 90; 
+
+    // D. SYNOPSIS ZONE (V9.6: High Precision Tyopgraphy)
+    ctx.letterSpacing = '0px'; // CRITICAL: Reset tracking to avoid Title/HUD bleeding
+    let descRaw = (media.description || 'No database summary.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    
+    // Phase 1: word-limit/sentence truncation
+    const targetLimit = 50;
+    const words = descRaw.split(' ');
+    let desc = '';
+    
+    if (words.length <= targetLimit) {
+        desc = descRaw;
+    } else {
+        const sentenceEndRegex = /[.!?](\s|$)/g;
+        const approximateCharLimit = words.slice(0, targetLimit).join(' ').length;
+        const tolerance = 80; 
+        let matches = [...descRaw.matchAll(sentenceEndRegex)];
+        let bestBreak = -1;
+
+        for (const m of matches) {
+            const index = m.index + 1;
+            if (index >= approximateCharLimit - tolerance && index <= approximateCharLimit + tolerance) bestBreak = index;
+            if (index > approximateCharLimit + tolerance) break;
+        }
+
+        if (bestBreak !== -1) desc = descRaw.substring(0, bestBreak).trim();
+        else desc = words.slice(0, targetLimit).join(' ') + '...';
+    }
+    
+    // Phase 2: Container-aware scaling & line calculation
+    let sSize = 25;
+    let sLines = [], sLead = 0;
+    const calculateLines = (text, size) => {
+        ctx.font = `${size}px sans-serif`;
+        let lines = [], cur = '';
+        for (let w of text.split(' ')) {
+            if (ctx.measureText(cur + w + ' ').width > contentW) { lines.push(cur.trim()); cur = w + ' '; }
+            else cur += w + ' ';
+        }
+        lines.push(cur.trim());
+        return lines;
+    };
+
+    while (sSize > 18) {
+        sLines = calculateLines(desc, sSize);
+        sLead = sSize * 1.5;
+        if (sLines.length * sLead <= synH) break;
+        sSize -= 1;
+    }
+
+    // Phase 3: Final Overflow Rollback
+    // If it still overflows at min size, truncate by line and rollback to sentence
+    if (sLines.length * sLead > synH) {
+        const maxLines = Math.floor(synH / sLead);
+        const cutoffText = sLines.slice(0, maxLines).join(' ');
+        const sentenceEndRegex = /[.!?](\s|$)/g;
+        let lastSentenceEnd = -1;
+        let m;
+        while ((m = sentenceEndRegex.exec(cutoffText)) !== null) lastSentenceEnd = m.index + 1;
+
+        if (lastSentenceEnd !== -1) {
+            desc = cutoffText.substring(0, lastSentenceEnd).trim();
+        } else {
+            // No sentence ends, truncate at word and add ellipsis
+            const cutWords = cutoffText.split(' ');
+            desc = cutWords.slice(0, cutWords.length - 2).join(' ') + '...';
+        }
+        sLines = calculateLines(desc, sSize); // One final re-calc
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    sLines.forEach((l, i) => {
+        ctx.fillText(l, contentX, curY + (i * sLead));
+    });
+
+    // E. SIGNATURE footer (TAGS + WATERMARK)
+    const footerY = baseH - 65; // Slightly higher for more presence
+    let gx = pX; 
+    ctx.font = '900 15px sans-serif'; // Upscaled
+    ctx.letterSpacing = '1.5px';
+    (media.genres || []).slice(0, 4).forEach(g => {
+        const txt = g.toUpperCase();
+        const gw = ctx.measureText(txt).width + 36; // More breathing room
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(gx, footerY, gw, 38, 6); // Taller + softer corners
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; // Slightly more solid presence
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)'; // Increased text contrast
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, gpX + (gW / 2), gpY + 14);
+        ctx.fillText(txt, gx + gw/2, footerY + 19);
         ctx.restore();
+        gx += gw + 12; // Wider horizontal gap
+    });
 
-        gpX += gW + 10;
-    }
+    // --- 5. FINISH: CLEAN EDGE-TO-EDGE ---
+    ctx.restore(); // Flush all clipping
+    
+    // WATERMARK Alignment
+    ctx.textAlign = 'right';
+    ctx.font = '800 11px sans-serif';
+    ctx.letterSpacing = '6px';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillText('ANIMUSE ARCHIVES', baseW - 50, footerY + 20); 
 
     return await canvas.encode('png');
 };

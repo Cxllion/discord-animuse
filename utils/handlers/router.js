@@ -1,5 +1,5 @@
 const { handleProfileInteraction, handleProfileModals } = require('./profileHandlers');
-const { handleSearchInteraction } = require('./searchHandlers');
+const { handleSearchInteraction, handleTrackInteraction } = require('./searchHandlers');
 const { updateMediaSettings } = require('./configHandlers');
 const registry = require('./super/registry');
 const mediaView = require('./super/views/media');
@@ -30,6 +30,11 @@ const routeInteraction = async (interaction) => {
         // 2. Search & Media
         if (customId === 'search_result_select') {
             await handleSearchInteraction(interaction);
+            return true;
+        }
+
+        if (customId.startsWith('track_anime_')) {
+            await handleTrackInteraction(interaction);
             return true;
         }
 
@@ -140,11 +145,23 @@ const routeInteraction = async (interaction) => {
         return false;
     } catch (error) {
         logger.error(`[Router] Error routing interaction ${customId}:`, error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ 
-                content: '🛑 **Internal Error:** An issue occurred while processing this interaction.', 
-                flags: MessageFlags.Ephemeral 
-            }).catch(() => null);
+        
+        // Final attempt at safety - Don't let a "reply to error" crash the process
+        try {
+            if (interaction.isRepliable()) {
+                const payload = { 
+                    content: '🛑 **Internal Error:** An issue occurred while processing this interaction.', 
+                    flags: MessageFlags.Ephemeral 
+                };
+                
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(payload);
+                } else {
+                    await interaction.reply(payload);
+                }
+            }
+        } catch (secondaryError) {
+            // Silence of the archives - nothing more can be done
         }
         return true;
     }

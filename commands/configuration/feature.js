@@ -127,8 +127,8 @@ module.exports = {
                         await sendNotifications(interaction.client, media, episode, { forceGuildId: interaction.guild.id });
                         await interaction.followUp({ content: '✅ **Simulation Triggered**\nCheck your configured Airing Channel.', flags: MessageFlags.Ephemeral });
                     } catch (e) {
-                        logger.error('Airing Test Error:', e, 'FeatureCommand');
-                        await interaction.followUp({ content: '❌ Error during trigger execution.', flags: MessageFlags.Ephemeral });
+                        logger.error('Airing Test Error:', e.message, 'FeatureCommand');
+                        await interaction.followUp({ content: `❌ **Simulation Failed**: ${e.message}`, flags: MessageFlags.Ephemeral });
                     }
                 }
 

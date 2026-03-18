@@ -134,6 +134,14 @@ const getMediaById = async (id) => {
             season
             seasonYear
             genres
+            popularity
+            source
+            duration
+            nextAiringEpisode {
+                episode
+                airingAt
+                timeUntilAiring
+            }
             startDate {
                 year
             }
@@ -371,6 +379,12 @@ const getTrendingAnime = async () => {
     }
 };
 
+const flushAniListCache = () => {
+    mediaCache.clear();
+    searchCache.clear();
+    logger.info('AniList Data Caches have been flushed. ♡', 'AniList');
+};
+
 module.exports = {
     anilistClient,
     queryAnilist,
@@ -382,6 +396,7 @@ module.exports = {
     getUserFavorites,
     getUserStats,
     getAniListProfile,
-    getTrendingAnime
+    getTrendingAnime,
+    flushAniListCache
 };
 

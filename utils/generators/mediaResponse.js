@@ -22,16 +22,31 @@ async function createMediaResponse(media, userId, guildId) {
         const attachment = new AttachmentBuilder(buffer, { name: `search-${media.id}.png` });
 
         // 3. Components
-        const row = new ActionRowBuilder().addComponents(
+        const row = new ActionRowBuilder();
+        
+        // Always add AniList Link first
+        row.addComponents(
             new ButtonBuilder()
-                .setLabel('View on AniList')
+                .setLabel('AniList')
+                .setEmoji('🔗')
                 .setStyle(ButtonStyle.Link)
                 .setURL(media.siteUrl)
         );
 
+        // Track Button (Only for ONGOING shows)
+        if (media.status === 'RELEASING') {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`track_anime_${media.id}`)
+                    .setLabel('Track Airing')
+                    .setEmoji('🔔')
+                    .setStyle(ButtonStyle.Primary)
+            );
+        }
+
         return {
             files: [attachment],
-            components: [row],
+            components: row.components.length > 0 ? [row] : [],
             embeds: []
         };
 

@@ -48,6 +48,56 @@ const normalizeColor = (hex) => {
 };
 
 /**
+ * Generates a full Material You-inspired color palette from a single dominant hex.
+ * @param {string} hex 
+ * @returns {object} Palette tokens
+ */
+const generateColorTokens = (hex) => {
+    const primary = normalizeColor(hex);
+    
+    // Convert Primary to HSL for manipulation
+    let r = parseInt(primary.slice(1, 3), 16) / 255;
+    let g = parseInt(primary.slice(3, 5), 16) / 255;
+    let b = parseInt(primary.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) h = s = 0;
+    else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+
+    const toHex = (h, s, l) => {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1; if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        const f = x => Math.round(hue2rgb(p, q, x) * 255).toString(16).padStart(2, '0');
+        return `#${f(h + 1/3)}${f(h)}${f(h - 1/3)}`.toUpperCase();
+    };
+
+    return {
+        primary,
+        primaryContainer: toHex(h, s * 0.7, 0.18), // Deeper, more sophisticated container
+        surface: toHex(h, s * 0.1, 0.05), // Ultra-deep neutral surface
+        surfaceVariant: toHex(h, s * 0.15, 0.12), // Elevated surface
+        onSurface: '#FFFFFF',
+        onSurfaceVariant: 'rgba(255, 255, 255, 0.7)',
+        outline: toHex(h, s * 0.2, 0.2), // Contextual 1px border color
+        glow: toHex(h, s * 0.6, 0.4) // Dynamic glow token
+    };
+};
+
+/**
  * Extracts metadata tags (Season, Part, Cour, etc.) from a title and returns the cleaned title.
  * @param {string} fullTitle 
  * @returns {{ title: string, tags: string[] }}
@@ -85,5 +135,6 @@ const parseMetadata = (fullTitle) => {
 
 module.exports = {
     normalizeColor,
+    generateColorTokens,
     parseMetadata
 };

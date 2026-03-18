@@ -1,0 +1,116 @@
+[Debug] Checking guild: ❁ AniMuse Library (1370781350185013490)
+--- SYSTEM CONFIG ---
+Member: Muse Reader
+Bot: Helper Muse
+Premium: N/A
+
+--- CATEGORIES IN DB ---
+- [1] Council (0 roles)
+- [2] Colors (Premium) (52 roles)
+- [3] Colors (Basic) (10 roles)
+- [4] Profile (Pronouns) (0 roles)
+- [5] Profile (Age) (0 roles)
+- [6] Profile (Gender) (0 roles)
+- [7] Profile (Region) (0 roles)
+- [8] Levels (0 roles)
+- [9] Pings (0 roles)
+- [10] Extra (0 roles)
+
+--- HIERARCHY PREVIEW ---
+Bot Highest Position: 67
+1. [Protected] [Pos 95] AniMuse Librarian | Category: Unmanaged
+2. [Protected] [Pos 94] Muse Keeper | Category: Unmanaged
+3. [Protected] [Pos 93] White | Category: Colors (Basic)
+4. [Protected] [Pos 92] Black | Category: Colors (Basic)
+5. [Protected] [Pos 91] Yellow | Category: Colors (Basic)
+6. [Protected] [Pos 90] Orange | Category: Colors (Basic)
+7. [Protected] [Pos 89] Red | Category: Colors (Basic)
+8. [Protected] [Pos 88] Pink | Category: Colors (Basic)
+9. [Protected] [Pos 87] Purple | Category: Colors (Basic)
+10. [Protected] [Pos 86] Blue | Category: Colors (Basic)
+11. [Protected] [Pos 85] Green | Category: Colors (Basic)
+12. [Protected] [Pos 84] Brown | Category: Colors (Basic)
+13. [Protected] [Pos 83] 200 | Genesis Muse | Category: Unmanaged
+14. [Protected] [Pos 82] 150 | Eternal Muse | Category: Unmanaged
+15. [Protected] [Pos 81] 100 | Archon Muse | Category: Unmanaged
+16. [Protected] [Pos 80] 90 | Sage Muse | Category: Unmanaged
+17. [Protected] [Pos 79] 80 | Oracle Muse | Category: Unmanaged
+18. [Protected] [Pos 78] 70 | Harbinger Muse | Category: Unmanaged
+19. [Protected] [Pos 77] 60 | Mystic Muse | Category: Unmanaged
+20. [Protected] [Pos 76] 50 | Artisan Muse | Category: Unmanaged
+21. [Protected] [Pos 75] 40 | Curator Muse | Category: Unmanaged
+22. [Protected] [Pos 74] 30 | Chronicler Muse | Category: Unmanaged
+23. [Protected] [Pos 73] 20 | Scholar Muse | Category: Unmanaged
+24. [Protected] [Pos 72] 10 | Scribe Muse | Category: Unmanaged
+25. [Protected] [Pos 71] 5 | Apprentice Muse | Category: Unmanaged
+26. [Protected] [Pos 70] Sacred Muse | Category: Unmanaged
+27. [Protected] [Pos 69] 1 | Fledgling Muse | Category: Unmanaged
+28. [Protected] [Pos 68] Muse Reader | Category: Unmanaged
+29. [Protected] [Pos 67] Helper Muse | Category: Unmanaged
+30. [Can Edit] [Pos 66] Snow | Category: Colors (Premium)
+31. [Can Edit] [Pos 65] Ghost | Category: Colors (Premium)
+32. [Protected] [Pos 64] DISBOARD.org | Category: Unmanaged
+33. [Can Edit] [Pos 63] Platinum | Category: Colors (Premium)
+34. [Can Edit] [Pos 62] Silver | Category: Colors (Premium)
+35. [Can Edit] [Pos 61] Steel | Category: Colors (Premium)
+36. [Can Edit] [Pos 60] Slate | Category: Colors (Premium)
+37. [Protected] [Pos 59] Fibo | Category: Unmanaged
+38. [Can Edit] [Pos 58] Smoke | Category: Colors (Premium)
+39. [Can Edit] [Pos 57] Charcoal | Category: Colors (Premium)
+40. [Can Edit] [Pos 56] Obsidian | Category: Colors (Premium)
+41. [Can Edit] [Pos 55] Void | Category: Colors (Premium)
+42. [Can Edit] [Pos 54] Lemon | Category: Colors (Premium)
+43. [Can Edit] [Pos 53] Canary | Category: Colors (Premium)
+44. [Can Edit] [Pos 52] Banana | Category: Colors (Premium)
+45. [Can Edit] [Pos 51] Butter | Category: Colors (Premium)
+46. [Can Edit] [Pos 50] Gold | Category: Colors (Premium)
+47. [Can Edit] [Pos 49] Amber | Category: Colors (Premium)
+48. [Can Edit] [Pos 48] Saffron | Category: Colors (Premium)
+49. [Can Edit] [Pos 47] Citrine | Category: Colors (Premium)
+50. [Can Edit] [Pos 46] Mustard | Category: Colors (Premium)
+51. [Can Edit] [Pos 45] Ochre | Category: Colors (Premium)
+52. [Can Edit] [Pos 44] Apricot | Category: Colors (Premium)
+53. [Can Edit] [Pos 43] Peach | Category: Colors (Premium)
+54. [Can Edit] [Pos 42] Carrot | Category: Colors (Premium)
+55. [Can Edit] [Pos 41] Marigold | Category: Colors (Premium)
+56. [Can Edit] [Pos 40] Tangerine | Category: Colors (Premium)
+57. [Can Edit] [Pos 39] Pumpkin | Category: Colors (Premium)
+58. [Can Edit] [Pos 38] Flame | Category: Colors (Premium)
+59. [Can Edit] [Pos 37] Ginger | Category: Colors (Premium)
+60. [Can Edit] [Pos 36] Bronze | Category: Colors (Premium)
+61. [Can Edit] [Pos 35] Rust | Category: Colors (Premium)
+62. [Can Edit] [Pos 34] Scarlet | Category: Colors (Premium)
+63. [Can Edit] [Pos 33] Tomato | Category: Colors (Premium)
+64. [Can Edit] [Pos 32] Vermilion | Category: Colors (Premium)
+65. [Can Edit] [Pos 31] Lava | Category: Colors (Premium)
+66. [Can Edit] [Pos 30] Crimson | Category: Colors (Premium)
+67. [Can Edit] [Pos 29] Ruby | Category: Colors (Premium)
+68. [Can Edit] [Pos 28] Cherry | Category: Colors (Premium)
+69. [Can Edit] [Pos 27] Cardinal | Category: Colors (Premium)
+70. [Can Edit] [Pos 26] Garnet | Category: Colors (Premium)
+71. [Can Edit] [Pos 25] Maroon | Category: Colors (Premium)
+72. [Can Edit] [Pos 24] Cotton Candy | Category: Colors (Premium)
+73. [Can Edit] [Pos 23] Bubblegum | Category: Colors (Premium)
+74. [Can Edit] [Pos 22] Flamingo | Category: Colors (Premium)
+75. [Can Edit] [Pos 21] Blossom | Category: Colors (Premium)
+76. [Can Edit] [Pos 20] Rose | Category: Colors (Premium)
+77. [Can Edit] [Pos 19] Magenta | Category: Colors (Premium)
+78. [Can Edit] [Pos 18] Fuchsia | Category: Colors (Premium)
+79. [Can Edit] [Pos 17] Hot Pink | Category: Colors (Premium)
+80. [Can Edit] [Pos 16] Deep Pink | Category: Colors (Premium)
+81. [Can Edit] [Pos 15] Berry | Category: Colors (Premium)
+82. [Can Edit] [Pos 14] Lavender | Category: Colors (Premium)
+83. [Can Edit] [Pos 13] Lilac | Category: Colors (Premium)
+84. [Can Edit] [Pos 12] Muse Council | Category: Unmanaged
+85. [Can Edit] [Pos 11] Divine Muse | Category: Unmanaged
+86. [Can Edit] [Pos 10] Prime Muse | Category: Unmanaged
+87. [Can Edit] [Pos 9] 👤 He/Him | Category: Unmanaged
+88. [Can Edit] [Pos 8] 👤 She/Her | Category: Unmanaged
+89. [Can Edit] [Pos 7] 👤 They/Them | Category: Unmanaged
+90. [Can Edit] [Pos 6] 🎂 13+ | Category: Unmanaged
+91. [Can Edit] [Pos 5] 🎂 16+ | Category: Unmanaged
+92. [Can Edit] [Pos 4] 🎂 18+ | Category: Unmanaged
+93. [Can Edit] [Pos 3] 🎂 20+ | Category: Unmanaged
+94. [Can Edit] [Pos 2] Muse Crafter | Category: Unmanaged
+95. [Can Edit] [Pos 1] new role | Category: Unmanaged
+96. [Can Edit] [Pos 0] @everyone | Category: Unmanaged

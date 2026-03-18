@@ -135,6 +135,24 @@ const sendNotifications = async (client, media, episode, options = {}) => {
             const channel = await guild.channels.fetch(config.airing_channel_id).catch(() => null);
             if (!channel) continue;
 
+            // --- PERMISSION CHECK ---
+            const me = guild.members.me;
+            const permissions = channel.permissionsFor(me);
+            
+            if (!permissions || !permissions.has(['ViewChannel', 'SendMessages', 'EmbedLinks'])) {
+                const missing = [];
+                if (!permissions.has('ViewChannel')) missing.push('View Channel');
+                if (!permissions.has('SendMessages')) missing.push('Send Messages');
+                if (!permissions.has('EmbedLinks')) missing.push('Embed Links');
+                
+                logger.warn(`[Scheduler] Skipping guild ${guildId}: Bot lacks [${missing.join(', ')}] permissions in channel ${channel.id}`, 'Scheduler');
+                
+                if (options.forceGuildId) {
+                    throw new Error(`Bot lacks permissions in <#${channel.id}>: ${missing.join(', ')}`);
+                }
+                continue;
+            }
+
             // Construct Pings
             let content = '';
             if (userIds.length > 0) {
@@ -181,6 +199,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
 
         } catch (err) {
             logger.error(`Failed to notify guild ${guildId}:`, err, 'Scheduler');
+            if (options.forceGuildId) throw err; // Re-throw for tests
         }
     }
 };

@@ -98,7 +98,7 @@ module.exports = {
             try {
                 const newRole = await guild.roles.create({
                     name: name,
-                    colors: { primaryColor: color },
+                    color: color,
                     hoist: hoist,
                     reason: `Role created by ${interaction.user.tag}`
                 });

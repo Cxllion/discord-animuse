@@ -76,11 +76,15 @@ const displayRoleDashboard = async (interaction, isUpdate = false) => {
             .setCustomId('role_dash_menu')
             .setPlaceholder('Navigate to Bureau...')
             .addOptions([
-                { label: 'Role Repository', description: 'Manage Member, Bot, and Booster roles.', value: 'opt_roles', emoji: '🛡️' },
+                { label: 'Auto-Roles', description: 'Configure Member, Bot, and Booster roles.', value: 'opt_autoroles', emoji: '🤖' },
+                { label: 'Category Manager', description: 'Organize roles into group folders.', value: 'opt_categories', emoji: '🗂️' },
+                { label: 'Level Rewards', description: 'Manage milestone-based role rewards.', value: 'opt_levels', emoji: '📈' },
                 { label: 'Color Catalog', description: 'Deploy and manage premium color roles.', value: 'opt_colors', emoji: '🎨' },
+                { label: 'Server Purge', description: 'Clean up undocumented ghost roles.', value: 'opt_purge', emoji: '🧹' },
+                { label: 'Role Organizing', description: 'Sort hierarchy by category.', value: 'opt_organize', emoji: '📏' },
                 { label: 'Channel Architect', description: 'Zone management and sorting.', value: 'opt_channels', emoji: '🏗️' },
-                { label: 'Muse Bureau', description: 'Miscellaneous bot flavor and extras.', value: 'opt_muses', emoji: '🎭' },
-                { label: 'Refresh Dashboard', value: 'opt_refresh', emoji: '🔄' }
+                { label: 'Muse Bureau', description: 'Flavor and extras hub.', value: 'opt_muses', emoji: '🎭' },
+                { label: 'Refresh Hub', description: 'Reset and refresh the dashboard.', value: 'opt_refresh', emoji: '🔄' }
             ])
     );
 
@@ -93,22 +97,25 @@ const displayRoleDashboard = async (interaction, isUpdate = false) => {
 
 const handleDashboardInteraction = async (i) => {
     try {
-        if (i.customId === 'dash_home') return await displayRoleDashboard(i, true);
+        if (i.customId === 'dash_home' || i.customId === 'role_dash_home') return await displayRoleDashboard(i, true);
 
         if (i.isChannelSelectMenu()) {
             if (i.customId === 'level_channel_select') {
                 const channelId = i.values[0];
-                await upsertConfig({ guild_id: i.guild.id, level_up_channel_id: channelId });
+                await upsertConfig(i.guild.id, { level_up_channel_id: channelId });
                 return handleLevels(i);
             }
         }
         if (i.isStringSelectMenu()) {
             if (i.customId === 'role_dash_menu') {
                 const choice = i.values[0];
-                if (choice === 'opt_autoroles') return handleAutoRoles(i);
+                if (choice === 'opt_autoroles' || choice === 'opt_roles') return handleAutoRoles(i);
                 if (choice === 'opt_categories') return handleCategories(i);
                 if (choice === 'opt_levels') return handleLevels(i);
                 if (choice === 'opt_colors') return handleColorRoles(i);
+                if (choice === 'opt_purge') return handlePurge(i);
+                if (choice === 'opt_organize') return handleOrganizeMenu(i);
+                if (choice === 'opt_refresh') return await displayRoleDashboard(i, true);
                 if (choice === 'opt_channels') {
                     const { displayChannelDashboard } = require('./channelDashboard');
                     return displayChannelDashboard(i, true);
@@ -117,8 +124,6 @@ const handleDashboardInteraction = async (i) => {
                     const { displayMuseBureau } = require('./museBureau');
                     return displayMuseBureau(i, true);
                 }
-                if (choice === 'opt_purge') return handlePurge(i);
-                if (choice === 'opt_organize') return handleOrganizeMenu(i);
             }
             if (i.customId.startsWith('cat_view_')) {
                 return handleCategoryRoles(i, i.values[0]);
@@ -624,9 +629,11 @@ const performOrganize = async (guild, statusMsg) => {
     // 3. Define our desired hierarchy criteria
     const config = await fetchConfig(guild.id);
     const serverRoles = await getServerRoles(guild.id);
-    const levelBindings = await getLevelRoles(guild.id); // Fetch level roles from DB
+    const levelBindings = await getLevelRoles(guild.id);
     
     const rolesByCategory = {};
+    const processedCategories = new Set();
+    
     serverRoles.forEach(sr => {
         const catName = sr.category?.name || 'Extra';
         if (!rolesByCategory[catName]) rolesByCategory[catName] = [];
@@ -638,8 +645,9 @@ const performOrganize = async (guild, statusMsg) => {
         'Colors (Premium)', 
         'Colors (Basic)',
         'NITRO_BOOSTER', 
-        'PREMIUM_MUSE', // config.premium_role_id (Seraphic Muse)
+        'PREMIUM_MUSE', 
         'Levels', 
+        'MUTED',
         'AUTO_MEMBER', 
         'AUTO_BOT',
         'Profile (Pronouns)', 
@@ -648,26 +656,50 @@ const performOrganize = async (guild, statusMsg) => {
         'Pings'
     ];
 
-    // Map role IDs to their "priority" based on hierarchy
     const priorityMap = {};
     let currentIndex = 0;
 
+    // A. Smart Detection: Administrative roles (Council Fallback)
+    // If a role looks like staff but isn't registered, we prioritize it at the top
+    const adminTerms = ['admin', 'mod', 'staff', 'owner', 'council', 'founder', 'architect', 'bureau', 'guardian', 'librarian', 'keeper', 'senate'];
+    const unmanagedAdminRoles = manageable.filter(r => 
+        adminTerms.some(term => r.name.toLowerCase().includes(term)) &&
+        !serverRoles.some(sr => sr.role_id === r.id) &&
+        r.id !== config.member_role_id &&
+        r.id !== config.bot_role_id &&
+        r.id !== config.mute_role_id
+    );
+
+    if (unmanagedAdminRoles.length > 0) {
+        console.log(`[Organize] Detected ${unmanagedAdminRoles.length} unmanaged administrative roles. Prioritizing at top.`);
+        unmanagedAdminRoles.forEach(r => {
+            if (!priorityMap[r.id]) priorityMap[r.id] = currentIndex++;
+        });
+    }
+
+    // B. Main Hierarchy Processing
     hierarchyOrder.forEach((catName) => {
+        processedCategories.add(catName);
+
         if (catName === 'AUTO_MEMBER') {
             if (config.member_role_id) priorityMap[config.member_role_id] = currentIndex++;
         } else if (catName === 'AUTO_BOT') {
             if (config.bot_role_id) priorityMap[config.bot_role_id] = currentIndex++;
+        } else if (catName === 'MUTED') {
+            if (config.mute_role_id) priorityMap[config.mute_role_id] = currentIndex++;
+            // Fallback for roles named 'Muted'
+            const mutedRole = roles.find(r => r.name.toLowerCase().includes('muted'));
+            if (mutedRole && !priorityMap[mutedRole.id]) priorityMap[mutedRole.id] = currentIndex++;
         } else if (catName === 'NITRO_BOOSTER') {
             const boosterRole = roles.find(r => r.tags?.premiumSubscriberRole !== undefined);
             if (boosterRole) priorityMap[boosterRole.id] = currentIndex++;
-            if (config.booster_role_id) priorityMap[config.booster_role_id] = currentIndex++;
+            if (config.booster_role_id && !priorityMap[config.booster_role_id]) priorityMap[config.booster_role_id] = currentIndex++;
         } else if (catName === 'PREMIUM_MUSE') {
             if (config.premium_role_id) priorityMap[config.premium_role_id] = currentIndex++;
         } else if (catName === 'Levels') {
-            // Sort levels highest to lowest (Descending)
             const sortedLevels = [...levelBindings].sort((a, b) => b.level - a.level);
             sortedLevels.forEach(lb => {
-                priorityMap[lb.role_id] = currentIndex++;
+                if (!priorityMap[lb.role_id]) priorityMap[lb.role_id] = currentIndex++;
             });
         } else if (catName === 'Colors (Premium)') {
             const premiumShades = Object.values(COLOR_FAMILIES).flat();
@@ -679,7 +711,7 @@ const performOrganize = async (guild, statusMsg) => {
                 const idxB = premiumShades.findIndex(s => s.name === nameB);
                 return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
             }).forEach(rid => {
-                priorityMap[rid] = currentIndex++;
+                if (!priorityMap[rid]) priorityMap[rid] = currentIndex++;
             });
         } else if (catName === 'Colors (Basic)') {
             const rids = rolesByCategory[catName] || [];
@@ -690,13 +722,27 @@ const performOrganize = async (guild, statusMsg) => {
                 const idxB = BASIC_COLORS.findIndex(s => s.name === nameB);
                 return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
             }).forEach(rid => {
-                priorityMap[rid] = currentIndex++;
+                if (!priorityMap[rid]) priorityMap[rid] = currentIndex++;
             });
         } else {
             rolesByCategory[catName]?.forEach(rid => {
-                priorityMap[rid] = currentIndex++;
+                if (!priorityMap[rid]) priorityMap[rid] = currentIndex++;
             });
         }
+    });
+
+    // C. Process any other registered categories not in the main hierarchy list
+    Object.keys(rolesByCategory).forEach(catName => {
+        if (!processedCategories.has(catName) && catName !== 'Extra') {
+            rolesByCategory[catName].forEach(rid => {
+                if (!priorityMap[rid]) priorityMap[rid] = currentIndex++;
+            });
+        }
+    });
+
+    // D. Final Registered Extras
+    rolesByCategory['Extra']?.forEach(rid => {
+        if (!priorityMap[rid]) priorityMap[rid] = currentIndex++;
     });
 
     // 4. Sort the manageable roles: Priority first, then current position
@@ -716,34 +762,46 @@ const performOrganize = async (guild, statusMsg) => {
         return b.position - a.position; // Keep relative original order if same prio
     });
 
-    // 5. Build the swap plan (Map new order to the *original* set of positions)
+    // 5. Build the swap plan (Full Payload Mode)
     const originalPositions = manageable.map(r => r.position); // Already sorted desc
     const roleData = [];
+    let changeCount = 0;
 
     for (let i = 0; i < sortedManageable.length; i++) {
         const role = sortedManageable[i];
         const targetPos = originalPositions[i];
         
+        // CRITICAL: We include ALL manageable roles in the payload.
+        // Even if the absolute position hasn't changed, including them ensures 
+        // the relative order is locked in exactly as calculated by the sort.
+        roleData.push({ role: role.id, position: targetPos });
+        
         if (role.position !== targetPos) {
-            roleData.push({ role: role.id, position: targetPos });
+            console.log(`[Organize] Plan: ${role.name} (${role.position} -> ${targetPos})`);
+            changeCount++;
         }
     }
 
-    if (!roleData.length) {
-        await statusMsg.edit('✨ **[Organize] Already perfectly aligned.**').catch(() => null);
+    if (changeCount === 0) {
+        await statusMsg.edit('✨ **[Organize] Roles are already perfectly aligned.**').catch(() => null);
         return;
     }
 
-    console.log(`[Organize] Plan ready: Moving ${roleData.length} roles.`);
-    await statusMsg.edit(`📏 **[Organize] Organizing server structure...**`).catch(() => null);
+    console.log(`[Organize] Execution Phase: Syncing ${roleData.length} role positions (${changeCount} actual moves).`);
+    await statusMsg.edit(`📏 **[Organize] Resyncing server hierarchy (${changeCount} roles to move)...**`).catch(() => null);
     
     // EXTREMELY CRITICAL: Use guild.roles.setPositions for BULK update
     // This is 100x faster and much safer against rate limits than 1-by-1 setPosition
     try {
-        console.log(`[Organize] Executing bulk position sync...`);
+        console.log(`[Organize] Dispatching bulk position sync for ${roleData.length} roles...`);
         await guild.roles.setPositions(roleData, { reason: 'Automated Server Organization' });
         console.log(`[Organize] Bulk sync successful.`);
-        await statusMsg.edit(`✅ **[Organize] Complete!** Bulk-synchronized **${roleData.length}** role positions.`);
+        
+        let completionMsg = `✅ **[Organize] Complete!** Hierarchy re-synchronized successfully.`;
+        if (skippedCount > 0) {
+            completionMsg += `\n⚠️ **Notice:** **${skippedCount}** roles were skipped because they are above the bot's highest role. Please move the **${botMember.roles.highest.name}** role higher to organize those.`;
+        }
+        await statusMsg.edit(completionMsg);
     } catch (err) {
         console.error(`[Organize] Bulk sync failed, falling back to surgical moves:`, err.message);
         
@@ -814,7 +872,7 @@ const executeLevelDeployment = async (i) => {
                     if (!role) {
                         role = await guild.roles.create({
                             name: fullName,
-                            colors: { primaryColor: t.color },
+                            color: t.color,
                             hoist: true,
                             reason: 'Level Role Deployment'
                         });
@@ -822,7 +880,7 @@ const executeLevelDeployment = async (i) => {
                         // Update naming and color if they exist but are old
                         if (role.name !== fullName || role.hexColor !== t.color.toUpperCase()) {
                             await role.setName(fullName);
-                            await role.edit({ colors: { primaryColor: t.color } }).catch(() => null);
+                            await role.edit({ color: t.color }).catch(() => null);
                         }
                     } else if (role.name !== fullName) {
                         console.warn(`[Deploy Tiers] Cannot rename protected role: ${role.name}`);
@@ -1056,7 +1114,7 @@ const executeColorDeployment = async (i, type) => {
                             targetRole = await withTimeout(
                                 guild.roles.create({
                                     name: c.name,
-                                    colors: { primaryColor: sanitizedHex },
+                                    color: sanitizedHex,
                                     reason: `Color Role Deployment (${type})`
                                 }),
                                 35000,
@@ -1069,8 +1127,8 @@ const executeColorDeployment = async (i, type) => {
                             targetRole = updateObj.role;
                             console.log(`[Deploy Colors] [${globalIdx}/${totalToWork}] ACTION: UPDATE | NAME: ${c.name} (${targetRole.hexColor} -> ${sanitizedHex})`);
                             const editResult = await withTimeout(
-                                targetRole.edit({ colors: { primaryColor: sanitizedHex } }),
-                                20000,
+                                targetRole.edit({ color: sanitizedHex }),
+                                20 * 1000,
                                 'TIMEOUT'
                             );
                             if (editResult === 'TIMEOUT') throw new Error('STALL: Discord hung on edit.');
