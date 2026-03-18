@@ -20,12 +20,17 @@ module.exports = {
         .addStringOption(option =>
             option.setName('query')
                 .setDescription('The name to search for')
-                .setRequired(true)),
+                .setRequired(true))
+        .addBooleanOption(option =>
+            option.setName('quick')
+                .setDescription('Return the first result immediately without showing the dropdown menu')
+                .setRequired(false)),
     async execute(interaction) {
         await interaction.deferReply();
 
         const query = interaction.options.getString('query');
         const type = interaction.options.getString('type') || 'ANIME';
+        const quick = interaction.options.getBoolean('quick') ?? false;
 
         try {
             const results = await searchMedia(query, type);
@@ -37,8 +42,8 @@ module.exports = {
                 return await interaction.editReply({ embeds: [embed] });
             }
 
-            // Exactly one result: Show it immediately
-            if (results.length === 1) {
+            // Exactly one result or quick search mode: Show the first one immediately
+            if (results.length === 1 || quick) {
                 const media = await getMediaById(results[0].id);
 
                 // UX: Immediate Feedback
