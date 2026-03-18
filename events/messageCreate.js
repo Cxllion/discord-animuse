@@ -2,6 +2,20 @@ const { Events } = require('discord.js');
 const { fetchConfig } = require('../utils/core/database');
 const baseEmbed = require('../utils/generators/baseEmbed');
 const logger = require('../utils/core/logger');
+const { getDynamicUserTitle } = require('../utils/core/userMeta');
+
+const getSourceTag = (url) => {
+    if (!url) return '';
+    const u = url.toLowerCase();
+    if (u.includes('twitter.com') || u.includes('x.com')) return '[Twitter] ';
+    if (u.includes('pixiv.net')) return '[Pixiv] ';
+    if (u.includes('artstation.com')) return '[ArtStation] ';
+    if (u.includes('instagram.com')) return '[Instagram] ';
+    if (u.includes('deviantart.com')) return '[DeviantArt] ';
+    if (u.includes('reddit.com')) return '[Reddit] ';
+    if (u.includes('pinterest.com')) return '[Pinterest] ';
+    return '';
+};
 
 module.exports = {
     name: Events.MessageCreate,
@@ -57,15 +71,40 @@ module.exports = {
         // --- Gallery Mode ---
         if (config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
             const urlRegex = /https?:\/\/[^\s]+/;
-            const hasLink = urlRegex.test(message.content);
+            const match = message.content.match(urlRegex);
+            const hasLink = !!match;
+            const link = match ? match[0] : '';
 
             if (message.attachments.size > 0 || hasLink) {
                 // Valid post: Create thread
                 try {
-                    await message.startThread({
-                        name: `Discussion: ${message.author.username}’s Post`,
+                    const sourceTag = getSourceTag(link);
+                    const displayName = message.member?.displayName || message.author.displayName || message.author.username;
+                    const userTitle = await getDynamicUserTitle(message.member);
+                    
+                    // Extract content snippet for the thread name
+                    let contentSnippet = message.content.replace(urlRegex, '').trim();
+                    if (contentSnippet.length > 30) contentSnippet = contentSnippet.substring(0, 27) + '...';
+                    
+                    const threadName = contentSnippet 
+                        ? `${sourceTag}Discussion: "${contentSnippet}" (by ${displayName})`
+                        : `${sourceTag}Discussion: ${displayName}’s Post`;
+
+                    const thread = await message.startThread({
+                        name: threadName,
                         autoArchiveDuration: 1440, // 24 hours
                     });
+
+                    // Option 1: Auto-reactions
+                    await Promise.all([
+                        message.react('❤️').catch(() => {}),
+                        message.react('🔥').catch(() => {}),
+                        message.react('🌟').catch(() => {})
+                    ]);
+
+                    // Option 3: Welcome message
+                    await thread.send(`Welcome, **${userTitle}**. These discussions are for our **Readers** to reflect upon this visual archive. Please share your thoughts! ♡`);
+
                 } catch (error) {
                     if (error.code === 160004) return; // Thread already exists, ignore.
                     logger.error(`[Gallery Error] Could not create thread in ${message.channel.id}:`, error, 'MessageEvent');
@@ -73,11 +112,11 @@ module.exports = {
             } else {
                 // Invalid post: Delete and warn
                 try {
-                    // Check if deletable first to avoid permission errors logging spam
                     if (message.deletable) {
+                        const userTitle = await getDynamicUserTitle(message.member);
                         await message.delete();
                         const embed = baseEmbed()
-                            .setDescription("I'm sorry, Manager, but this wing of the gallery is for visual archives only. Please use the threads for conversation! ♡")
+                            .setDescription(`I'm sorry, **${userTitle}**, but this wing of the gallery is for visual archives only. Please keep the library tidy for other **Readers**! ♡\n\n*(Use the threads for conversation!)*`)
                             .setColor('#FFACD1');
 
                         const warning = await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed] });
@@ -86,12 +125,11 @@ module.exports = {
                         }, 5000);
                     }
                 } catch (error) {
-                    // 10008 = Unknown Message (Already deleted)
                     if (error.code === 10008) return;
                     logger.error(`[Gallery Error] Could not delete message in ${message.channel.id}:`, error, 'MessageEvent');
                 }
             }
-            return; // Stop processing XP if in gallery
+            return;
         }
 
         // --- Leveling Hook ---
