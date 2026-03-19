@@ -13,7 +13,7 @@ module.exports = {
         await interaction.deferReply();
         const LoadingManager = require('../../utils/ui/LoadingManager');
         const loader = new LoadingManager(interaction);
-        await loader.startProgress('Ranking High Council...', 5); // ~5s
+        loader.startProgress('Ranking High Council...', 5); // No await for snappier start
 
         const guildId = interaction.guild.id;
 

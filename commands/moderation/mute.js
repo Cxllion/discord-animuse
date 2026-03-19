@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
-const { handleError } = require('../../utils/handlers/errorHandler');
+const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
 
 // Simple time parser since 'ms' might not be in package.json (I checked earlier, it wasn't explicitly listed but moment was)
@@ -82,7 +82,7 @@ module.exports = {
             } catch (e) { }
 
         } catch (error) {
-            await handleError(interaction, error);
+            await handleCommandError(interaction, error, 'mute');
         }
     },
 };

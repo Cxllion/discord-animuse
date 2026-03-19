@@ -128,6 +128,11 @@ class LoadingManager {
     async _render() {
         if (!this.interaction || this.isStopping) return;
         const content = this._getContent();
+        
+        // Optimization: Only update if content changed or it's a new interaction
+        if (content === this.lastContent) return;
+        this.lastContent = content;
+
         try {
             if (this.interaction.replied || this.interaction.deferred) {
                 await this.interaction.editReply({ content }).catch(() => null);
@@ -135,12 +140,8 @@ class LoadingManager {
                 await this.interaction.reply({ content }).catch(() => null);
             }
         } catch (e) {
-            // Silently stop if interaction is lost
             this.isStopping = true;
-            if (this.timer) {
-                clearTimeout(this.timer);
-                clearInterval(this.timer);
-            }
+            this._cleanup();
         }
     }
 
@@ -148,17 +149,28 @@ class LoadingManager {
      * Generates the text content for the current state
      */
     _getContent() {
+        if (!this.type) return 'Processing...';
+
+        const spinner = this.frames[this.currentFrame % this.frames.length];
+
         if (this.type === 'CYCLE') {
-            return `${this.frames[this.currentFrame]} **${this.message}**`;
-        } else if (this.type === 'PROGRESS') {
+            return `${spinner} **${this.message}**`;
+        } 
+        
+        if (this.type === 'STEP') {
+            const stepText = this.steps[this.currentFrame] || this.steps[this.steps.length - 1];
+            const hasEmoji = /\p{Emoji}/u.test(stepText);
+            const icon = hasEmoji ? '' : [EMOJIS.BOOKS, EMOJIS.BOOK_OPEN, EMOJIS.SEARCH, EMOJIS.MAGIC, EMOJIS.PARCHMENT][this.currentFrame % 5] + ' ';
+            return `${spinner} ${icon}**${stepText}**`;
+        }
+
+        if (this.type === 'PROGRESS') {
             const size = 12;
             const filled = Math.min(Math.max(Math.round((this.currentFrame / 100) * size), 0), size);
             const bar = '▰'.repeat(filled) + '▱'.repeat(size - filled);
             
-            // User requested: 10s only, no decimals.
             const displayPercent = this.currentFrame >= 100 ? 100 : Math.floor(this.currentFrame / 10) * 10;
             
-            const spinner = this.frames[Math.floor(Date.now() / 800) % this.frames.length];
             const funMessages = [
                 "Polishing the pixels...", "Waking up the library cat...", "Consulting the high elders...",
                 "Searching the restricted section...", "Translating magic into image...", "Sharpening the virtual ink...",
@@ -167,26 +179,28 @@ class LoadingManager {
             const funMsg = displayPercent >= 100 ? "Ready! Opening the archives..." : funMessages[Math.floor(Date.now() / 2500) % funMessages.length];
 
             return `${spinner} **${this.message}**\n\`${bar}\` **${displayPercent}%**\n> *${funMsg}*`;
-            const hasEmoji = /\p{Emoji}/u.test(stepText);
-            const icon = hasEmoji ? '' : [EMOJIS.BOOKS, EMOJIS.BOOK_OPEN, EMOJIS.SEARCH, EMOJIS.MAGIC, EMOJIS.PARCHMENT][this.currentFrame % 5] + ' ';
-            return `${icon}**${stepText}**`;
+        }
+
+        return 'Processing...';
+    }
+
+    _cleanup() {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            clearInterval(this.timer);
+            this.timer = null;
         }
     }
 
     /**
      * Stops the animation and ensures it hits 100% (if Progress).
      * Delivers final graphic immediately with 100% state for perfect timing.
-     * Then cleans up.
      */
     async stop(finalPayload = null) {
-        if (this.isStopping && !finalPayload) return; // Already stopping
+        if (this.isStopping && !finalPayload) return;
         
         this.isStopping = true;
-        if (this.timer) {
-            clearTimeout(this.timer);
-            clearInterval(this.timer);
-            this.timer = null;
-        }
+        this._cleanup();
         
         if (this.type === 'PROGRESS') {
             this.currentFrame = 100;
@@ -194,22 +208,18 @@ class LoadingManager {
 
         try {
             if (finalPayload) {
+                // Combine final payload with 100% state
+                // We clear the content text in the SAME call if finalPayload is an embed
                 const result = await this.interaction.editReply({ 
-                    content: this._getContent(), 
+                    content: '', // Clear the loading text immediately to let the embed shine
                     ...finalPayload 
                 });
-
-                // Delete status text after 300ms
-                setTimeout(() => {
-                    this.interaction.editReply({ content: '' }).catch(() => null);
-                }, 300);
 
                 return result;
             } else {
                 return await this._render();
             }
         } catch (e) {
-            // Bridge: Never allow stop to crash the parent command
             return null;
         }
     }

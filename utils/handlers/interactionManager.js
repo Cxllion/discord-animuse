@@ -1,5 +1,6 @@
 const { ActionRowBuilder, ComponentType , MessageFlags } = require('discord.js');
 const logger = require('../core/logger');
+const { handleInteractionError } = require('../core/errorHandler');
 
 /**
  * Global Interaction Manager
@@ -24,10 +25,7 @@ const watchInteraction = (message, time, onCollect, ephemeralIds = []) => {
             await onCollect(interaction);
         } catch (error) {
             logger.error('InteractionManager Callback Error:', error, 'InteractionManager');
-            // Try to respond if not already
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: '❌ Interaction Handler Error.', flags: MessageFlags.Ephemeral }).catch(() => { });
-            }
+            await handleInteractionError(interaction, error);
         }
     });
 

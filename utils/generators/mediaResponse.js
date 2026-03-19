@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const { getUserColor } = require('../core/database');
 const { generateSearchCard } = require('./searchGenerator');
+const { formatMediaTitle } = require('../services/anilistService');
 const baseEmbed = require('./baseEmbed');
 const { COLORS, FOOTERS } = require('../core/constants');
 const logger = require('../core/logger');
@@ -57,10 +58,10 @@ async function createMediaResponse(media, userId, guildId) {
         if (description.length > 300) description = description.substring(0, 300) + '...';
 
         const embed = baseEmbed()
-            .setTitle(media.title.english || media.title.romaji)
+            .setTitle(formatMediaTitle(media?.title))
             .setDescription(description)
-            .setThumbnail(media.coverImage.large)
-            .setColor(media.coverImage.color || COLORS.DEFAULT)
+            .setThumbnail(media?.coverImage?.large || null)
+            .setColor(media?.coverImage?.color || COLORS.DEFAULT)
             .setFooter({ text: FOOTERS.ANILIST });
 
         return { embeds: [embed] };

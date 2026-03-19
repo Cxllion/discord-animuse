@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const CONFIG = require('../../utils/config');
-const { handleError } = require('../../utils/handlers/errorHandler');
+const { handleInteractionError } = require('../../utils/core/errorHandler');
 const moment = require('moment');
 
 module.exports = {
@@ -18,7 +18,7 @@ module.exports = {
             const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
             if (!member) {
-                return await handleError(interaction, new Error('Member not found'), CONFIG.MESSAGES.ERRORS.USER_NOT_FOUND);
+                return await handleInteractionError(interaction, new Error('Member not found'), CONFIG.MESSAGES.ERRORS.USER_NOT_FOUND);
             }
 
             // Dates
@@ -74,7 +74,7 @@ module.exports = {
             await interaction.reply({ embeds: [embed] });
 
         } catch (error) {
-            await handleError(interaction, error);
+            await handleInteractionError(interaction, error);
         }
     },
 };

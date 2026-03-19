@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const baseEmbed = require('../../utils/generators/baseEmbed');
-const { searchMedia, getMediaById } = require('../../utils/services/anilistService');
+const { searchMedia, getMediaById, formatMediaTitle } = require('../../utils/services/anilistService');
 const { createMediaResponse } = require('../../utils/generators/mediaResponse');
 const logger = require('../../utils/core/logger');
 
@@ -32,28 +32,26 @@ module.exports = {
         const type = interaction.options.getString('type') || 'ANIME';
         const quick = interaction.options.getBoolean('quick') ?? false;
 
+        // Start premium feedback early
+        const LoadingManager = require('../../utils/ui/LoadingManager');
+        const loader = new LoadingManager(interaction);
+        await loader.startProgress('Searching the Archives...', 3); // 3s for snappier feel
+
         try {
             const results = await searchMedia(query, type);
 
             if (!results || results.length === 0) {
                 const embed = baseEmbed()
                     .setDescription(`📖 **No Matches Found**\n\nI have searched the shelves thoroughly, but I cannot find a record for "**${query}**" in the ${type.toLowerCase()} section.`)
-                    .setColor('#FF0000'); // Red for error/missing
-                return await interaction.editReply({ embeds: [embed] });
+                    .setColor('#FF0000');
+                
+                return await loader.stop({ embeds: [embed] });
             }
 
             // Exactly one result or quick search mode: Show the first one immediately
             if (results.length === 1 || quick) {
                 const media = await getMediaById(results[0].id);
-
-                // UX: Premium Retrieval Animation
-                const LoadingManager = require('../../utils/ui/LoadingManager');
-                const loader = new LoadingManager(interaction);
-                await loader.startProgress('Retrieving Library Record...', 5); // ~5s
-
-                // Wait for async response
                 const response = await createMediaResponse(media, interaction.user.id, interaction.guildId);
-                // MERGED DELIVERY: 100% + Search Card in one call
                 return await loader.stop(response);
             }
 
@@ -64,7 +62,7 @@ module.exports = {
                 .addOptions(
                     results.slice(0, 10).map(media =>
                         new StringSelectMenuOptionBuilder()
-                            .setLabel((media.title.english || media.title.romaji).slice(0, 100))
+                            .setLabel(formatMediaTitle(media.title).slice(0, 100))
                             .setDescription(`${media.format || 'Unknown'} • ${media.startDate?.year || '????'}`)
                             .setValue(media.id.toString())
                     )
@@ -75,14 +73,20 @@ module.exports = {
                 .setTitle(`Search Results: "${query}"`)
                 .setDescription('The index returned multiple matches. Which specific volume are you requesting?');
 
-            await interaction.editReply({ embeds: [embed], components: [row] });
+            return await loader.stop({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            logger.error('Search Command Error:', error, 'SearchCommand');
+            logger.error(`Search Command Failure: query="${query}" type="${type}"`, error, 'SearchCommand');
+            
             const embed = baseEmbed()
                 .setDescription('Pardon the intrusion, but the archives seem temporarily inaccessible. Please try again shortly.')
                 .setColor('#FF0000');
-            await interaction.editReply({ embeds: [embed] });
+            
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+            } else {
+                await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+            }
         }
     },
 };

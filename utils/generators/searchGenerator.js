@@ -16,7 +16,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    const tokens = generateColorTokens(media.coverImage?.color || userColor);
+    const tokens = generateColorTokens(media?.coverImage?.color || userColor);
     
     // --- 1. THE CANVAS (GLOBAL EDGE) ---
     ctx.save(); // Protect global state
@@ -77,10 +77,13 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     const pX = 80;
     const pY = 60; // Elevated for vertical balance
 
-    const { title: cleanTitle, tags: metadataTags } = parseMetadata(media.title.english || media.title.romaji);
+    const rawTitle = media?.title?.english || media?.title?.romaji || media?.title?.native || 'Unknown Title';
+    const { title: cleanTitle, tags: metadataTags } = parseMetadata(rawTitle);
 
     try {
-        const cImg = await loadImage(media.coverImage?.extraLarge || media.coverImage?.large);
+        const coverUrl = media?.coverImage?.extraLarge || media?.coverImage?.large;
+        if (coverUrl) {
+            const cImg = await loadImage(coverUrl);
         ctx.save();
         
         // Poster Shadow
@@ -143,6 +146,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         ctx.lineWidth = 3;
         ctx.stroke();
         ctx.restore();
+        }
     } catch (e) { }
 
     // --- 4. THE GRID (SMART POSITIONING ENGINE) ---
@@ -161,9 +165,9 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.restore();
 
     // B. Metadata HUD (V8.6 Media-Aware Architecture)
-    const isManga = media.type === 'MANGA';
-    const format = (media.format || (isManga ? 'MANGA' : 'TV')).replace(/_/g, ' ');
-    const year = media.seasonYear || media.startDate?.year || 'TBA';
+    const isManga = media?.type === 'MANGA';
+    const format = (media?.format || (isManga ? 'MANGA' : 'TV')).replace(/_/g, ' ');
+    const year = media?.seasonYear || media?.startDate?.year || 'TBA';
     
     let baseMeta = '';
     let extraCount = 0;
@@ -364,7 +368,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     }
 
     // --- Status Pod (Independent) ---
-    const statusRaw = media.status || 'TBA';
+    const statusRaw = media?.status || 'TBA';
     const statusClean = statusRaw.replace(/_/g, ' ').toUpperCase();
     
     // Dynamic Status Color Map
@@ -402,7 +406,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
 
     // D. SYNOPSIS ZONE (V9.6: High Precision Tyopgraphy)
     ctx.letterSpacing = '0px'; // CRITICAL: Reset tracking to avoid Title/HUD bleeding
-    let descRaw = (media.description || 'No database summary.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    let descRaw = (media?.description || 'No database summary.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     
     // Phase 1: word-limit/sentence truncation
     const targetLimit = 50;

@@ -110,7 +110,7 @@ module.exports = {
         // Provide immediate feedback with a beautiful animated progress bar
         const LoadingManager = require('../../utils/ui/LoadingManager');
         const loader = new LoadingManager(interaction);
-        await loader.startProgress('Materializing Profile...', 6); // ~6 seconds expected time
+        loader.startProgress('Materializing Profile...', 6); // No await: allow Canvas to start immediately
 
         const buffer = await generateProfileCard(targetUser, userData, favorites, backgroundUrl, color, displayName);
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.png' });

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
-const { handleError } = require('../../utils/handlers/errorHandler');
+const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
 
 module.exports = {
@@ -35,7 +35,7 @@ module.exports = {
             await interaction.editReply({ embeds: [successEmbed] });
 
         } catch (error) {
-            await handleError(interaction, error);
+            await handleCommandError(interaction, error, 'purge');
         }
     },
 };

@@ -269,7 +269,7 @@ module.exports = {
 
                         const LoadingManager = require('../../utils/ui/LoadingManager');
                         const loader = new LoadingManager(interaction);
-                        await loader.startThemedSteps('BINGO', 5, 1200);
+                        loader.startThemedSteps('BINGO', 5, 1200);
 
                         const result = await createUserBingo(interaction.user.id, interaction.guild.id, title, type, size, mode);
                         await loader.stop();
@@ -302,7 +302,7 @@ module.exports = {
             await interaction.deferReply();
             const LoadingManager = require('../../utils/ui/LoadingManager');
             const loader = new LoadingManager(interaction);
-            await loader.startProgress('Sketching Bingo Card...', 8); // Increased to 8s for better pacing
+            loader.startProgress('Sketching Bingo Card...', 8);
             
             const targetUser = interaction.options.getUser('user') || interaction.user;
             const cardIdStr = interaction.options.getString('card');
@@ -583,7 +583,7 @@ module.exports = {
                 else if (i.customId === 'bingo_sync') {
                     const LoadingManager = require('../../utils/ui/LoadingManager');
                     const loader = new LoadingManager(i);
-                    await loader.startProgress('Synchronizing Archives...', 10);
+                    loader.startProgress('Synchronizing Archives...', 10);
                     
                     const res = await syncBingoEntriesFromAnilist(targetCardId, interaction.user.id, interaction.guild.id);
                     await loader.stop();

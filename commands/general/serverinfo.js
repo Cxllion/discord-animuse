@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 const CONFIG = require('../../utils/config');
-const { handleError } = require('../../utils/handlers/errorHandler');
+const { handleInteractionError } = require('../../utils/core/errorHandler');
 const moment = require('moment');
 
 module.exports = {
@@ -69,7 +69,7 @@ module.exports = {
             await interaction.reply({ embeds: [embed] });
 
         } catch (error) {
-            await handleError(interaction, error);
+            await handleInteractionError(interaction, error);
         }
     },
 };

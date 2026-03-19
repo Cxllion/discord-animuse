@@ -200,6 +200,29 @@ const handleCommandError = async (interaction, error, commandName) => {
     }
 };
 
+/**
+ * General Error Handler for Interactions (Buttons, Selects, Modals)
+ * Similar to handleCommandError but for non-command interactions
+ * @param {Interaction} interaction 
+ * @param {Error} error 
+ * @param {string} customMessage Optional custom message
+ */
+const handleInteractionError = async (interaction, error, customMessage = null) => {
+    logger.error('Interaction Error:', error, 'ErrorHandler');
+
+    const embed = createGeneralErrorEmbed(customMessage || 'An error occurred while processing this interaction.');
+
+    try {
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        } else {
+            await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        }
+    } catch (e) {
+        logger.error('Failed to send interaction error message:', e, 'ErrorHandler');
+    }
+};
+
 module.exports = {
     createErrorEmbed,
     createCooldownEmbed,
@@ -209,5 +232,6 @@ module.exports = {
     createGeneralErrorEmbed,
     createNotFoundEmbed,
     handleCommandError,
+    handleInteractionError,
     COLORS
 };

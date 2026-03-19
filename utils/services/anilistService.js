@@ -75,6 +75,7 @@ const searchMedia = async (search, type = 'ANIME') => {
                 title {
                     romaji
                     english
+                    native
                 }
                 siteUrl
                 format
@@ -84,6 +85,7 @@ const searchMedia = async (search, type = 'ANIME') => {
     }
     `;
     const data = await queryAnilist(query, { search, type });
+    if (!data || !data.Page || !data.Page.media) return [];
     const results = data.Page.media;
 
     searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
@@ -111,6 +113,7 @@ const getMediaById = async (id) => {
             title {
                 romaji
                 english
+                native
             }
             coverImage {
                 extraLarge
@@ -398,6 +401,11 @@ const flushAniListCache = () => {
     logger.info('AniList Data Caches have been flushed. ♡', 'AniList');
 };
 
+const formatMediaTitle = (title) => {
+    if (!title) return 'Unknown Title';
+    return title.english || title.romaji || title.native || 'Unknown Title';
+};
+
 module.exports = {
     anilistClient,
     queryAnilist,
@@ -410,6 +418,7 @@ module.exports = {
     getUserStats,
     getAniListProfile,
     getTrendingAnime,
-    flushAniListCache
+    flushAniListCache,
+    formatMediaTitle
 };
 

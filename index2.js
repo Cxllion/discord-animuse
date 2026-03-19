@@ -1,79 +1,62 @@
+const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 require('dotenv').config();
-
-// ============================================
-// TEST BOT INSTANCE
-// Clear module cache and override CLIENT_ID BEFORE imports
-// This ensures command deployer uses test bot ID
-// ============================================
-
-// Clear command deployer from cache if it exists
-const deployerPath = require.resolve('./utils/core/commandDeployer');
-if (require.cache[deployerPath]) {
-    delete require.cache[deployerPath];
-}
-
-// Override CLIENT_ID and DISCORD_TOKEN before any imports
-process.env.CLIENT_ID = process.env.TEST_CLIENT_ID;
-process.env.DISCORD_TOKEN = process.env.TEST_DISCORD_TOKEN;
-
-// Enable command deployment for test bot (so commands appear)
-process.env.DEPLOY_ON_START = 'true';
-
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/processHandlers');
 const { initializeBot } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
+const http = require('http');
+
+// ==========================================
+// TEST BOT INSTANCE (INDEX2.JS)
+// ==========================================
 
 // Setup Process Safety
 setupProcessHandlers();
 
-// Load Custom Custom Fonts (for Render consistency)
+// Load Custom Custom Fonts
 const { loadCustomFonts } = require('./utils/core/fonts');
 loadCustomFonts();
 
-// Validate Required Environment Variables (TEST versions)
-const requiredEnvVars = ['TEST_DISCORD_TOKEN', 'TEST_CLIENT_ID'];
-const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+// Override credentials for test bot
+process.env.TEST_MODE = 'true';
+process.env.CLIENT_ID = process.env.TEST_CLIENT_ID;
+process.env.DISCORD_TOKEN = process.env.TEST_DISCORD_TOKEN;
 
-if (missingVars.length > 0) {
-    logger.error(`Missing required TEST environment variables: ${missingVars.join(', ')}`, null, 'TestBot-Startup');
-    logger.error('Please add TEST_DISCORD_TOKEN and TEST_CLIENT_ID to your .env file.', null, 'TestBot-Startup');
-    logger.info('These should be credentials for a separate test bot instance.', 'TestBot-Startup');
-    process.exit(1);
-}
-
-// Log test mode
-logger.info('🧪 Starting in TEST MODE with test bot credentials', 'TestBot-Startup');
-logger.info(`Bot will use TEST_CLIENT_ID: ${process.env.TEST_CLIENT_ID}`, 'TestBot-Startup');
-
-// Initialize Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers, // For member events
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildPresences
     ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
 client.commands = new Collection();
 client.isSystemsGo = false;
-client.isTestBot = true; // Mark as test bot instance for restriction logic
+client.isTestBot = true;
 
 // Setup Client Safety
 setupClientHandlers(client);
 
-// Graceful Shutdown Handler
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM received, gracefully shutting down TEST bot...', 'TestBot-System');
-    client.destroy();
-    process.exit(0);
-});
+// Basic HTTP server for satisfying platform health checks
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.write('Animuse Test Library: ONLINE');
+    res.end();
+}).listen(port);
 
-// Start Bot with TEST credentials
-initializeBot(client).then(() => {
-    client.login(process.env.TEST_DISCORD_TOKEN);
-}).catch(err => {
-    logger.error('Critical Initialization Failure (TEST BOT):', err, 'TestBot-Startup');
-    process.exit(1);
-});
+(async () => {
+    try {
+        logger.info(`Starting Test Environment (Port ${port})...`, 'System');
+        
+        await initializeBot(client);
+        
+        await client.login(process.env.DISCORD_TOKEN);
+    } catch (error) {
+        logger.error('Startup Critical Failure:', error, 'System');
+        process.exit(1);
+    }
+})();

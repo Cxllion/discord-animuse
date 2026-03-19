@@ -54,8 +54,9 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
             .setThumbnail(thumbnail)
             .setFooter({ text: footerText });
 
+        const nonce = Date.now().toString().slice(-4);
         const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('boutique_view_menu')
+            .setCustomId(`boutique_view_menu_${nonce}`)
             .setPlaceholder('Choose a self-role category...')
             .addOptions(filteredCats.map(cat => {
                 let emoji = '📁';
@@ -108,6 +109,17 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
         const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
 
         const rolesInCat = serverRoles.filter(sr => sr.category_id === cat.id);
+        
+        // Sort rolesInCat by their actual position in the server (top to bottom)
+        const guildRoles = member?.guild?.roles?.cache;
+        if (guildRoles) {
+            rolesInCat.sort((a, b) => {
+                const roleA = guildRoles.get(a.role_id);
+                const roleB = guildRoles.get(b.role_id);
+                return (roleB?.position || 0) - (roleA?.position || 0); // Higher position first (top of list)
+            });
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`◈ ${categoryName}`)
             .setColor('#2F3136')
@@ -169,9 +181,10 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                     };
                 });
 
+                const nonce = Date.now().toString().slice(-4);
                 rows.push(new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
-                        .setCustomId(`boutique_select_family_${categoryName}`)
+                        .setCustomId(`boutique_select_family_${categoryName}_${nonce}`)
                         .setPlaceholder('◈ Choose a Color Family...')
                         .addOptions(familyOptions)
                 ));
@@ -186,9 +199,10 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                     });
 
                     if (specificFamilyRoles.length > 0) {
+                        const nonce = Date.now().toString().slice(-4);
                         rows.push(new ActionRowBuilder().addComponents(
                             new StringSelectMenuBuilder()
-                                .setCustomId(`boutique_toggle_${categoryName}_${selectedFamily}`)
+                                .setCustomId(`boutique_toggle_${categoryName}_${selectedFamily}_${nonce}`)
                                 .setPlaceholder(`◈ Select a shade from ${selectedFamily}...`)
                                 .addOptions(specificFamilyRoles.map(sr => {
                                     const role = member?.guild.roles.cache.get(sr.role_id);
@@ -246,9 +260,10 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                     };
                 }).slice(0, 25);
 
+                const nonce = Date.now().toString().slice(-4);
                 rows.push(new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
-                        .setCustomId(`boutique_toggle_${categoryName}`)
+                        .setCustomId(`boutique_toggle_${categoryName}_${nonce}`)
                         .setPlaceholder('◈ Browse entries...')
                         .addOptions(options)
                 ));
@@ -299,8 +314,8 @@ const handleBoutiqueInteraction = async (interaction) => {
     }
 
     // 2. Navigation: View Category (Button or Menu)
-    if (customId === 'boutique_view_menu' || customId.startsWith('boutique_view_')) {
-        const catName = customId === 'boutique_view_menu' ? interaction.values[0] : customId.replace('boutique_view_', '');
+    if (customId.startsWith('boutique_view_menu') || customId.startsWith('boutique_view_')) {
+        const catName = customId.startsWith('boutique_view_menu') ? interaction.values[0] : customId.replace('boutique_view_', '');
         const payload = await renderBoutique(guild.id, catName, member);
         return await respond(payload);
     }
