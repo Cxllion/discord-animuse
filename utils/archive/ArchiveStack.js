@@ -1,0 +1,126 @@
+function resolveNightStack(game) {
+    const alivePlayersList = game.getAlivePlayers();
+
+    // Trigger test bots
+    const { handleBotNightActions } = require('./ArchiveBots');
+    handleBotNightActions(game);
+
+    // Collect all actions from players
+    const actions = [];
+    for (const p of alivePlayersList) {
+        if (p.nightActionTarget && p.role) {
+            let target = game.players.get(p.nightActionTarget);
+            if (p.nightActionTarget === 'ignite') target = { id: 'ignite', name: 'Ignition Framework', isProtected: false };
+            if (target) {
+                actions.push({
+                    source: p,
+                    target: target,
+                    role: p.role,
+                    priority: p.role.priority
+                });
+            }
+        }
+    }
+
+    // Sort actions by priority (1 to 5)
+    // 1: Redaction, 2: Binding, 3: Erasure, 4: Rewrite, 5: Reading
+    actions.sort((a, b) => a.priority - b.priority);
+
+    const deaths = [];
+    const readings = [];
+
+    // Process actions
+    for (const act of actions) {
+        const { source, target, role, priority } = act;
+        
+        // Record all visits for history
+        if (target.id !== 'ignite') {
+            game.visitHistory.push({ night: game.dayCount, sourceId: source.id, targetId: target.id });
+        }
+        
+        // Skip if source was roleblocked earlier in the stack
+        if (source.isRoleblocked) continue;
+        if (!source.alive) continue;
+
+        switch (priority) {
+            case 1: // Redactions (Censor)
+                target.isRoleblocked = true;
+                break;
+                
+            case 2: // Bindings (Conservator)
+                target.isProtected = true;
+                break;
+                
+            case 3: // Erasures (Shredder, Ghostwriter, Bookburner)
+                if (role.name === 'The Bookburner') {
+                    if (target.id === 'ignite') {
+                        for (const op of alivePlayersList) {
+                            if (op.isDoused && op.id !== source.id) {
+                                if (!deaths.some(d => d.target.id === op.id)) deaths.push({ target: op, source: source });
+                            }
+                        }
+                    } else {
+                        target.isDoused = true;
+                    }
+                } else {
+                    if (!target.isProtected) {
+                        if (!deaths.some(d => d.target.id === target.id)) {
+                            deaths.push({ target: target, source: source });
+                        }
+                        if (role.name === 'The Ghostwriter' && target.role?.faction === 'Archivists') {
+                            source.guilt = true;
+                        }
+                    }
+                }
+                break;
+                
+            case 4: // Rewrites (Corruptor)
+                if (!deaths.find(d => d.target.id === target.id)) {
+                    // Convert target's faction if applicable
+                    if (target.role.faction === 'Archivists') {
+                        target.role.faction = 'Revisions';
+                        readings.push({ viewerId: target.id, message: `🩸 **You have been corrupted.** You are now aligned with the **Revisions** (Archive). You win with them.` });
+                        
+                        // Add to secret thread if it exists
+                        if (game.archiveThreadId && !target.isBot) {
+                            try {
+                                const mThread = game.thread.guild.channels.cache.get(game.archiveThreadId);
+                                if (mThread) mThread.members.add(target.id);
+                            } catch(e) {}
+                        }
+                    }
+                }
+                break;
+                
+            case 5: // Readings (Indexer, Scribe)
+                if (role.name === 'The Indexer') {
+                    // The Plagiarist reads as Archivist
+                    let readFaction = target.role.faction;
+                    if (target.role.name === 'The Plagiarist') readFaction = 'Archivists';
+                    readings.push({ viewerId: source.id, message: `Your reading on ${target.name} reveals they are aligned with the ${readFaction}.` });
+                }
+                if (role.name === 'The Scribe') {
+                    // Scribe checks dead bodies for visitors across all previous nights
+                    const visitors = game.visitHistory.filter(h => h.targetId === target.id && h.sourceId !== source.id);
+                    if (visitors.length > 0) {
+                        const v = visitors[Math.floor(Math.random() * visitors.length)];
+                        const visitorName = game.players.get(v.sourceId)?.name || "Unknown";
+                        readings.push({ viewerId: source.id, message: `Your scribing of ${target.name}'s former self revealed traces of ${visitorName} (from night ${v.night}).\n\n⚠️ **You are now Ink-Bound and cannot vote for them.**` });
+                        source.inkBoundTarget = v.sourceId;
+                    } else {
+                        readings.push({ viewerId: source.id, message: `Your scribing of ${target.name} found no discernable traces across history.` });
+                    }
+                }
+                break;
+        }
+    }
+
+    // Apply deaths
+    for (const d of deaths) {
+        d.target.die();
+    }
+
+    return { deaths, readings };
+}
+
+module.exports = { resolveNightStack };

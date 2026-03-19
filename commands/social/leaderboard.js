@@ -11,6 +11,10 @@ module.exports = {
 
     async execute(interaction) {
         await interaction.deferReply();
+        const LoadingManager = require('../../utils/ui/LoadingManager');
+        const loader = new LoadingManager(interaction);
+        await loader.startProgress('Ranking High Council...', 5); // ~5s
+
         const guildId = interaction.guild.id;
 
         // 1. Fetch Top 10 Data
@@ -119,6 +123,7 @@ module.exports = {
         const buffer = await generateLeaderboard(interaction.user, challengerData, topUsers, bgUrl, color, challengerName, challengerAvatarUrl);
         const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard.png' });
 
-        await interaction.editReply({ files: [attachment] });
+        // MERGED DELIVERY: 100% + Leaderboard in one call
+        await loader.stop({ files: [attachment] });
     },
 };

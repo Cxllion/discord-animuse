@@ -13,26 +13,35 @@ const dashboardView = async (interaction) => {
 
     // Build Select Menu options from Registry
     const options = [];
-    let desc = '';
+    const categoryGroups = {
+        'Bot Config': ['general', 'levels'],
+        'Management': ['members', 'roles', 'emojis', 'bans', 'invites'],
+        'Infrastructure': ['channels', 'security', 'audit', 'server']
+    };
 
-    for (const [key, data] of Object.entries(registry)) {
-        if (key === 'dashboard') continue; // Don't list dashboard itself
+    let desc = 'Welcome, Manager. Access the library wings below to audit or configure your server.\n\n';
 
-        // Add to description
-        desc += `**${data.emoji} ${data.label.replace(data.emoji, '').trim()}**\n`;
+    for (const [group, keys] of Object.entries(categoryGroups)) {
+        desc += `## ◈ ${group}\n`;
+        for (const key of keys) {
+            const data = registry[key];
+            if (!data) continue;
+            
+            const cleanLabel = data.label.replace(data.emoji, '').trim();
+            desc += `${data.emoji} **\`${cleanLabel}\`**\n`;
 
-        options.push(
-            new StringSelectMenuOptionBuilder()
-                .setLabel(data.label.replace(data.emoji, '').trim()) // Label without emoji for clean look in dropdown? Or with?
-                // Actually Discord allows emoji set separately.
-                .setLabel(data.label.replace(data.emoji, '').trim())
-                .setValue(key)
-                .setEmoji(data.emoji)
-                .setDescription(`Manage ${key} settings.`)
-        );
+            options.push(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel(cleanLabel)
+                    .setValue(key)
+                    .setEmoji(data.emoji)
+                    .setDescription(`Manage ${cleanLabel} settings.`)
+            );
+        }
+        desc += '\n';
     }
 
-    embed.setDescription(desc || 'No categories available.');
+    embed.setDescription(desc);
 
     const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()

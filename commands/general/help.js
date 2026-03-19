@@ -14,7 +14,7 @@ module.exports = {
             .addFields(
                 { name: '📚 General Wing', value: 'Basic bot info, status, and utility.', inline: true },
                 { name: '🛡️ Council Wing', value: 'Moderation and server architecture (Admin).', inline: true },
-                { name: '🎨 Aesthetic Wing', value: 'Profile personalization and boutique.', inline: true },
+                { name: '🎨 Aesthetic Wing', value: 'Profile personalization and self-roles.', inline: true },
                 { name: '🅰️ Media Wing', value: 'Anime tracking and Bingo systems.', inline: true }
             )
             .setColor('#A78BFA')

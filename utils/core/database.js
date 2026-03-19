@@ -50,7 +50,9 @@ const fetchConfig = async (guildId) => {
             mod_role_id: null,
             mute_role_id: null,
             booster_role_id: null,
-            premium_role_id: null
+            premium_role_id: null,
+            boutique_thumbnail: null,
+            boutique_footer: null
         };
     }
 
@@ -153,6 +155,8 @@ const initializeDatabase = async () => {
             // Boutique Persistence
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_message_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_thumbnail text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_footer text;`);
 
             // Migration: Transfer data from redundant keys if they exist and target is null
             await client.query(`

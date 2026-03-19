@@ -5,6 +5,7 @@ const { updateUserColor, updateUserTitle, updateUserBackground, getOwnedTitles, 
 const { generateProfileCard, getDominantColor } = require('../generators/profileGenerator');
 const { getUserRank, getLevelProgress } = require('../services/leveling');
 const { getAniListProfile } = require('../services/anilistService');
+const { normalizeColor } = require('../core/visualUtils');
 const logger = require('../core/logger');
 
 const BASIC_COLORS = {
@@ -81,12 +82,21 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
         const level = rankData ? parseInt(rankData.level) : 0;
         const progress = getLevelProgress(xp, level);
 
-        let knowledgeRank = 'Novice';
-        if (level >= 5) knowledgeRank = 'Apprentice';
-        if (level >= 10) knowledgeRank = 'Scholar';
-        if (level >= 20) knowledgeRank = 'Sage';
-        if (level >= 30) knowledgeRank = 'Archivist';
-        if (level >= 50) knowledgeRank = 'Muse';
+        // Calculate Muse Rank (Dynamic based on bound level roles)
+        const { getLevelRoles } = require('../core/database');
+        const levelRoles = await getLevelRoles(guildId);
+        
+        // Find highest earned role
+        const earnedRoles = levelRoles.filter(lr => lr.level <= level);
+        let knowledgeRank = 'Patron'; // Default
+        
+        if (earnedRoles.length > 0) {
+            const highestRole = earnedRoles[earnedRoles.length - 1];
+            const roleObj = interaction.guild.roles.cache.get(highestRole.role_id);
+            let name = roleObj ? roleObj.name : `Level ${highestRole.level} Muse`;
+            // Remove number prefix (e.g., "10 | Scribe Muse" -> "Scribe Muse")
+            knowledgeRank = name.replace(/^\d+\s*\|\s*/, '');
+        }
 
         // AniList Data (Only if needed)
         let anilistStats = { completed: 0, days: 0, meanScore: 0 };
@@ -116,9 +126,19 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
             guildAvatarUrl: interaction.member.displayAvatarURL({ extension: 'png' })
         };
 
-        const buffer = await generateProfileCard(interaction.user, userData, favorites, bg, color, interaction.member.displayName);
-        const attachment = new AttachmentBuilder(buffer, { name: 'preview.png' });
+        const LoadingManager = require('../ui/LoadingManager');
+        const loader = new LoadingManager(interaction);
+        await loader.startSteps([
+            'Updating your archival record...',
+            'Recalculating rank metadata...',
+            'Materializing new profile design...',
+            'Applying fresh ink to the canvas...'
+        ], 1000);
 
+        const buffer = await generateProfileCard(interaction.user, userData, favorites, bg, color, interaction.member.displayName);
+        loader.stop();
+
+        const attachment = new AttachmentBuilder(buffer, { name: 'preview.png' });
         const msgs = [
             "✨ Looking sharp! Here is your updated design.",
             "🎨 A fresh coat of paint! How does it look?",
@@ -553,14 +573,17 @@ const handleProfileInteraction = async (interaction) => {
 const handleProfileModals = async (interaction) => {
     try {
         if (interaction.customId === 'profile_modal_hex') {
-            const hex = interaction.fields.getTextInputValue('hex');
+            let hex = interaction.fields.getTextInputValue('hex');
+            if (!hex.startsWith('#')) hex = '#' + hex;
             if (!/^#[0-9A-F]{6}$/i.test(hex) && !/^#[0-9A-F]{3}$/i.test(hex)) {
                 return interaction.reply({ content: '❌ Invalid Hex Code.', flags: MessageFlags.Ephemeral });
             }
-            await updateUserColor(interaction.user.id, interaction.guild.id, hex);
+            
+            const finalColor = normalizeColor(hex);
+            await updateUserColor(interaction.user.id, interaction.guild.id, finalColor);
 
             await safeDefer(interaction);
-            await sendProfilePreview(interaction, undefined, hex);
+            await sendProfilePreview(interaction, undefined, finalColor);
             await showProfileDashboard(interaction, true);
             return;
         }

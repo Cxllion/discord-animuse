@@ -11,13 +11,18 @@ const withTimeout = (promise, ms, timeoutResult = null) => {
     ]);
 };
 
-// Unified Progress Bar Helper
+// Unified Progress Bar Helper (Premium Material Alignment)
 const renderProgressBar = (progress, total) => {
     const percent = Math.min(Math.round((progress / total) * 100), 100);
-    const size = 15;
+    const size = 12; // Shorter bars often look better in Discord
     const filled = Math.min(Math.max(Math.round((percent / 100) * size), 0), size);
-    const bar = '▓'.repeat(filled) + '░'.repeat(size - filled);
-    return `\`${bar}\` **${percent}%** (${progress}/${total})`;
+    const bar = '▰'.repeat(filled) + '▱'.repeat(size - filled);
+    
+    // Dynamic Frame based on current time
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const frame = frames[Math.floor(Date.now() / 800) % 10];
+    
+    return `${frame} \`${bar}\` **${percent}%** (\`${progress}/${total}\`)`;
 };
 
 const CATEGORY_ORDER = [

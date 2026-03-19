@@ -1,30 +1,31 @@
 const generalView = require('./views/general');
 const levelsView = require('./views/levels');
-const mediaView = require('./views/media'); // Keep for direct access if needed, or deprecate
 const dashboardView = require('./views/dashboard');
+const genericView = require('./views/generic');
+const { EMOJIS } = require('../../config/emojiConfig');
 
 // Registry of all dashboard categories
 // Keys matching Autocomplete options
 const registry = {
     // Main
-    'dashboard': { label: '🏠 Dashboard', handler: dashboardView, emoji: '🏠' },
+    'dashboard': { label: `${EMOJIS.DASHBOARD} Dashboard`, handler: dashboardView, emoji: EMOJIS.DASHBOARD },
 
     // Bot Config
-    'general': { label: '📖 General', handler: generalView, emoji: '📖' },
-    'levels': { label: '📈 Levels', handler: levelsView, emoji: '📈' },
+    'general': { label: `${EMOJIS.GENERAL} General`, handler: generalView, emoji: EMOJIS.GENERAL },
+    'levels': { label: `${EMOJIS.LEVELS} Levels`, handler: levelsView, emoji: EMOJIS.LEVELS },
 
-    // Legacy / Specific
-    // 'media': { label: '📸 Media', handler: mediaView, emoji: '📸' }, // Hidden in favor of Channels
+    // Admin / Management
+    'members': { label: `${EMOJIS.MEMBER_MANAGEMENT} Members`, handler: genericView, emoji: EMOJIS.MEMBER_MANAGEMENT },
+    'roles': { label: `${EMOJIS.ROLES} Roles`, handler: genericView, emoji: EMOJIS.ROLES },
+    'emojis': { label: `${EMOJIS.EMOJIS} Emojis`, handler: genericView, emoji: EMOJIS.EMOJIS },
+    'bans': { label: `${EMOJIS.ADMIN} Bans`, handler: genericView, emoji: EMOJIS.ADMIN },
+    'invites': { label: `${EMOJIS.INVITES} Invites`, handler: genericView, emoji: EMOJIS.INVITES },
 
-    // Admin / Management (Placeholders for Future)
-    // 'roles': { label: '🎭 Roles', emoji: '🎭' }, // Moved to Parent Engine
-    'emojis': { label: '😀 Emojis', emoji: '😀' },
-    'bans': { label: '🔨 Bans', emoji: '🔨' },
-    'invites': { label: '📨 Invites', emoji: '📨' },
-
-    // System
-    'audit': { label: '🛡️ Audit Logs', emoji: '🛡️' },
-    'server': { label: 'ℹ️ Server Info', emoji: 'ℹ️' },
+    // Infrastructure
+    'channels': { label: `${EMOJIS.CHANNELS} Channels`, handler: genericView, emoji: EMOJIS.CHANNELS },
+    'security': { label: `${EMOJIS.SECURITY} Security`, handler: genericView, emoji: EMOJIS.SECURITY },
+    'audit': { label: `${EMOJIS.AUDIT} Audit Logs`, handler: genericView, emoji: EMOJIS.AUDIT },
+    'server': { label: `${EMOJIS.GUILD_INFO} Server Info`, handler: genericView, emoji: EMOJIS.GUILD_INFO },
 };
 
 /**

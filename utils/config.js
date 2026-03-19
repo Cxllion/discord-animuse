@@ -1,4 +1,4 @@
-const { Colors } = require('discord.js');
+const { EMOJIS } = require('./config/emojiConfig');
 
 const CONFIG = {
     // Brand Identity
@@ -13,16 +13,8 @@ const CONFIG = {
         INVISIBLE: '#2B2D31' // Discord Dark Mode Blend
     },
 
-    // Standardized Emojis (Fallbacks included)
-    EMOJIS: {
-        SUCCESS: '✅',
-        ERROR: '❌',
-        WARNING: '⚠️',
-        INFO: 'ℹ️',
-        LOADING: '⏳',
-        ARROW: '➜',
-        DOT: '•'
-    },
+    // Standardized Emojis (Imported from emojiConfig)
+    EMOJIS: EMOJIS,
 
     // System Messages
     MESSAGES: {

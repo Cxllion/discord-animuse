@@ -8,6 +8,7 @@ const { handleChannelDashboardInteraction } = require('./channelDashboard');
 const { handleMuseBureauInteraction } = require('./museBureau');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
 const { handleDashboardInteraction } = require('./roleDashboard');
+const { handleArchiveInteraction } = require('./archiveHandler');
 const logger = require('../core/logger');
 const { MessageFlags, EmbedBuilder } = require('discord.js');
 
@@ -99,7 +100,13 @@ const routeInteraction = async (interaction) => {
             return true;
         }
 
-        // 8. Help Menu
+        // 8. Archive System
+        if (customId.startsWith('archive_')) {
+            await handleArchiveInteraction(interaction);
+            return true;
+        }
+
+        // 9. Help Menu
         if (customId === 'help_category_select') {
             const choice = interaction.values[0];
             const helpEmbed = new EmbedBuilder().setColor('#A78BFA');
@@ -126,7 +133,7 @@ const routeInteraction = async (interaction) => {
                 helpEmbed.setTitle('🎨 Aesthetic Wing')
                     .setDescription(
                         '◈ **/profile**: View/Edit your Identity Card.\n' +
-                        '◈ **/boutique**: Browse the role collections.\n' +
+                        '◈ **/selfrole**: Manage the role collections hub.\n' +
                         '◈ **/leaderboard**: View the top Readers.'
                     );
             } else if (choice === 'help_media') {
@@ -155,9 +162,9 @@ const routeInteraction = async (interaction) => {
                 };
                 
                 if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp(payload);
+                    try { await interaction.followUp(payload); } catch(e) {}
                 } else {
-                    await interaction.reply(payload);
+                    try { await interaction.reply(payload); } catch(e) {}
                 }
             }
         } catch (secondaryError) {

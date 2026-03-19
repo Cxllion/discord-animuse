@@ -31,73 +31,93 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
 
     if (!categoryName) {
         // --- Main Menu ---
-        const title = await getDynamicUserTitle(member);
+        const botAvatar = member?.guild?.members?.me?.user?.displayAvatarURL({ dynamic: true }) || null;
+        const thumbnail = config.boutique_thumbnail || botAvatar;
+        const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
+
         const embed = new EmbedBuilder()
-            .setTitle('◈ The Master Role Boutique')
+            .setTitle('🎭 Self Roles')
             .setDescription(
-                `Welcome, **${title}**.\n\n` +
-                `The Archives have been curated for your convenience. Select a collection below to personalize your appearance within the library.\n\n` +
-                `✦ **Collections Available**:\n` +
-                `◈ *Color Palettes (Premium & Basic)*\n` +
-                `◈ *Identity Markers (Pronouns, Age, Region)*\n` +
-                `◈ *Notification Tethers*`
+                `Personalize your server experience by selecting roles that represent you.\n\n` +
+                `📖 **How to Use**\n` +
+                `1. Select a category from the dropdown below\n` +
+                `2. Choose your preferred roles from the menu\n` +
+                `3. Update your selections anytime you want\n\n` +
+                `🎯 **Available Categories**:\n` +
+                `👤 **\`Pronouns\`** • Express your identity\n` +
+                `🎂 **\`Age Groups\`** • Connect with your peers\n` +
+                `🔔 **\`Notification Roles\`** • Stay updated on what matters\n` +
+                `🎨 **\`Simple Colors\`** • Add a splash of color to your name\n` +
+                `✨ **\`Premium Colors\`** • *Exclusive shades for Premium members*`
             )
-            .setColor('#2F3136') // Dark Minimalist
-            .setFooter({ text: '✦ Muse Archive Curation' });
-        const rows = [];
-        // Category Buttons (Chunked into rows - 3 per row for 2x3 grid)
-        for (let i = 0; i < filteredCats.length; i += 3) {
-            const row = new ActionRowBuilder();
-            filteredCats.slice(i, i + 3).forEach(cat => {
+            .setColor('#2F3136')
+            .setThumbnail(thumbnail)
+            .setFooter({ text: footerText });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('boutique_view_menu')
+            .setPlaceholder('Choose a self-role category...')
+            .addOptions(filteredCats.map(cat => {
                 let emoji = '📁';
                 let label = cat.name;
+                let description = 'Browse entries in this collection.';
 
                 if (cat.name === 'Colors (Premium)') {
-                    emoji = '🎨';
+                    emoji = '✨';
                     label = 'Premium Colors';
+                    description = 'Exclusive shades for Premium members';
                 } else if (cat.name === 'Colors (Basic)') {
                     emoji = '🎨';
-                    label = 'Basic Colors';
+                    label = 'Simple Colors';
+                    description = 'Add a splash of color to your name';
                 } else if (cat.name.includes('Pronouns')) {
-                    emoji = '✨';
+                    emoji = '👤';
                     label = 'Pronouns';
+                    description = 'Express your identity';
                 } else if (cat.name.includes('Age')) {
                     emoji = '🎂';
-                    label = 'Age';
+                    label = 'Age Groups';
+                    description = 'Connect with your peers';
                 } else if (cat.name.includes('Region')) {
                     emoji = '🌍';
                     label = 'Region';
+                    description = 'Where are you from?';
                 } else if (cat.name.includes('Pings')) {
                     emoji = '🔔';
-                    label = 'Pings';
+                    label = 'Notification Roles';
+                    description = 'Stay updated on what matters';
                 }
 
-                row.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`boutique_view_${cat.name}`)
-                        .setLabel(label)
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji(emoji)
-                );
-            });
-            rows.push(row);
-        }
+                return {
+                    label: label,
+                    value: cat.name,
+                    emoji: emoji,
+                    description: description
+                };
+            }));
 
-        return { embeds: [embed], components: rows };
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        return { embeds: [embed], components: [row] };
     } else {
         // --- Category View ---
         const cat = filteredCats.find(c => c.name === categoryName);
         if (!cat) return renderBoutique(guildId); // Fallback to main
 
+        const botAvatar = member?.guild?.members?.me?.user?.displayAvatarURL({ dynamic: true }) || null;
+        const thumbnail = config.boutique_thumbnail || botAvatar;
+        const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
+
         const rolesInCat = serverRoles.filter(sr => sr.category_id === cat.id);
         const embed = new EmbedBuilder()
             .setTitle(`◈ ${categoryName}`)
-            .setColor('#2F3136');
+            .setColor('#2F3136')
+            .setThumbnail(thumbnail)
+            .setFooter({ text: footerText });
 
         const rows = [];
         
         if (rolesInCat.length === 0) {
-            embed.setDescription('This collection is current empty within the Archives.');
+            embed.setDescription('This collection is currently empty within the Archives.');
         } else {
             // --- SPECIAL CASE: Premium Colors (Dynamic Dropdowns + Clean Preview) ---
             if (categoryName === 'Colors (Premium)') {
@@ -112,15 +132,22 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                     const familyRoles = rolesInCat.filter(sr => {
                         const role = member?.guild.roles.cache.get(sr.role_id);
                         return role && familyShades.includes(role.name);
-                    }).map(sr => `<@&${sr.role_id}>`).join(' ');
+                    }).map(sr => `◈ <@&${sr.role_id}>`).join('\n');
 
                     if (familyRoles.length > 0) {
-                        previewText = `✦ **Available ${selectedFamily} Shades**:\n\n◈ ${familyRoles}`;
+                        previewText = `✦ **Available ${selectedFamily} Shades**:\n\n${familyRoles}`;
                     } else {
                         previewText = `✦ **Available ${selectedFamily} Shades**:\n\n◈ None available in this server.`;
                     }
                 } else {
-                    previewText = '✦ Please select a family from the list below to view its palettes.';
+                    const familyList = families.map(f => {
+                        let basicColorInfo = BASIC_COLORS.find(bc => bc.name === f);
+                        let emoji = basicColorInfo ? basicColorInfo.emoji : '🎨';
+                        if (f === 'Monochrome' && !basicColorInfo) emoji = '🔳';
+                        return `${emoji} **\`${f}\`**`;
+                    }).join('\n');
+
+                    previewText = `✦ **Archival Color Families**\n${familyList}\n\n*Please select a family from the list below to view its palettes.*`;
                 }
 
                 embed.setDescription(
@@ -131,8 +158,6 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                 // Row 1: Master Family Dropdown
                 const familyOptions = families.map(familyName => {
                     let basicColorInfo = BASIC_COLORS.find(bc => bc.name === familyName);
-                    
-                    // Fallback for Monochrome which is now split in basic roles
                     let emoji = basicColorInfo ? basicColorInfo.emoji : '🎨';
                     if (familyName === 'Monochrome' && !basicColorInfo) emoji = '🔳';
                     
@@ -140,7 +165,6 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                         label: `${familyName} Collection`,
                         value: familyName,
                         description: `Browse shades in the ${familyName} family`,
-                        default: selectedFamily === familyName,
                         emoji: emoji
                     };
                 });
@@ -198,18 +222,27 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                 rows.push(navRow);
             } else {
                 // --- STANDARD CATEGORY: Clean View ---
-                const previewText = rolesInCat.map(sr => `<@&${sr.role_id}>`).join(' ');
+                let loreHeader = '✦ **Archival Collection**';
+                if (categoryName.includes('Pronouns')) loreHeader = '✦ **Identity Marking**';
+                else if (categoryName.includes('Age')) loreHeader = '✦ **Maturation Records**';
+                else if (categoryName.includes('Region')) loreHeader = '✦ **Geographic Origins**';
+                else if (categoryName.includes('Pings')) loreHeader = '✦ **Notification Tethers**';
+
+                const previewText = rolesInCat.map(sr => `◈ <@&${sr.role_id}>`).join('\n');
                 embed.setDescription(
+                    `${loreHeader}\n` +
                     `Select an item to toggle its status on your profile.\n\n` +
                     `✦ **Available in this Selection**:\n${previewText}`
                 );
 
                 const options = rolesInCat.map(sr => {
                     const role = member?.guild.roles.cache.get(sr.role_id);
+                    const isActive = member?.roles.cache.has(sr.role_id);
                     return {
                         label: role ? role.name : `Unknown Entry (${sr.role_id})`,
                         value: sr.role_id,
-                        description: member?.roles.cache.has(sr.role_id) ? 'Currently Assigned' : 'Select to Acquire'
+                        description: isActive ? 'Currently Active' : 'Select to Acquire',
+                        emoji: isActive ? '✅' : '📥'
                     };
                 }).slice(0, 25);
 
@@ -219,20 +252,15 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                         .setPlaceholder('◈ Browse entries...')
                         .addOptions(options)
                 ));
+
+                rows.push(new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('boutique_home')
+                        .setLabel('Back to Main Hall')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🏘️')
+                ));
             }
-        }
-
-        // Add Back button ONLY if not already handled by a specialized view (like Premium Colors)
-        const hasNavigation = categoryName === 'Colors (Premium)';
-
-        if (!hasNavigation) {
-            rows.push(new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('boutique_home')
-                    .setLabel('Back to Main Hall')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('🏘️')
-            ));
         }
 
         return { embeds: [embed], components: rows.slice(0, 5) }; // Safety cap
@@ -270,9 +298,9 @@ const handleBoutiqueInteraction = async (interaction) => {
         return await respond(payload);
     }
 
-    // 2. Navigation: View Category
-    if (customId.startsWith('boutique_view_')) {
-        const catName = customId.replace('boutique_view_', '');
+    // 2. Navigation: View Category (Button or Menu)
+    if (customId === 'boutique_view_menu' || customId.startsWith('boutique_view_')) {
+        const catName = customId === 'boutique_view_menu' ? interaction.values[0] : customId.replace('boutique_view_', '');
         const payload = await renderBoutique(guild.id, catName, member);
         return await respond(payload);
     }
@@ -296,44 +324,66 @@ const handleBoutiqueInteraction = async (interaction) => {
             return await interaction.reply({ content: '❌ **Role Error**: This role no longer exists in the server archives.', flags: MessageFlags.Ephemeral });
         }
 
-        const categories = await getRoleCategories(guild.id);
-        const serverRoles = await getServerRoles(guild.id);
-        const cat = categories.find(c => c.name === catName);
-        const isExclusiveCategory = catName.includes('Colors') || catName.includes('Profile');
+        try {
+            const categories = await getRoleCategories(guild.id);
+            const serverRoles = await getServerRoles(guild.id);
+            const cat = categories.find(c => c.name === catName);
 
-        if (catName === 'Colors (Premium)') {
-            const premiumRoleId = config.premium_role_id;
-            if (premiumRoleId && !member.roles.cache.has(premiumRoleId)) {
-                return await interaction.reply({ 
-                    content: `✨ **Seraphic Muse Required**\nThis palette is reserved for high-tier supporters. Unlock it by obtaining the <@&${premiumRoleId}> role.`, 
-                    flags: MessageFlags.Ephemeral 
-                });
+            // Access Control: Premium Colors
+            if (catName === 'Colors (Premium)') {
+                const premiumRoleId = config.premium_role_id;
+                if (premiumRoleId && !member.roles.cache.has(premiumRoleId)) {
+                    return await interaction.reply({ 
+                        content: `✨ **Seraphic Muse Required**\nThis palette is reserved for high-tier supporters. Unlock it by obtaining the <@&${premiumRoleId}> role.`, 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
             }
-        }
 
-        if (member.roles.cache.has(roleId)) {
-            try {
+            const isColorCategory = catName.includes('Colors');
+            const isIdentityCategory = catName.includes('Profile');
+
+            if (member.roles.cache.has(roleId)) {
+                // Remove Role
                 await member.roles.remove(role);
                 const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
                 await interaction.update(payload);
                 return await interaction.followUp({ content: `✅ **Removed**: ${role.name}`, flags: MessageFlags.Ephemeral });
-            } catch (e) {
-                return await interaction.reply({ content: `❌ **Permission Error**: I cannot manage the **${role.name}** role.`, flags: MessageFlags.Ephemeral });
-            }
-        } else {
-            try {
-                if (isExclusiveCategory) {
+            } else {
+                // Add Role (Exclusive Check)
+                if (isColorCategory) {
+                    // Remove ALL color roles (Basic AND Premium)
+                    const colorTargetCats = categories.filter(c => c.name.includes('Colors')).map(c => c.id);
+                    const rolesToRemove = serverRoles
+                        .filter(sr => colorTargetCats.includes(sr.category_id) && member.roles.cache.has(sr.role_id))
+                        .map(sr => sr.role_id);
+                    
+                    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+                } else if (isIdentityCategory) {
+                    // Identity categories are self-exclusive (Pronouns, Age, etc.)
                     const rolesToRemove = serverRoles
                         .filter(sr => sr.category_id === cat.id && member.roles.cache.has(sr.role_id))
                         .map(sr => sr.role_id);
+                    
                     if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
                 }
+
                 await member.roles.add(role);
                 const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
                 await interaction.update(payload);
                 return await interaction.followUp({ content: `✅ **Assigned**: ${role.name}`, flags: MessageFlags.Ephemeral });
-            } catch (e) {
-                return await interaction.reply({ content: `❌ **Permission Error**: I cannot assign the **${role.name}** role.`, flags: MessageFlags.Ephemeral });
+            }
+        } catch (e) {
+            console.error(`[Boutique Error] ${e.message}`);
+            const errorMsg = e.message.includes('Hierarchy') 
+                ? `❌ **Hierarchy Error**: The **${role.name}** role is positioned above my library clearance levels.`
+                : `❌ **Interaction Error**: Librarian was unable to process this request.`;
+            
+            // Determine how to fail gracefully
+            if (interaction.replied || interaction.deferred) {
+                return await interaction.followUp({ content: errorMsg, flags: MessageFlags.Ephemeral });
+            } else {
+                return await interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
             }
         }
     }

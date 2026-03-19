@@ -311,6 +311,12 @@ const getAniListProfile = async (username) => {
                     count
                     meanScore
                     minutesWatched
+                    episodesWatched
+                }
+                manga {
+                    count
+                    chaptersRead
+                    volumesRead
                 }
             }
             favourites {
@@ -326,14 +332,21 @@ const getAniListProfile = async (username) => {
     `;
     try {
         const data = await queryAnilist(query, { username });
-        const stats = data.User.statistics.anime;
+        const anime = data.User.statistics.anime;
+        const manga = data.User.statistics.manga;
         const favs = data.User.favourites.anime.nodes || [];
 
         return {
             stats: {
-                completed: stats.count || 0,
-                meanScore: stats.meanScore || 0,
-                days: (stats.minutesWatched / 1440).toFixed(1)
+                // Anime
+                completed: anime.count || 0,
+                meanScore: anime.meanScore || 0,
+                days: (anime.minutesWatched / 1440).toFixed(1),
+                episodes: anime.episodesWatched || 0,
+                // Manga
+                manga_completed: manga.count || 0,
+                chapters: manga.chaptersRead || 0,
+                volumes: manga.volumesRead || 0
             },
             favorites: favs,
             avatar: data.User.avatar.large
