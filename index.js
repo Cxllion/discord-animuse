@@ -80,6 +80,7 @@ const client = new Client({
 
 client.commands = new Collection();
 client.isSystemsGo = false;
+client.isTestBot = false; // Main instance
 
 // Setup Client Safety
 setupClientHandlers(client);

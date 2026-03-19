@@ -34,7 +34,15 @@ module.exports = {
 
         client.isSystemsGo = true;
 
-        if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
+        try {
+            require('../utils/archive/ArchiveManager').loadState(client);
+        } catch (e) {
+            logger.error('Failed to load archive state:', e);
+        }
+
+        if (client.isTestBot) {
+            logger.info('Test bot detected. Automated background tasks (internal scheduler) are disabled to avoid conflicts.', 'System');
+        } else if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
             // Run scheduler shortly after startup (5 mins)
             // This prevents conflicts with administrative tasks like /deploy which run at startup
             setTimeout(() => {
@@ -52,5 +60,6 @@ module.exports = {
         } else {
             logger.info('Internal Scheduler disabled. Assuming external cron via worker.js', 'System');
         }
+
     },
 };

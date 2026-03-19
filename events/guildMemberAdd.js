@@ -8,7 +8,12 @@ module.exports = {
     async execute(member) {
         const guild = member.guild;
 
+        // --- Test Bot Restriction ---
+        // Skip welcome automated tasks for test bot to avoid duplicate welcomes
+        if (member.client.isTestBot) return;
+
         // 1. Fetch Configuration
+
         const config = await fetchConfig(guild.id);
         if (!config) return;
 

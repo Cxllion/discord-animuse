@@ -1,7 +1,8 @@
-const { Events , MessageFlags } = require('discord.js');
+const { Events, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { routeInteraction } = require('../utils/handlers/router');
 const logger = require('../utils/core/logger');
 const cooldownManager = require('../utils/core/cooldownManager');
+const statusManager = require('../utils/core/statusManager');
 const { checkBotPermissions, checkUserPermissions } = require('../utils/core/permissionChecker');
 const {
     createCooldownEmbed,
@@ -13,15 +14,62 @@ const {
 module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction) {
-        // 0. Startup Gate
+        // 0. Maintenance Mode & Startup Gate
+        const isOwner = interaction.client.application?.owner?.id === interaction.user.id;
+        const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
+        
+        // If maintenance is on and user is NOT owner/admin, block interaction with themed message
+        if (statusManager.isMaintenance() && !isOwner && !isAdmin) {
+            try {
+                if (interaction.isRepliable()) {
+                    if (!interaction.replied && !interaction.deferred) {
+                        return await interaction.reply({
+                            embeds: [statusManager.createMaintenanceEmbed()],
+                            flags: MessageFlags.Ephemeral
+                        });
+                    }
+                }
+            } catch (e) {
+                logger.error('Error replying for maintenance mode:', e, 'Interaction');
+            }
+            return;
+        }
+
+        // 0.1 Startup Gate (Client not fully ready)
         if (!interaction.client.isSystemsGo) {
             try {
-                if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ content: '⏳ **The Library is Opening**: Please wait a moment while we organize the archives...', flags: MessageFlags.Ephemeral });
+                if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                    await interaction.reply({
+                        embeds: [statusManager.createStartupEmbed()],
+                        flags: MessageFlags.Ephemeral
+                    });
                 }
             } catch (e) { }
             return;
         }
+
+        // 0.2 Test Bot Access Control (Restrict usage to admins/testers)
+        if (interaction.client.isTestBot) {
+            const testerRoleId = process.env.TESTER_ROLE_ID;
+            const isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
+
+            if (!isAdmin && !isOwner && !isTester) {
+                try {
+                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            embeds: [statusManager.createMaintenanceEmbed()
+                                .setTitle('🚫 **Access Restricted**')
+                                .setDescription('This is a **Test Instance** of the library. Access is restricted to Librarians and Beta Readers.')
+                            ],
+                            flags: MessageFlags.Ephemeral
+                        });
+                    }
+                } catch (e) { }
+                return;
+            }
+        }
+
+
 
         // 1. Slash Commands
         if (interaction.isChatInputCommand()) {
@@ -32,13 +80,10 @@ module.exports = {
                 // Check Offline Mode for DB-reliant commands
                 if (interaction.client.isOfflineMode && command.dbRequired !== false) {
                     return await interaction.reply({
-                        content: '⚠️ **The Archives are currently sealed.** (Database Offline)\nCommands requiring database access cannot be executed at this time.',
+                        embeds: [statusManager.createMaintenanceEmbed().setDescription('⚠️ **The Library is currently sealed.** (Database Offline)\nCommands requiring library records cannot be executed at this time.')],
                         flags: MessageFlags.Ephemeral
                     });
                 }
-
-                // Check if user is owner (for cooldown bypass)
-                const isOwner = interaction.client.application?.owner?.id === interaction.user.id;
 
                 // 1a. Check cooldowns
                 const cooldown = command.cooldown || 3; // Default 3 seconds
@@ -104,8 +149,6 @@ module.exports = {
             try {
                 const handled = await routeInteraction(interaction);
                 if (!handled) {
-                    // Optional: Log unhandled interaction or ignore
-                    // logger.debug(`Unhandled interaction: ${interaction.customId}`, 'Interaction');
                 }
             } catch (error) {
                 const isUnknownInteraction = error.code === 10062 || error.code === 40060 ||
@@ -120,9 +163,9 @@ module.exports = {
                     const payload = { content: '❌ An error occurred while processing this request.', flags: MessageFlags.Ephemeral };
                     if (interaction.isRepliable()) {
                         if (!interaction.replied && !interaction.deferred) {
-                            await interaction.reply(payload);
+                            await interaction.reply(payload).catch(() => {});
                         } else {
-                            await interaction.followUp(payload);
+                            await interaction.followUp(payload).catch(() => {});
                         }
                     }
                 } catch (e) { }
@@ -130,3 +173,4 @@ module.exports = {
         }
     },
 };
+

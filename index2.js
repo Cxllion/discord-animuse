@@ -58,6 +58,7 @@ const client = new Client({
 
 client.commands = new Collection();
 client.isSystemsGo = false;
+client.isTestBot = true; // Mark as test bot instance for restriction logic
 
 // Setup Client Safety
 setupClientHandlers(client);

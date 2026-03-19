@@ -23,6 +23,11 @@ module.exports = {
         if (message.author.bot) return;
         if (!message.guild) return;
 
+        // --- Test Bot Restriction ---
+        // Skip automated tasks for test bot to avoid conflicts with main bot
+        if (message.client.isTestBot) return;
+
+
         // Fetch config (Note: In production, caching this is recommended to avoid DB spam)
         const config = await fetchConfig(message.guild.id);
         

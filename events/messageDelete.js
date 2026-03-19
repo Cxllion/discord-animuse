@@ -7,7 +7,12 @@ module.exports = {
     async execute(message) {
         if (!message.guild) return;
 
+        // --- Test Bot Restriction ---
+        // Skip thread cleaning for test bot to avoid conflicts with main bot
+        if (message.client.isTestBot) return;
+
         // Fetch config to check if this is a gallery channel
+
         const config = await fetchConfig(message.guild.id);
         if (!config || !config.gallery_channel_ids) return;
 
