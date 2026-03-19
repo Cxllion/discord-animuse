@@ -98,12 +98,31 @@ const generateColorTokens = (hex) => {
 };
 
 /**
+ * Sanitizes a title by removing unrenderable decorative characters (like Japanese brackets)
+ * that often result in "boxes" if the system font doesn't support them.
+ * @param {string} text 
+ * @returns {string}
+ */
+const sanitizeTitle = (text) => {
+    if (!text) return '';
+    // 1. Specifically target known offenders: Japanese full-width brackets/quotes
+    let clean = text.replace(/[【】「」『』（）［］]/g, '');
+    
+    // 2. Remove non-printable characters and suspicious symbols that often fail
+    // We keep standard Latin, common punctuation, and some extended Latin
+    // This regex matches printable ASCII + some common symbols
+    clean = clean.replace(/[^\x20-\x7E\s]/g, ''); 
+
+    return clean.replace(/\s+/g, ' ' ).trim();
+};
+
+/**
  * Extracts metadata tags (Season, Part, Cour, etc.) from a title and returns the cleaned title.
  * @param {string} fullTitle 
  * @returns {{ title: string, tags: string[] }}
  */
 const parseMetadata = (fullTitle) => {
-    let title = fullTitle;
+    let title = sanitizeTitle(fullTitle);
     let tags = [];
 
     const patterns = [
@@ -136,5 +155,6 @@ const parseMetadata = (fullTitle) => {
 module.exports = {
     normalizeColor,
     generateColorTokens,
-    parseMetadata
+    parseMetadata,
+    sanitizeTitle
 };

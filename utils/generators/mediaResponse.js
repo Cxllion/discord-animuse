@@ -1,7 +1,8 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require('discord.js');
 const { getUserColor } = require('../core/database');
 const { generateSearchCard } = require('./searchGenerator');
 const { formatMediaTitle } = require('../services/anilistService');
+const { sanitizeTitle } = require('../core/visualUtils');
 const baseEmbed = require('./baseEmbed');
 const { COLORS, FOOTERS } = require('../core/constants');
 const logger = require('../core/logger');
@@ -58,7 +59,7 @@ async function createMediaResponse(media, userId, guildId) {
         if (description.length > 300) description = description.substring(0, 300) + '...';
 
         const embed = baseEmbed()
-            .setTitle(formatMediaTitle(media?.title))
+            .setTitle(sanitizeTitle(formatMediaTitle(media?.title)))
             .setDescription(description)
             .setThumbnail(media?.coverImage?.large || null)
             .setColor(media?.coverImage?.color || COLORS.DEFAULT)
