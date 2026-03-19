@@ -299,11 +299,18 @@ const handleBoutiqueInteraction = async (interaction) => {
      */
     const respond = async (payload) => {
         if (isPersistentHub) {
-            // New Session
-            return await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+            // New Session: Reset the Hub message first, then follow up with ephemeral
+            // This ensures the Master Hub always stays in its original state.
+            const resetPayload = await renderBoutique(guild.id, null, member);
+            
+            // 1. Update the original public message to reset its dropdown
+            await interaction.update(resetPayload).catch(() => null);
+            
+            // 2. Spawn the new ephemeral session for this user
+            return await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
         } else {
-            // Existing Session Navigation
-            return await interaction.update(payload);
+            // Existing Session Navigation: Just update the message
+            return await interaction.update(payload).catch(() => null);
         }
     };
 
@@ -362,7 +369,7 @@ const handleBoutiqueInteraction = async (interaction) => {
                 // Remove Role
                 await member.roles.remove(role);
                 const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
-                await interaction.update(payload);
+                await respond(payload);
                 return await interaction.followUp({ content: `✅ **Removed**: ${role.name}`, flags: MessageFlags.Ephemeral });
             } else {
                 // Add Role (Exclusive Check)
@@ -385,7 +392,7 @@ const handleBoutiqueInteraction = async (interaction) => {
 
                 await member.roles.add(role);
                 const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
-                await interaction.update(payload);
+                await respond(payload);
                 return await interaction.followUp({ content: `✅ **Assigned**: ${role.name}`, flags: MessageFlags.Ephemeral });
             }
         } catch (e) {
