@@ -6,7 +6,7 @@ const dashboardView = async (interaction) => {
     const registry = require('../registry').getAllCategories();
 
     const embed = baseEmbed()
-        .setTitle('Animuse Master Archive')
+        .setTitle('AniMuse Library Dashboard')
         .setDescription('Welcome, Manager. Access the library wings below to audit or configure your server.\n\n**Available Categories:**')
         .setColor(COLORS.DEFAULT)
         .setFooter({ text: FOOTERS.DEFAULT });

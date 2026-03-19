@@ -12,7 +12,7 @@ module.exports = {
     },
     FOOTERS: {
         DEFAULT: 'Animuse • Your refined anime guide',
-        ANILIST: 'AniMuse Archives • Powered by Anilist',
+        ANILIST: 'AniMuse Library • Powered by AniList',
         POWERED_BY_ANILIST: 'Powered by AniList'
     }
 };

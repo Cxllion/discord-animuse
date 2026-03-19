@@ -16,7 +16,7 @@ module.exports = {
     cooldown: 10, // Canvas generation
     data: new SlashCommandBuilder()
         .setName('profile')
-        .setDescription('Inspect a Patron\'s Identity Card within the Archives.')
+        .setDescription('Inspect a Patron\'s Identity Card within the Library.')
         .addUserOption(option => option.setName('user').setDescription('The Patron to investigate')),
 
     async execute(interaction) {
@@ -107,8 +107,10 @@ module.exports = {
         // Generate Image
         const displayName = member ? member.displayName : targetUser.username;
 
-        // Provide immediate feedback before the heavy image generation
-        await interaction.editReply({ content: `🔍 Found **${displayName}**. Materializing profile...` });
+        // Provide immediate feedback with a beautiful animated progress bar
+        const LoadingManager = require('../../utils/ui/LoadingManager');
+        const loader = new LoadingManager(interaction);
+        await loader.startProgress('Materializing Profile...', 6); // ~6 seconds expected time
 
         const buffer = await generateProfileCard(targetUser, userData, favorites, backgroundUrl, color, displayName);
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.png' });
@@ -121,7 +123,8 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(dashboardBtn);
 
-        const response = await interaction.editReply({ content: '', files: [attachment], components: [row] });
+        // MERGED DELIVERY: 100% + Card in one call
+        const response = await loader.stop({ files: [attachment], components: [row] });
 
         // Button Collector
         const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
@@ -133,7 +136,7 @@ module.exports = {
                     await showProfileDashboard(i);
                 } else {
                     await i.reply({
-                        content: `**${targetUser.username}'s Archive File**\nLibrary records indicate this patron has been registered since ${joinedDate}.\n*Detailed usage stats are currently classified.*`,
+                        content: `**${targetUser.username}'s Identity File**\nLibrary records indicate this patron has been registered since ${joinedDate}.\n*Detailed usage stats are currently classified.*`,
                         flags: MessageFlags.Ephemeral
                     });
                 }

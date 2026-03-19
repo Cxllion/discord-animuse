@@ -8,7 +8,7 @@ module.exports = {
     cooldown: 8, // API calls
     data: new SlashCommandBuilder()
         .setName('search')
-        .setDescription('Consult the archives for an Anime or Manga.')
+        .setDescription('Consult the Library for an Anime or Manga.')
         .addStringOption(option =>
             option.setName('type')
                 .setDescription('Media type')
@@ -46,17 +46,15 @@ module.exports = {
             if (results.length === 1 || quick) {
                 const media = await getMediaById(results[0].id);
 
-                // UX: Immediate Feedback
-                await interaction.editReply({
-                    content: `🔍 Found **${media.title.english || media.title.romaji}**. Materializing record...`,
-                    embeds: [],
-                    components: []
-                });
+                // UX: Premium Retrieval Animation
+                const LoadingManager = require('../../utils/ui/LoadingManager');
+                const loader = new LoadingManager(interaction);
+                await loader.startProgress('Retrieving Library Record...', 5); // ~5s
 
                 // Wait for async response
                 const response = await createMediaResponse(media, interaction.user.id, interaction.guildId);
-                // EditReply handles files/components automatically if object structure matches
-                return await interaction.editReply({ content: '', ...response }); // Clear content
+                // MERGED DELIVERY: 100% + Search Card in one call
+                return await loader.stop(response);
             }
 
             // Multiple results: Show Select Menu
