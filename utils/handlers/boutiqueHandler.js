@@ -16,11 +16,12 @@ const { getDynamicUserTitle } = require('../core/userMeta');
  * @param {string} [categoryName=null] 
  * @param {import('discord.js').GuildMember} [member=null]
  * @param {string} [selectedFamily=null]
+ * @param {Object} [cache=null]
  */
-const renderBoutique = async (guildId, categoryName = null, member = null, selectedFamily = null) => {
-    const categories = await getRoleCategories(guildId);
-    const serverRoles = await getServerRoles(guildId);
-    const config = await fetchConfig(guildId);
+const renderBoutique = async (guildId, categoryName = null, member = null, selectedFamily = null, cache = null) => {
+    const categories = cache?.categories || await getRoleCategories(guildId);
+    const serverRoles = cache?.serverRoles || await getServerRoles(guildId);
+    const config = cache?.config || await fetchConfig(guildId);
 
     // Filter categories for members
     const allowedCategories = [
@@ -140,16 +141,21 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                 
                 if (selectedFamily) {
                     const familyConfig = COLOR_FAMILIES[selectedFamily];
-                    const familyShades = familyConfig.map(shade => shade.name);
-                    const familyRoles = rolesInCat.filter(sr => {
-                        const role = member?.guild.roles.cache.get(sr.role_id);
-                        return role && familyShades.includes(role.name);
-                    }).map(sr => `◈ <@&${sr.role_id}>`).join('\n');
-
-                    if (familyRoles.length > 0) {
-                        previewText = `✦ **Available ${selectedFamily} Shades**:\n\n${familyRoles}`;
+                    if (!familyConfig) {
+                        // Safe fallback if an invalid family was passed
+                        previewText = `✦ **Archival Color Families**\n${families.map(f => `◈ **\`${f}\`**`).join('\n')}\n\n*Please select a family from the list below to view its palettes.*`;
                     } else {
-                        previewText = `✦ **Available ${selectedFamily} Shades**:\n\n◈ None available in this server.`;
+                        const familyShades = familyConfig.map(shade => shade.name);
+                        const familyRoles = rolesInCat.filter(sr => {
+                            const role = member?.guild.roles.cache.get(sr.role_id);
+                            return role && familyShades.includes(role.name);
+                        }).map(sr => `◈ <@&${sr.role_id}>`).join('\n');
+
+                        if (familyRoles.length > 0) {
+                            previewText = `✦ **Available ${selectedFamily} Shades**:\n\n${familyRoles}`;
+                        } else {
+                            previewText = `✦ **Available ${selectedFamily} Shades**:\n\n◈ None available in this server.`;
+                        }
                     }
                 } else {
                     const familyList = families.map(f => {
@@ -288,50 +294,66 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
  */
 const handleBoutiqueInteraction = async (interaction) => {
     const { customId, guild, member, message } = interaction;
-    const config = await fetchConfig(guild.id);
+    
+    // 0. Pre-fetch data for optimization (one DB call each per interaction)
+    const [config, categories, serverRoles] = await Promise.all([
+        fetchConfig(guild.id),
+        getRoleCategories(guild.id),
+        getServerRoles(guild.id)
+    ]);
+    const cache = { config, categories, serverRoles };
     
     // Determine if this interaction should spawn a NEW ephemeral session or update an EXISTING one
-    // We spawn a new one if it's from the persistent message hub
     const isPersistentHub = message.id === config.boutique_message_id;
 
+    // Proactive Deferral: Extends the 3s window to 15m. Only for existing ephemeral sessions.
+    // Hub interactions must NOT be deferred here because they need to UPDATE the hub message first.
+    if (!isPersistentHub) {
+        await interaction.deferUpdate().catch(() => null);
+    }
+
     /**
-     * Internal helper to respond correctly (Reply or Update)
+     * Internal helper to respond correctly (Reply or Update/Edit)
      */
     const respond = async (payload) => {
         if (isPersistentHub) {
             // New Session: Reset the Hub message first, then follow up with ephemeral
-            // This ensures the Master Hub always stays in its original state.
-            const resetPayload = await renderBoutique(guild.id, null, member);
-            
-            // 1. Update the original public message to reset its dropdown
+            const resetPayload = await renderBoutique(guild.id, null, member, null, cache);
             await interaction.update(resetPayload).catch(() => null);
-            
-            // 2. Spawn the new ephemeral session for this user
             return await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
         } else {
-            // Existing Session Navigation: Just update the message
-            return await interaction.update(payload).catch(() => null);
+            // Existing Session Navigation: Use editReply because we already deferred
+            return await interaction.editReply(payload).catch(() => null);
         }
     };
 
     // 1. Navigation: Home
     if (customId === 'boutique_home') {
-        const payload = await renderBoutique(guild.id, null, member);
+        const payload = await renderBoutique(guild.id, null, member, null, cache);
         return await respond(payload);
     }
 
     // 2. Navigation: View Category (Button or Menu)
     if (customId.startsWith('boutique_view_menu') || customId.startsWith('boutique_view_')) {
-        const catName = customId.startsWith('boutique_view_menu') ? interaction.values[0] : customId.replace('boutique_view_', '');
-        const payload = await renderBoutique(guild.id, catName, member);
+        let catName;
+        if (customId.startsWith('boutique_view_menu')) {
+            catName = interaction.values[0];
+        } else {
+            // Format: boutique_view_CategoryName_Nonce
+            const parts = customId.split('_');
+            catName = parts[2];
+        }
+        const payload = await renderBoutique(guild.id, catName, member, null, cache);
         return await respond(payload);
     }
 
     // 2.5 Navigation: Select Family
     if (customId.startsWith('boutique_select_family_')) {
-        const catName = customId.replace('boutique_select_family_', '');
+        const parts = customId.split('_');
+        // Format: boutique_select_family_CategoryName_Nonce
+        const catName = parts[3]; 
         const selectedFamilyItem = interaction.values[0];
-        const payload = await renderBoutique(guild.id, catName, member, selectedFamilyItem);
+        const payload = await renderBoutique(guild.id, catName, member, selectedFamilyItem, cache);
         return await respond(payload);
     }
 
@@ -339,6 +361,8 @@ const handleBoutiqueInteraction = async (interaction) => {
     if (customId.startsWith('boutique_toggle_')) {
         const parts = customId.split('_');
         const catName = parts[2]; 
+        // Logic: boutique_toggle_Category_Nonce (len 4) OR boutique_toggle_Category_Family_Nonce (len 5)
+        const selectedFamily = parts.length === 5 ? parts[3] : null;
         const roleId = interaction.values[0];
         const role = guild.roles.cache.get(roleId);
 
@@ -347,15 +371,13 @@ const handleBoutiqueInteraction = async (interaction) => {
         }
 
         try {
-            const categories = await getRoleCategories(guild.id);
-            const serverRoles = await getServerRoles(guild.id);
             const cat = categories.find(c => c.name === catName);
 
             // Access Control: Premium Colors
             if (catName === 'Colors (Premium)') {
                 const premiumRoleId = config.premium_role_id;
                 if (premiumRoleId && !member.roles.cache.has(premiumRoleId)) {
-                    return await interaction.reply({ 
+                    return await interaction.followUp({ 
                         content: `✨ **Seraphic Muse Required**\nThis palette is reserved for high-tier supporters. Unlock it by obtaining the <@&${premiumRoleId}> role.`, 
                         flags: MessageFlags.Ephemeral 
                     });
@@ -365,36 +387,39 @@ const handleBoutiqueInteraction = async (interaction) => {
             const isColorCategory = catName.includes('Colors');
             const isIdentityCategory = catName.includes('Profile');
 
-            if (member.roles.cache.has(roleId)) {
-                // Remove Role
-                await member.roles.remove(role);
-                const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
-                await respond(payload);
-                return await interaction.followUp({ content: `✅ **Removed**: ${role.name}`, flags: MessageFlags.Ephemeral });
-            } else {
-                // Add Role (Exclusive Check)
-                if (isColorCategory) {
-                    // Remove ALL color roles (Basic AND Premium)
-                    const colorTargetCats = categories.filter(c => c.name.includes('Colors')).map(c => c.id);
-                    const rolesToRemove = serverRoles
-                        .filter(sr => colorTargetCats.includes(sr.category_id) && member.roles.cache.has(sr.role_id))
-                        .map(sr => sr.role_id);
-                    
-                    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-                } else if (isIdentityCategory) {
-                    // Identity categories are self-exclusive (Pronouns, Age, etc.)
-                    const rolesToRemove = serverRoles
-                        .filter(sr => sr.category_id === cat.id && member.roles.cache.has(sr.role_id))
-                        .map(sr => sr.role_id);
-                    
-                    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-                }
+            // --- Optimized Role Update (Batched via .set) ---
+            const currentRoleIds = Array.from(member.roles.cache.keys());
+            let finalRoleIds;
+            let actionText = '';
 
-                await member.roles.add(role);
-                const payload = await renderBoutique(guild.id, catName, member, parts[3] || null);
-                await respond(payload);
-                return await interaction.followUp({ content: `✅ **Assigned**: ${role.name}`, flags: MessageFlags.Ephemeral });
+            if (member.roles.cache.has(roleId)) {
+                // Logic: Remove Role
+                finalRoleIds = currentRoleIds.filter(id => id !== roleId);
+                actionText = `Removed: ${role.name}`;
+            } else {
+                // Logic: Add Role (with Exclusivity checks)
+                let rolesToClear = [];
+                if (isColorCategory) {
+                    const colorTargetCats = categories.filter(c => c.name.includes('Colors')).map(c => c.id);
+                    rolesToClear = serverRoles.filter(sr => colorTargetCats.includes(sr.category_id)).map(sr => sr.role_id);
+                } else if (isIdentityCategory) {
+                    rolesToClear = serverRoles.filter(sr => sr.category_id === cat.id).map(sr => sr.role_id);
+                }
+                
+                finalRoleIds = currentRoleIds.filter(id => !rolesToClear.includes(id)).concat(roleId);
+                actionText = `Assigned: ${role.name}`;
             }
+
+            // Apply all changes in ONE API call
+            const updatedMember = await member.roles.set(finalRoleIds);
+            
+            // Re-render with the updated member state
+            const payload = await renderBoutique(guild.id, catName, updatedMember, selectedFamily, cache);
+            await respond(payload);
+            
+            // Optional success notification (non-blocking)
+            return await interaction.followUp({ content: `✅ **${actionText}**`, flags: MessageFlags.Ephemeral }).catch(() => null);
+
         } catch (e) {
             console.error(`[Boutique Error] ${e.message}`);
             const errorMsg = e.message.includes('Hierarchy') 
