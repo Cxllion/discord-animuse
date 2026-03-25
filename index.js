@@ -53,6 +53,9 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers, // Required for members.fetch() and member events
     ],
+    rest: {
+        timeout: 60000,
+    }
 });
 
 client.commands = new Collection();

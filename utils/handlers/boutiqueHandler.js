@@ -19,7 +19,7 @@ const { getDynamicUserTitle } = require('../core/userMeta');
  * @param {Object} [cache=null]
  */
 const renderBoutique = async (guildId, categoryName = null, member = null, selectedFamily = null, cache = null) => {
-    const categories = cache?.categories || await getRoleCategories(guildId);
+    let categories = cache?.categories || await getRoleCategories(guildId);
     const serverRoles = cache?.serverRoles || await getServerRoles(guildId);
     const config = cache?.config || await fetchConfig(guildId);
 
@@ -28,7 +28,14 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
         'Colors (Premium)', 'Colors (Basic)', 
         'Profile (Pronouns)', 'Profile (Age)', 'Profile (Region)', 'Pings'
     ];
-    const filteredCats = categories.filter(c => allowedCategories.includes(c.name));
+    let filteredCats = categories.filter(c => allowedCategories.includes(c.name));
+
+    // Auto-seed if empty (Initial Hub Deployment)
+    if (filteredCats.length === 0) {
+        const { seedRoleCategories } = require('../core/database');
+        categories = await seedRoleCategories(guildId);
+        filteredCats = categories.filter(c => allowedCategories.includes(c.name));
+    }
 
     if (!categoryName) {
         // --- Main Menu ---
@@ -317,7 +324,7 @@ const handleBoutiqueInteraction = async (interaction) => {
      */
     const respond = async (payload) => {
         if (isPersistentHub) {
-            // New Session: Reset the Hub message first, then follow up with ephemeral
+            // New Session: Reset Hub to Main Menu, but send category view as ephemeral follow-up
             const resetPayload = await renderBoutique(guild.id, null, member, null, cache);
             await interaction.update(resetPayload).catch(() => null);
             return await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
