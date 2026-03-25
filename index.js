@@ -12,32 +12,9 @@ setupProcessHandlers();
 const { loadCustomFonts } = require('./utils/core/fonts');
 loadCustomFonts();
 
-// Validate Required Environment Variables
-const requiredEnvVars = ['DISCORD_TOKEN', 'CLIENT_ID', 'DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_KEY'];
-const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-
-if (missingVars.length > 0) {
-    logger.error(`Missing required environment variables: ${missingVars.join(', ')}`, null, 'Startup');
-    logger.error('Please check your .env file. See .env.example for reference.', null, 'Startup');
-    process.exit(1);
-}
-
-// Validate Environment Variable Formats
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.match(/^postgres(ql)?:\/\//)) {
-    logger.warn('DATABASE_URL should start with postgres:// or postgresql:// - please verify the connection string format', 'Startup');
-}
-
-if (process.env.SUPABASE_URL && !process.env.SUPABASE_URL.startsWith('https://')) {
-    logger.warn('SUPABASE_URL should start with https:// - please verify the URL format', 'Startup');
-}
-
-// Check Optional but Recommended Variables
-const optionalEnvVars = ['ANILIST_CLIENT_ID'];
-optionalEnvVars.forEach(varName => {
-    if (!process.env[varName]) {
-        logger.warn(`${varName} not set. Some features may be limited.`, 'Startup');
-    }
-});
+// Validate Environment Variables using Zod
+const { validateEnv } = require('./utils/core/envManager');
+validateEnv();
 
 // Create simple HTTP server for Render health checks
 const PORT = process.env.PORT || 3000;

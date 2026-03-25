@@ -2,6 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelect
 const { fetchConfig, upsertConfig, getRoleCategories, createRoleCategory, deleteRoleCategory, seedRoleCategories, getServerRoles, registerServerRole, registerServerRoles, unregisterServerRole, getLevelRoles, setLevelRole, removeLevelRole } = require('../core/database');
 const CONFIG = require('../config');
 const { COLOR_FAMILIES, BASIC_COLORS } = require('../config/colorConfig');
+const { ROLE_DASHBOARD } = require('../config/constants');
 
 // Utility for robust async operations with built-in timeouts
 const withTimeout = (promise, ms, timeoutResult = null) => {
@@ -25,10 +26,7 @@ const renderProgressBar = (progress, total) => {
     return `${frame} \`${bar}\` **${percent}%** (\`${progress}/${total}\`)`;
 };
 
-const CATEGORY_ORDER = [
-    'Council', 'Colors (Premium)', 'Colors (Basic)',
-    'Levels', 'Profile (Pronouns)', 'Profile (Age)', 'Profile (Region)', 'Pings', 'Extra'
-];
+// Constants injected from ROLE_DASHBOARD
 
 // Standardized Execution Handler for long-running tasks
 const runSafeTask = async (i, title, taskFn) => {
@@ -343,8 +341,8 @@ const handleCategories = async (i) => {
     // Filter out Gender and sort by our defined order
     categories = categories.filter(c => c.name !== 'Profile (Gender)')
         .sort((a, b) => {
-            const idxA = CATEGORY_ORDER.indexOf(a.name);
-            const idxB = CATEGORY_ORDER.indexOf(b.name);
+            const idxA = ROLE_DASHBOARD.CATEGORY_ORDER.indexOf(a.name);
+            const idxB = ROLE_DASHBOARD.CATEGORY_ORDER.indexOf(b.name);
             return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
         });
 
@@ -474,7 +472,7 @@ const getUnmanagedRoles = async (guild) => {
 
     const toDelete = [];
     const mePos = guild.members.me.roles.highest.position;
-    const proto = ['Nitro Booster', 'Muted', 'Staff', 'Admin', 'Mod', 'Animuse', '@everyone'];
+    const proto = ROLE_DASHBOARD.PROTECTED_ROLE_NAMES;
 
     guild.roles.cache.forEach(r => {
         // Base checks
@@ -645,28 +643,14 @@ const performOrganize = async (guild, statusMsg) => {
         rolesByCategory[catName].push(sr.role_id);
     });
 
-    const hierarchyOrder = [
-        'Council', 
-        'Colors (Premium)', 
-        'Colors (Basic)',
-        'NITRO_BOOSTER', 
-        'PREMIUM_MUSE', 
-        'Levels', 
-        'MUTED',
-        'AUTO_MEMBER', 
-        'AUTO_BOT',
-        'Profile (Pronouns)', 
-        'Profile (Age)', 
-        'Profile (Region)', 
-        'Pings'
-    ];
+    const hierarchyOrder = ROLE_DASHBOARD.HIERARCHY_ORDER;
 
     const priorityMap = {};
     let currentIndex = 0;
 
     // A. Smart Detection: Administrative roles (Council Fallback)
     // If a role looks like staff but isn't registered, we prioritize it at the top
-    const adminTerms = ['admin', 'mod', 'staff', 'owner', 'council', 'founder', 'architect', 'bureau', 'guardian', 'librarian', 'keeper', 'senate'];
+    const adminTerms = ROLE_DASHBOARD.ADMIN_TERMS;
     const unmanagedAdminRoles = manageable.filter(r => 
         adminTerms.some(term => r.name.toLowerCase().includes(term)) &&
         !serverRoles.some(sr => sr.role_id === r.id) &&

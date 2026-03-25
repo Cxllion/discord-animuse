@@ -223,6 +223,18 @@ const handleInteractionError = async (interaction, error, customMessage = null) 
     }
 };
 
+/**
+ * Checks if an error is a safe-to-ignore Unknown Interaction error
+ * @param {Error} error 
+ * @returns {boolean}
+ */
+const isUnknownInteraction = (error) => {
+    if (!error) return false;
+    return error.code === 10062 || error.code === 40060 ||
+        error.rawError?.code === 10062 || error.rawError?.code === 40060 ||
+        (error.message && error.message.toLowerCase().includes('unknown interaction'));
+};
+
 module.exports = {
     createErrorEmbed,
     createCooldownEmbed,
@@ -233,5 +245,6 @@ module.exports = {
     createNotFoundEmbed,
     handleCommandError,
     handleInteractionError,
+    isUnknownInteraction,
     COLORS
 };

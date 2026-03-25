@@ -8,15 +8,19 @@ const {
     createCooldownEmbed,
     createBotPermissionEmbed,
     createUserPermissionEmbed,
-    handleCommandError
+    handleCommandError,
+    isUnknownInteraction
 } = require('../utils/core/errorHandler');
 
 module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction) {
         // 0. Maintenance Mode & Startup Gate
-        const isOwner = interaction.client.application?.owner?.id === interaction.user.id;
-        const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
+        const appOwner = interaction.client.application?.owner;
+        const isOwner = appOwner?.members 
+            ? appOwner.members.has(interaction.user.id) 
+            : appOwner?.id === interaction.user.id;
+        const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator) || false;
         
         // If maintenance is on and user is NOT owner/admin, block interaction with themed message
         if (statusManager.isMaintenance() && !isOwner && !isAdmin) {
@@ -50,8 +54,15 @@ module.exports = {
 
         // 0.2 Test Bot Access Control (Restrict usage to admins/testers)
         if (interaction.client.isTestBot) {
-            const testerRoleId = process.env.TESTER_ROLE_ID;
-            const isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
+            let isTester = false;
+            
+            if (interaction.inGuild()) {
+                const testerRoleId = process.env.TESTER_ROLE_ID;
+                isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
+            } else if (interaction.customId?.startsWith('archive_')) {
+                // Always allow Archive game DM interactions
+                isTester = true;
+            }
 
             if (!isAdmin && !isOwner && !isTester) {
                 try {
@@ -124,11 +135,7 @@ module.exports = {
                 await command.execute(interaction);
 
             } catch (error) {
-                const isUnknownInteraction = error.code === 10062 || error.code === 40060 ||
-                    error.rawError?.code === 10062 || error.rawError?.code === 40060 ||
-                    (error.message && error.message.toLowerCase().includes('unknown interaction'));
-
-                if (isUnknownInteraction) return;
+                if (isUnknownInteraction(error)) return;
 
                 // Use themed error handler
                 await handleCommandError(interaction, error, interaction.commandName);
@@ -151,11 +158,7 @@ module.exports = {
                 if (!handled) {
                 }
             } catch (error) {
-                const isUnknownInteraction = error.code === 10062 || error.code === 40060 ||
-                    error.rawError?.code === 10062 || error.rawError?.code === 40060 ||
-                    (error.message && error.message.toLowerCase().includes('unknown interaction'));
-
-                if (isUnknownInteraction) return;
+                if (isUnknownInteraction(error)) return;
 
                 logger.error('Interaction handling error:', error, 'Interaction');
 
