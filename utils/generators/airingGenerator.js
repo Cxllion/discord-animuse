@@ -7,7 +7,7 @@ const logger = require('../core/logger');
  * Inspired by Search Generator Design.
  * Features: 2x HD Scale, Cinematic Backdrops, Glassmorphism UI, High-Contrast Typography.
  */
-const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') => {
+const generateAiringCard = async (media, episode = {}, trackers = [], userColor = '#FFACD1') => {
     const SCALE = 2; 
     const baseW = 800;
     const baseH = 250; 
@@ -209,12 +209,26 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     ctx.restore();
 
     // --- 5. THE EPISODE BLOCK (Premium Nested HUD) ---
+    ctx.save();
+    ctx.font = '900 18px sans-serif';
+    ctx.letterSpacing = '0px'; 
     const epNumW = ctx.measureText(epNumStr).width;
-    const innerPillW = epNumW + 24;
+    ctx.restore();
+
+    const innerPadding = 14;
+    const innerPillW = epNumW + (innerPadding * 2);
     const innerPillH = 26;
-    const iconSpace = 34;
-    const epPodW = iconSpace + innerPillW + 4; 
+    
+    // HUD Metrics (Sharp Right Alignment)
+    const leftEdgePadding = 12;
+    const rightEdgePadding = 5; // Minimal gap on the right
+    const iconWidth = 13;
+    const iconToPillGap = 8; // Tight, clean gap
+    
     const epPodX = anchorX + stW + 12;
+    const epPodW = leftEdgePadding + iconWidth + iconToPillGap + innerPillW + rightEdgePadding; 
+    const iconX = epPodX + leftEdgePadding + (iconWidth / 2);
+    const innerX = epPodX + epPodW - innerPillW - rightEdgePadding;
 
     ctx.save();
     // Outer Capsule
@@ -227,10 +241,9 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     ctx.stroke();
 
     // TV Icon
-    const iconX = epPodX + (iconSpace / 2);
     const iconY = curY + 18;
     const iconSize = 13;
-    ctx.strokeStyle = tokens.primary;
+    ctx.strokeStyle = '#FFF';
     ctx.lineWidth = 1.6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -245,7 +258,6 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     ctx.stroke();
 
     // Inner Pill (The "Pill within a Pill")
-    const innerX = epPodX + iconSpace;
     const innerY = curY + (36 - innerPillH) / 2;
     ctx.beginPath();
     ctx.roundRect(innerX, innerY, innerPillW, innerPillH, 13);
@@ -255,20 +267,23 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Nested Number
+    // Nested Number (Robust Centering)
     ctx.font = '900 18px sans-serif';
+    ctx.letterSpacing = '0px';
     ctx.fillStyle = '#FFF';
     ctx.shadowColor = 'rgba(255,255,255,0.3)';
     ctx.shadowBlur = 10;
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left'; // Using left-aligned for manual centering calculation
     ctx.textBaseline = 'middle';
-    ctx.fillText(epNumStr, innerX + (innerPillW / 2), innerY + (innerPillH / 2) + 0.5);
+    ctx.fillText(epNumStr, innerX + innerPadding, innerY + (innerPillH / 2) - 0.5);
     ctx.restore();
 
     // --- 4B. METADATA PILL (Refined & Sequenced) ---
-    const formatValue = (media.format || 'TV').replace(/_/g, ' ');
-    const studioValue = (media.studios?.nodes?.[0]?.name || 'STUDIO').toUpperCase().split(' ')[0];
-    const metaText = `${formatValue}  •  ${studioValue}`;
+    const studioEdges = media.studios?.edges || [];
+    const mainStudios = studioEdges.filter(e => e.isMain).map(e => e.node.name);
+    const rawStudio = mainStudios[0] || studioEdges[0]?.node?.name || 'STUDIO';
+    const studioValue = rawStudio.toUpperCase().split(' ')[0];
+    const metaText = studioValue;
 
     ctx.save();
     ctx.font = '900 12px sans-serif'; 
@@ -293,6 +308,91 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     ctx.fillText(metaText, pillX + (pillW/2), pillY + (pillH/2) + 1);
     ctx.restore();
 
+    // --- 4C. TRACKER HUD (Premium Social Layer) ---
+    if (trackers && trackers.length > 0) {
+        const sortedTrackers = [...trackers].sort((a, b) => {
+            const lvlA = a.level || 0;
+            const lvlB = b.level || 0;
+            if (lvlA !== lvlB) return lvlB - lvlA;
+            return (a.displayName || a.username || '').localeCompare(b.displayName || b.username || '');
+        });
+
+        const displayTrackers = sortedTrackers.slice(0, trackers.length > 3 ? 2 : 3);
+        const extraCount = trackers.length - displayTrackers.length;
+        
+        const pfpSize = 32;
+        const overlap = 10;
+        const outerH = 44;
+        const innerPadding = 6;
+        
+        let pillW = innerPadding * 2;
+        pillW += pfpSize + (displayTrackers.length - 1) * (pfpSize - overlap);
+        
+        let extraPillW = 0;
+        if (extraCount > 0) {
+            ctx.font = '900 12px sans-serif';
+            extraPillW = ctx.measureText(`+${extraCount}`).width + 16;
+            pillW += extraPillW + 8;
+        }
+
+        const tx = baseW - pillW - margin;
+        const ty = margin - 4; // Center-aligned horizontally with 36px pods
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(tx, ty, pillW, outerH, 22);
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Load and Draw Avatars
+        for (let i = 0; i < displayTrackers.length; i++) {
+            const tracker = displayTrackers[i];
+            const px = tx + innerPadding + (i * (pfpSize - overlap));
+            const py = ty + (outerH - pfpSize) / 2;
+
+            try {
+                const avatarImg = await loadImage(tracker.avatarURL || 'https://cdn.discordapp.com/embed/avatars/0.png');
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(avatarImg, px, py, pfpSize, pfpSize);
+                ctx.restore();
+
+                // High-End Border for PFPs
+                ctx.beginPath();
+                ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } catch (err) {
+                ctx.fillStyle = tokens.primary;
+                ctx.beginPath();
+                ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        if (extraCount > 0) {
+            const exX = tx + pillW - innerPadding - extraPillW;
+            const exY = ty + (outerH - 24) / 2;
+            ctx.beginPath();
+            ctx.roundRect(exX, exY, extraPillW, 24, 12);
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = '900 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`+${extraCount}`, exX + (extraPillW/2), exY + 12.5);
+        }
+        ctx.restore();
+    }
+
+
     // --- 5. TITLE ---
     let fontSize = 52; 
     const maxLines = 2;
@@ -301,7 +401,7 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
 
     while (fontSize > 20) {
         ctx.font = `900 ${fontSize}px sans-serif`;
-        ctx.letterSpacing = '-3.5px';
+        ctx.letterSpacing = '-1.2px';
         const words = cleanTitle.split(' ');
         lines = [];
         let cur = '';
@@ -337,6 +437,8 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     const footerY = titleY + titleBlockH + verticalGap;
 
     ctx.save();
+    ctx.font = `900 ${fontSize}px sans-serif`;
+    ctx.letterSpacing = '-1.2px';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     

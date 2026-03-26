@@ -41,13 +41,15 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
                 logger.warn(`AniList Request failed (${status || error.code}). Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`, 'AniList');
                 await new Promise(res => setTimeout(res, delay));
             } else {
-                logger.error('AniList Request Failed: ' + (status ? `Status ${status}` : error.message), null, 'AniList');
+                const aniErrors = error.response?.data?.errors;
+                const errorDetail = aniErrors?.[0]?.message || (status ? `Status ${status}` : error.message);
+                
+                logger.error('AniList Request Failed: ' + errorDetail, null, 'AniList');
+                if (aniErrors) {
+                    logger.error('Full GraphQL Errors: ' + JSON.stringify(aniErrors), null, 'AniList');
+                }
+                
                 if (attempt >= retries) logger.error('AniList Max retries reached', null, 'AniList');
-                // Return null instead of throwing to prevent bot crash, callers must handle null
-                // Actually, throwing might be better for the caller to know it failed, but we promised grace.
-                // Let's throw, but ensure top-level handlers catch it.
-                // Re-reading user request: "broken things dont just stop the bot".
-                // If I throw, I rely on the caller catch block. Most callers have one.
                 throw error;
             }
         }
@@ -125,9 +127,10 @@ const getMediaById = async (id) => {
             chapters
             averageScore
             meanScore
-            studios(isMain: true) {
-                nodes {
-                    name
+            studios {
+                edges {
+                    isMain
+                    node { name }
                 }
             }
             season
@@ -379,11 +382,15 @@ const getTrendingAnime = async () => {
                 }
                 siteUrl
                 format
-                averageScore
-                meanScore
+                seasonYear
                 genres
-                studios(isMain: true) {
-                    nodes { name }
+                status
+                description
+                studios {
+                    edges {
+                        isMain
+                        node { name }
+                    }
                 }
             }
         }
@@ -414,6 +421,39 @@ const getTrendingManga = async () => {
                 format
                 averageScore
                 meanScore
+                seasonYear
+                startDate { year }
+                genres
+                status
+                description
+                type
+            }
+        }
+    }
+    `;
+    try {
+        const data = await queryAnilist(query);
+        return data.Page.media || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+const getTrendingMovies = async () => {
+    const query = `
+    query {
+        Page(perPage: 10) {
+            media(sort: TRENDING_DESC, type: ANIME, format: MOVIE) {
+                id
+                title { romaji english }
+                coverImage { extraLarge large color }
+                bannerImage
+                siteUrl
+                format
+                averageScore
+                meanScore
+                seasonYear
+                startDate { year }
                 genres
                 type
             }
@@ -434,15 +474,26 @@ const getTrendingManga = async () => {
  * @returns {Promise<Array>} List of activities
  */
 const getUserActivity = async (userName) => {
+    // 1. Resolve User ID from Name (AniList Activity filter requires ID)
+    const userLookupQuery = `query ($name: String) { User(name: $name) { id } }`;
+    let userId;
+    try {
+        const userData = await queryAnilist(userLookupQuery, { name: userName });
+        if (!userData || !userData.User) return [];
+        userId = userData.User.id;
+    } catch (e) {
+        return [];
+    }
+
+    // 2. Fetch Activities for that ID
     const query = `
-    query ($userName: String) {
-        Page(page: 1, perPage: 5) {
-            activities(userName: $userName, type_in: [ANIME_LIST, MANGA_LIST], sort: ID_DESC) {
+    query ($userId: Int) {
+        Page(page: 1, perPage: 10) {
+            activities(userId: $userId, sort: ID_DESC) {
                 ... on ListActivity {
                     id
                     status
                     progress
-                    score
                     type
                     createdAt
                     media {
@@ -454,6 +505,8 @@ const getUserActivity = async (userName) => {
                         format
                         averageScore
                         meanScore
+                        seasonYear
+                        startDate { year }
                     }
                     user {
                         id
@@ -466,10 +519,33 @@ const getUserActivity = async (userName) => {
     }
     `;
     try {
-        const data = await queryAnilist(query, { userName });
-        return data.Page.activities || [];
+        const data = await queryAnilist(query, { userId });
+        // Filter out non-ListActivity items (text posts etc)
+        const filtered = (data.Page.activities || []).filter(a => a && a.media);
+        return filtered;
     } catch (e) {
         return [];
+    }
+};
+
+/**
+ * Fetch a user's score for a specific media piece.
+ * @param {number} userId 
+ * @param {number} mediaId 
+ */
+const getUserMediaScore = async (userId, mediaId) => {
+    const query = `
+    query ($userId: Int, $mediaId: Int) {
+        MediaList(userId: $userId, mediaId: $mediaId) {
+            score(format: POINT_10_DECIMAL)
+        }
+    }
+    `;
+    try {
+        const data = await queryAnilist(query, { userId, mediaId });
+        return data.MediaList ? data.MediaList.score : null;
+    } catch (e) {
+        return null;
     }
 };
 
@@ -497,7 +573,9 @@ module.exports = {
     getAniListProfile,
     getTrendingAnime,
     getTrendingManga,
+    getTrendingMovies,
     getUserActivity,
+    getUserMediaScore,
     flushAniListCache,
     formatMediaTitle
 };

@@ -1,7 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder , MessageFlags } = require('discord.js');
 const { generateAiringCard } = require('../generators/airingGenerator');
 const { watchInteraction } = require('../handlers/interactionManager');
-const { queryAnilist, getUserActivity } = require('./anilistService');
+const { queryAnilist, getUserActivity, getUserMediaScore } = require('./anilistService');
 const {
     getAllTrackersForAnime,
     getTrackedAnimeState,
@@ -11,6 +11,9 @@ const {
     getAnimeDueForUpdate,
     getLinkedUsersForFeed,
     updateLastActivityId,
+    getActivityCache,
+    upsertActivityCache,
+    clearActivityCache,
     getUserColor,
     getUserAvatarConfig,
     getUserTitle
@@ -49,7 +52,10 @@ const processBatch = async (client, ids) => {
                 bannerImage
                 format
                 genres
-                studios(isMain: true) { nodes { name } }
+                studios {
+                    nodes { name }
+                    edges { node { name } }
+                }
                 siteUrl
                 nextAiringEpisode {
                     episode
@@ -220,34 +226,125 @@ const sendNotifications = async (client, media, episode, options = {}) => {
  * @param {object} userRow { user_id, anilist_username, last_activity_id }
  * @param {TextChannel} channel 
  */
+// ── Two-Tier Persistent Post Cache ────────────────────────────────────────────
+// Tier 1: Supabase `activity_posted` table (works on Render, survives restarts)
+// Tier 2: Local JSON file fallback (works locally without the DB table)
+const { wasPostedInDB, markPostedInDB } = require('./userService');
+const fs = require('fs');
+const path = require('path');
+const CACHE_PATH = path.join(__dirname, '../../.activity_posted_cache.json');
+
+const loadFileCache = () => {
+    try {
+        if (fs.existsSync(CACHE_PATH)) return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
+    } catch (e) {}
+    return {};
+};
+
+const saveFileCache = (cache) => {
+    try {
+        const weekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+        const pruned = {};
+        for (const [id, ts] of Object.entries(cache)) {
+            if (ts > weekAgo) pruned[id] = ts;
+        }
+        fs.writeFileSync(CACHE_PATH, JSON.stringify(pruned), 'utf-8');
+    } catch (e) {}
+};
+
+const wasPosted = async (activityId) => {
+    // Try DB first (Render-safe, persistent across deploys)
+    const inDB = await wasPostedInDB(activityId);
+    if (inDB) return true;
+    // Fall back to local JSON file (no migration needed locally)
+    return !!loadFileCache()[String(activityId)];
+};
+
+const markPosted = async (activityIds) => {
+    // Try DB first
+    const savedToDB = await markPostedInDB(activityIds);
+    if (!savedToDB) {
+        // DB table doesn't exist yet — use local file fallback
+        const cache = loadFileCache();
+        const now = Math.floor(Date.now() / 1000);
+        activityIds.forEach(id => { cache[String(id)] = now; });
+        saveFileCache(cache);
+    }
+};
+
+// 24-hour window (Unix timestamp)
+const get24hCutoff = () => Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+
+/**
+ * Burst Logic: Fetches AniList activities for a user, filters to 24h window,
+ * groups sequential episodes into combined cards, skips already-posted IDs.
+ */
 const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) => {
     try {
         const activities = await getUserActivity(userRow.anilist_username);
         if (!activities || activities.length === 0) return;
 
-        // Sort: ID Ascending (Oldest to Newest)
-        const sorted = activities.sort((a, b) => a.id - b.id);
-        
-        let lastSeenId = userRow.last_activity_id || 0;
-        let newMaxId = lastSeenId;
+        const cutoff = get24hCutoff();
 
-        // Initial scan skip logic (don't spam history)
-        if (lastSeenId === 0) {
-            const latestId = sorted[sorted.length - 1].id;
-            await updateLastActivityId(userRow.user_id, guildId, latestId);
+        // Grouping logic: find unique media pieces being updated
+        const groups = new Map();
+
+        for (const act of activities) {
+            // Skip if older than 24 hours
+            if (act.createdAt && act.createdAt < cutoff) continue;
+            // Skip if already posted (persistent dedup via file/DB cache)
+            if (await wasPosted(act.id)) continue;
+            // Skip non-media activities (e.g. text status posts)
+            if (!act.media) continue;
+            
+            const mediaId = act.media.id;
+            const status = (act.status || '').toLowerCase();
+            const groupKey = `${mediaId}_${status}`;
+            
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, { 
+                    media: act.media, 
+                    status: act.status, 
+                    user: act.user, 
+                    ids: [], 
+                    progress: [] 
+                });
+            }
+            const g = groups.get(groupKey);
+            g.ids.push(act.id);
+            if (act.progress) g.progress.push(parseInt(act.progress) || act.progress);
+        }
+
+        if (groups.size === 0) {
+            logger.info(`[Activity Feed] No new activities to post for ${userRow.anilist_username} (all within 24h window were already posted or empty).`, 'Scheduler');
             return;
         }
 
-        for (const act of sorted) {
-            if (act.id <= lastSeenId) continue;
-            
+        logger.info(`[Activity Feed] Burst Mode: Processed ${activities.length} total, creating ${groups.size} distinct cards. (User: ${userRow.anilist_username})`, 'Scheduler');
+
+        // Process each Group
+        for (const [key, g] of groups) {
             try {
+                // Determine Range (e.g. 1-5 or just 5)
+                let displayProgress = '';
+                if (g.progress.length > 0) {
+                    const nums = g.progress.filter(p => typeof p === 'number').sort((a,b) => a - b);
+                    if (nums.length > 1) {
+                        displayProgress = `${nums[0]}-${nums[nums.length-1]}`;
+                    } else {
+                        displayProgress = g.progress[0];
+                    }
+                }
+
+                // Render Card
                 const userColor = await getUserColor(userRow.user_id, guildId);
                 const userAvatar = await getUserAvatarConfig(userRow.user_id, guildId);
 
+                const score = await getUserMediaScore(g.user.id, g.media.id);
+
                 const guild = client.guilds.cache.get(guildId);
                 const member = guild ? await guild.members.fetch(userRow.user_id).catch(() => null) : null;
-                const username = member ? member.displayName : userRow.anilist_username;
+                const username = member ? member.displayName : g.user.name;
 
                 const userMeta = {
                     username: username.toUpperCase(),
@@ -255,21 +352,25 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     avatarUrl: userAvatar.customUrl || (member ? member.user.displayAvatarURL({ extension: 'png' }) : null)
                 };
 
-                const buffer = await generateActivityCard(userMeta, act);
-                const attachment = new AttachmentBuilder(buffer, { name: `activity-${act.id}.webp` });
+                const buffer = await generateActivityCard(userMeta, { 
+                    ...g, 
+                    progress: displayProgress, 
+                    score: score 
+                });
 
+                const attachment = new AttachmentBuilder(buffer, { name: `burst-${g.media.id}.webp` });
                 await channel.send({ files: [attachment] });
-                newMaxId = Math.max(newMaxId, act.id);
-            } catch (genErr) {
-                logger.error(`[Activity Feed] Post Error for ${userRow.user_id}:`, genErr, 'Scheduler');
+
+                // Persistently mark all IDs in this group so they're never re-posted
+                await markPosted(g.ids);
+
+            } catch (err) {
+                logger.error(`[Activity Feed] Generation Error:`, err, 'Scheduler');
             }
         }
 
-        if (newMaxId > lastSeenId) {
-            await updateLastActivityId(userRow.user_id, guildId, newMaxId);
-        }
     } catch (error) {
-        logger.error(`[Activity Feed] Polling failure for ${userRow.user_id}:`, error, 'Scheduler');
+        logger.error(`[Activity Feed] Burst Polling failure:`, error, 'Scheduler');
     }
 };
 

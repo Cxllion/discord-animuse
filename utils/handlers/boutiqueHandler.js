@@ -23,18 +23,28 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
     const serverRoles = cache?.serverRoles || await getServerRoles(guildId);
     const config = cache?.config || await fetchConfig(guildId);
 
-    // Filter categories for members
-    const allowedCategories = [
-        'Colors (Premium)', 'Colors (Basic)', 
-        'Profile (Pronouns)', 'Profile (Age)', 'Profile (Region)', 'Pings'
+    // Define category priority and metadata for uniform look
+    const categoryRegistry = [
+        { name: 'Profile (Pronouns)', label: 'Pronouns', emoji: '👤', description: 'Express your identity' },
+        { name: 'Profile (Age)', label: 'Age Groups', emoji: '🎂', description: 'Connect with your peers' },
+        { name: 'Profile (Region)', label: 'Region', emoji: '🌍', description: 'Where are you from?' },
+        { name: 'Pings', label: 'Notification Roles', emoji: '🔔', description: 'Stay updated on what matters' },
+        { name: 'Colors (Basic)', label: 'Simple Colors', emoji: '🎨', description: 'Add a splash of color to your name' },
+        { name: 'Colors (Premium)', label: 'Premium Colors', emoji: '✨', description: 'Exclusive shades for Premium members' }
     ];
-    let filteredCats = categories.filter(c => allowedCategories.includes(c.name));
+
+    const allowedNames = categoryRegistry.map(c => c.name);
+    let filteredCats = categories
+        .filter(c => allowedNames.includes(c.name))
+        .sort((a, b) => allowedNames.indexOf(a.name) - allowedNames.indexOf(b.name));
 
     // Auto-seed if empty (Initial Hub Deployment)
     if (filteredCats.length === 0) {
         const { seedRoleCategories } = require('../core/database');
         categories = await seedRoleCategories(guildId);
-        filteredCats = categories.filter(c => allowedCategories.includes(c.name));
+        filteredCats = categories
+            .filter(c => allowedNames.includes(c.name))
+            .sort((a, b) => allowedNames.indexOf(a.name) - allowedNames.indexOf(b.name));
     }
 
     if (!categoryName) {
@@ -42,6 +52,12 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
         const botAvatar = member?.guild?.members?.me?.user?.displayAvatarURL({ dynamic: true }) || null;
         const thumbnail = config.boutique_thumbnail || botAvatar;
         const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
+
+        // Generate dynamic category list for embed
+        const categoryList = filteredCats.map(cat => {
+            const meta = categoryRegistry.find(r => r.name === cat.name);
+            return `${meta.emoji} **\`${meta.label}\`** • ${meta.description}`;
+        }).join('\n');
 
         const embed = new EmbedBuilder()
             .setTitle('🎭 Self Roles')
@@ -52,11 +68,7 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
                 `2. Choose your preferred roles from the menu\n` +
                 `3. Update your selections anytime you want\n\n` +
                 `🎯 **Available Categories**:\n` +
-                `👤 **\`Pronouns\`** • Express your identity\n` +
-                `🎂 **\`Age Groups\`** • Connect with your peers\n` +
-                `🔔 **\`Notification Roles\`** • Stay updated on what matters\n` +
-                `🎨 **\`Simple Colors\`** • Add a splash of color to your name\n` +
-                `✨ **\`Premium Colors\`** • *Exclusive shades for Premium members*`
+                `${categoryList}`
             )
             .setColor('#2F3136')
             .setThumbnail(thumbnail)
@@ -67,41 +79,12 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
             .setCustomId(`boutique_view_menu_${nonce}`)
             .setPlaceholder('Choose a self-role category...')
             .addOptions(filteredCats.map(cat => {
-                let emoji = '📁';
-                let label = cat.name;
-                let description = 'Browse entries in this collection.';
-
-                if (cat.name === 'Colors (Premium)') {
-                    emoji = '✨';
-                    label = 'Premium Colors';
-                    description = 'Exclusive shades for Premium members';
-                } else if (cat.name === 'Colors (Basic)') {
-                    emoji = '🎨';
-                    label = 'Simple Colors';
-                    description = 'Add a splash of color to your name';
-                } else if (cat.name.includes('Pronouns')) {
-                    emoji = '👤';
-                    label = 'Pronouns';
-                    description = 'Express your identity';
-                } else if (cat.name.includes('Age')) {
-                    emoji = '🎂';
-                    label = 'Age Groups';
-                    description = 'Connect with your peers';
-                } else if (cat.name.includes('Region')) {
-                    emoji = '🌍';
-                    label = 'Region';
-                    description = 'Where are you from?';
-                } else if (cat.name.includes('Pings')) {
-                    emoji = '🔔';
-                    label = 'Notification Roles';
-                    description = 'Stay updated on what matters';
-                }
-
+                const meta = categoryRegistry.find(r => r.name === cat.name);
                 return {
-                    label: label,
+                    label: meta.label,
                     value: cat.name,
-                    emoji: emoji,
-                    description: description
+                    emoji: meta.emoji,
+                    description: meta.description
                 };
             }));
 

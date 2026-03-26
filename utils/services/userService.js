@@ -128,12 +128,88 @@ const getLinkedUsersForFeed = async (guildId) => {
 };
 
 const updateLastActivityId = async (userId, guildId, activityId) => {
+    // This column is missing in Supabase, so we use memory-based tracking for now
+    // to avoid PGRST204 errors until the user runs the schema migration.
+    return;
+};
+
+const getActivityCache = async (userId, guildId, mediaId) => {
+    // Gracefully handle missing table
+    if (!supabase) return null;
+    try {
+        const { data } = await supabase
+            .from('activity_cache')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('guild_id', guildId)
+            .eq('media_id', mediaId)
+            .single();
+        return data;
+    } catch (e) {
+        return null; // Table likely missing
+    }
+};
+
+const upsertActivityCache = async (userId, guildId, mediaId, messageId, startProgress, endProgress) => {
     if (!supabase) return;
     await supabase
-        .from('users')
-        .update({ last_activity_id: activityId })
+        .from('activity_cache')
+        .upsert({
+            user_id: userId,
+            guild_id: guildId,
+            media_id: mediaId,
+            message_id: messageId,
+            start_progress: startProgress.toString(),
+            end_progress: endProgress.toString(),
+            last_updated: new Date().toISOString()
+        }, { onConflict: 'user_id, guild_id, media_id' });
+};
+
+const clearActivityCache = async (userId, guildId, mediaId) => {
+    if (!supabase) return;
+    await supabase
+        .from('activity_cache')
+        .delete()
         .eq('user_id', userId)
-        .eq('guild_id', guildId);
+        .eq('guild_id', guildId)
+        .eq('media_id', mediaId);
+};
+
+/**
+ * Check if an activity ID has already been posted (DB-backed, Render-safe).
+ * Returns false if the `activity_posted` table doesn't exist yet.
+ */
+const wasPostedInDB = async (activityId) => {
+    if (!supabase) return false;
+    try {
+        const { data, error } = await supabase
+            .from('activity_posted')
+            .select('activity_id')
+            .eq('activity_id', String(activityId))
+            .maybeSingle();
+        if (error && error.code === 'PGRST200') return false; // Table missing
+        return !!data;
+    } catch (e) {
+        return false;
+    }
+};
+
+/**
+ * Persistently mark activity IDs as posted (DB-backed, Render-safe).
+ * Returns true if successfully saved to DB, false if table missing (caller uses file fallback).
+ */
+const markPostedInDB = async (activityIds) => {
+    if (!supabase) return false;
+    try {
+        const rows = activityIds.map(id => ({ activity_id: String(id) }));
+        const { error } = await supabase
+            .from('activity_posted')
+            .upsert(rows, { onConflict: 'activity_id' });
+        if (error && error.code === 'PGRST200') return false; // Table missing
+        return !error;
+    } catch (e) {
+        return false;
+    }
 };
 
 module.exports = {
@@ -155,5 +231,10 @@ module.exports = {
     removeUserFavorite,
     getUserFavoritesLocal,
     getLinkedUsersForFeed,
-    updateLastActivityId
+    updateLastActivityId,
+    getActivityCache,
+    upsertActivityCache,
+    clearActivityCache,
+    wasPostedInDB,
+    markPostedInDB,
 };

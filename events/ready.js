@@ -41,7 +41,29 @@ module.exports = {
         }
 
         if (client.isTestBot) {
-            logger.info('Test bot detected. Automated background tasks (internal scheduler) are disabled to avoid conflicts.', 'System');
+            logger.info('Test bot detected. Background airing checks disabled, but Activity Feed is ENABLED for live-dev testing.', 'System');
+
+            // ── Dedup Table Probe ─────────────────────────────────────────────
+            try {
+                const supabase = require('../utils/core/supabaseClient');
+                const { error } = await supabase.from('activity_posted').select('activity_id').limit(1);
+                if (!error) {
+                    logger.info('✅ [Activity Dedup] Supabase `activity_posted` table FOUND — persistent dedup is ACTIVE. Render-safe! ♡', 'System');
+                } else {
+                    logger.warn('⚠️ [Activity Dedup] Supabase `activity_posted` table NOT FOUND — falling back to local file cache. Run the migration in Supabase SQL Editor to activate persistent dedup on Render.', 'System');
+                }
+            } catch (e) {
+                logger.warn('⚠️ [Activity Dedup] Could not reach Supabase to check migration status.', 'System');
+            }
+
+            // Activity Feed only in test mode
+            setInterval(async () => {
+                try {
+                    await checkUserActivity(client);
+                } catch (error) {
+                    logger.error('Test Activity loop failure:', error, 'Scheduler');
+                }
+            }, 2 * 60 * 1000); // 2 mins for faster testing
         } else if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
             // Run scheduler shortly after startup (5 mins)
             // This prevents conflicts with administrative tasks like /deploy which run at startup

@@ -4,17 +4,18 @@ const { EMOJIS } = require('../config/emojiConfig');
 
 /**
  * LoadingManager handles beautiful, animated loading states for Discord interactions.
- * It provides a "Material You" flavored experience with a library-themed twist.
+ * Optimized to minimize API overhead while maintaining a premium feel.
  */
 class LoadingManager {
     constructor(interaction) {
         this.interaction = interaction;
         this.timer = null;
         this.currentFrame = 0;
+        this.progress = 0; // 0 to 100
         this.message = 'Processing...';
         this.type = 'CYCLE'; // 'CYCLE', 'STEP', or 'PROGRESS'
         
-        // Premium cyclic frames (Library/Mystic themed)
+        // Premium cyclic frames
         this.frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         
         this.steps = [
@@ -26,28 +27,22 @@ class LoadingManager {
         ];
 
         // Engine State
-        this.startTime = 0;
-        this.targetSeconds = 5;
         this.isStopping = false;
-        this.lastRender = 0;
-        this.renderCount = 0;
-        this.lastRounded = -1;
-        this.rendering = false;
+        this.lastContent = '';
+        this.lastRenderTime = 0;
+        this.renderInterval = 1500; // Minimum ms between edits to avoid rate limits
     }
 
     /**
      * Starts a cyclic animation (spinner)
-     * @param {string} message The message to display alongside the spinner
      */
-    async start(message = 'ProcessingRequest') {
+    async start(message = 'Processing Request') {
         this.message = message;
         this.type = 'CYCLE';
         this.currentFrame = 0;
         
-        // Initial feedback
-        await this._render();
+        await this._render(true); // Force initial render
 
-        // Start animation loop (Slower 1200ms to avoid network stutter)
         this.timer = setInterval(() => {
             if (this.isStopping) return;
             this.currentFrame = (this.currentFrame + 1) % this.frames.length;
@@ -57,20 +52,18 @@ class LoadingManager {
 
     /**
      * Starts a stepped progress animation
-     * @param {string[]} customSteps Array of strings for each step
-     * @param {number} interval Time between steps in ms
      */
     async startSteps(customSteps = null, interval = 2500) {
         if (customSteps) this.steps = customSteps;
         this.type = 'STEP';
         this.currentFrame = 0;
 
-        await this._render();
+        await this._render(true);
 
         this.timer = setInterval(() => {
+            if (this.isStopping) return;
             this.currentFrame++;
             if (this.currentFrame >= this.steps.length) {
-                // If we run out of steps, just keep the last one or switch to pulse
                 this.currentFrame = this.steps.length - 1;
                 clearInterval(this.timer);
                 return;
@@ -80,58 +73,42 @@ class LoadingManager {
     }
 
     /**
-     * Starts a stepped animation using themed messages from config
-     * @param {string} theme The theme key (e.g. 'GENERIC', 'BINGO')
-     * @param {number} count Number of unique steps to pick
-     * @param {number} interval Time between steps
-     */
-    async startThemedSteps(theme = 'GENERIC', count = 4, interval = 1200) {
-        const { loadingMessages } = require('../config/loadingMessages');
-        const pool = loadingMessages[theme] || loadingMessages['GENERIC'];
-        
-        // Pick random unique steps from the pool
-        const selected = [];
-        const shuf = [...pool].sort(() => 0.5 - Math.random());
-        for (let i = 0; i < Math.min(count, shuf.length); i++) {
-            selected.push(shuf[i]);
-        }
-        
-        return this.startSteps(selected, interval);
-    }
-
-    /**
-     * Starts an ultra-stable progress bar.
-     * Uses a multi-stage approach to minimize API overhead while showing progress.
+     * Starts a smooth progress bar animation.
+     * Increments progress internally and renders periodically.
      */
     async startProgress(message = 'Materializing...', totalSeconds = 5) {
         this.type = 'PROGRESS';
         this.message = message;
+        this.progress = 0;
         this.currentFrame = 0;
-        this.isStopping = false;
         
-        // Stage 1: Initial Render
-        await this._render().catch(() => null);
+        await this._render(true);
 
-        // Stage 2: Middle Progress (Simplified to 2 key milestones to save resources)
-        const midway = (totalSeconds * 1000) / 2;
-        
-        this.timer = setTimeout(async () => {
+        const increment = 100 / (totalSeconds * 10); // 10 ticks per second
+        this.timer = setInterval(() => {
             if (this.isStopping) return;
-            this.currentFrame = 50;
-            await this._render().catch(() => null);
-        }, midway);
+            
+            this.currentFrame = (this.currentFrame + 1) % this.frames.length;
+            this.progress = Math.min(this.progress + increment, 99); // Stay at 99 until stop()
+            
+            this._render().catch(() => this.stop());
+        }, 100);
     }
 
     /**
-     * Internal rendering logic
+     * Internal rendering logic with throttling
      */
-    async _render() {
+    async _render(force = false) {
         if (!this.interaction || this.isStopping) return;
+
+        const now = Date.now();
+        if (!force && (now - this.lastRenderTime < this.renderInterval)) return;
+
         const content = this._getContent();
-        
-        // Optimization: Only update if content changed or it's a new interaction
-        if (content === this.lastContent) return;
+        if (!force && content === this.lastContent) return;
+
         this.lastContent = content;
+        this.lastRenderTime = now;
 
         try {
             if (this.interaction.replied || this.interaction.deferred) {
@@ -149,8 +126,6 @@ class LoadingManager {
      * Generates the text content for the current state
      */
     _getContent() {
-        if (!this.type) return 'Processing...';
-
         const spinner = this.frames[this.currentFrame % this.frames.length];
 
         if (this.type === 'CYCLE') {
@@ -166,67 +141,55 @@ class LoadingManager {
 
         if (this.type === 'PROGRESS') {
             const size = 12;
-            const filled = Math.min(Math.max(Math.round((this.currentFrame / 100) * size), 0), size);
+            const filled = Math.round((this.progress / 100) * size);
             const bar = '▰'.repeat(filled) + '▱'.repeat(size - filled);
             
-            const displayPercent = this.currentFrame >= 100 ? 100 : Math.floor(this.currentFrame / 10) * 10;
+            const displayPercent = Math.floor(this.progress);
             
             const funMessages = [
                 "Polishing the pixels...", "Waking up the library cat...", "Consulting the high elders...",
                 "Searching the restricted section...", "Translating magic into image...", "Sharpening the virtual ink...",
                 "Basking in the archival glow...", "Decoding the anime fragments...", "Calibrating thematic vibes..."
             ];
-            const funMsg = displayPercent >= 100 ? "Ready! Opening the archives..." : funMessages[Math.floor(Date.now() / 2500) % funMessages.length];
+            // Slow down fun message rotation to once every 3s to minimize content churn
+            const funMsg = funMessages[Math.floor(Date.now() / 3000) % funMessages.length];
 
             return `${spinner} **${this.message}**\n\`${bar}\` **${displayPercent}%**\n> *${funMsg}*`;
         }
 
-        return 'Processing...';
+        return `${spinner} Processing...`;
     }
 
     _cleanup() {
         if (this.timer) {
-            clearTimeout(this.timer);
             clearInterval(this.timer);
             this.timer = null;
         }
     }
 
     /**
-     * Stops the animation and ensures it hits 100% (if Progress).
-     * Delivers final graphic immediately with 100% state for perfect timing.
+     * Stops the animation and delivers the final payload.
      */
     async stop(finalPayload = null) {
         if (this.isStopping && !finalPayload) return;
         
         this.isStopping = true;
         this._cleanup();
-        
-        if (this.type === 'PROGRESS') {
-            this.currentFrame = 100;
-        }
+        this.progress = 100;
 
         try {
-            if (finalPayload) {
-                // Combine final payload with 100% state
-                // We clear the content text in the SAME call if finalPayload is an embed
-                const result = await this.interaction.editReply({ 
-                    content: '', // Clear the loading text immediately to let the embed shine
-                    ...finalPayload 
-                });
-
-                return result;
+            const options = finalPayload ? { content: '', ...finalPayload } : { content: this._getContent() };
+            
+            if (this.interaction.replied || this.interaction.deferred) {
+                return await this.interaction.editReply(options).catch(() => null);
             } else {
-                return await this._render();
+                return await this.interaction.reply(options).catch(() => null);
             }
         } catch (e) {
             return null;
         }
     }
 
-    /**
-     * Static helper for a quick "Finding result..." pulse
-     */
     static async pulse(interaction, message) {
         const loader = new LoadingManager(interaction);
         await loader.start(message);
@@ -235,3 +198,4 @@ class LoadingManager {
 }
 
 module.exports = LoadingManager;
+

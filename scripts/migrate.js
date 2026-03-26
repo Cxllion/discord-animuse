@@ -32,7 +32,8 @@ const initializeDatabase = async () => {
                 booster_role_id text,
                 mod_role_id text,
                 mute_role_id text,
-                airing_channel_id text
+                airing_channel_id text,
+                activity_channel_id text
             );
         `);
 
@@ -51,6 +52,7 @@ const initializeDatabase = async () => {
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS airing_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS mod_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS mute_role_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS activity_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS leveling_enabled boolean DEFAULT true;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS level_up_channel_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS archive_mirror_channel_id text;`);

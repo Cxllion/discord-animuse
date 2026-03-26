@@ -23,9 +23,9 @@ module.exports = {
         if (message.author.bot) return;
         if (!message.guild) return;
 
-        // --- Test Bot Restriction ---
-        // Skip automated tasks for test bot to avoid conflicts with main bot
-        if (message.client.isTestBot) return;
+        // Skip other automated tasks for test bot
+        // But the Activity Pulse is allowed for live-dev testing
+        const isSelfTest = message.client.isTestBot;
 
 
         // Fetch config (Note: In production, caching this is recommended to avoid DB spam)
@@ -38,7 +38,7 @@ module.exports = {
         if (!config) return; // DB error or fresh guild
 
         // --- Archive Bureau (Pin Mirroring) ---
-        if (message.type === 6 && config.archive_mirror_channel_id) {
+        if (!isSelfTest && message.type === 6 && config.archive_mirror_channel_id) {
             const archiveChannel = message.guild.channels.cache.get(config.archive_mirror_channel_id);
             if (archiveChannel) {
                 try {
@@ -74,7 +74,7 @@ module.exports = {
         }
 
         // --- Gallery Mode ---
-        if (config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
+        if (!isSelfTest && config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
             const urlRegex = /https?:\/\/[^\s]+/;
             const match = message.content.match(urlRegex);
             const hasLink = !!match;
@@ -138,7 +138,7 @@ module.exports = {
         }
 
         // --- Leveling Hook ---
-        if (config.leveling_enabled !== false) {
+        if (!isSelfTest && config.leveling_enabled !== false) {
             const { addXp } = require('../utils/services/leveling');
             await addXp(message.author.id, message.guild.id, message.member, message);
         }
@@ -155,13 +155,15 @@ module.exports = {
             const lastPulse = message.client.activityPulseCache.get(cooldownKey) || 0;
             const now = Date.now();
             
-            // Check every 10 minutes when talking (to avoid spamming AniList API)
-            if (now - lastPulse > 10 * 60 * 1000) {
+            // Check every 2 minutes when talking in dev/test mode (10m in prod usually)
+            const cooldownMs = isSelfTest ? 2 * 60 * 1000 : 10 * 60 * 1000;
+
+            if (now - lastPulse > cooldownMs) {
                 const anilistUsername = await getLinkedAnilist(message.author.id, message.guild.id);
                 if (anilistUsername) {
+                    logger.info(`[Activity Pulse] Triggering check for ${message.author.tag} (${anilistUsername})`, 'Scheduler');
                     const activityChannel = message.guild.channels.cache.get(config.activity_channel_id);
                     if (activityChannel) {
-                        // We basically fake a userRow for the recruiter
                         const { data: userData } = await require('../utils/core/supabaseClient')
                             .from('users')
                             .select('last_activity_id')
@@ -175,7 +177,6 @@ module.exports = {
                             last_activity_id: userData?.last_activity_id || 0
                         };
 
-                        // Pulse check!
                         await checkAndBroadcastUserActivity(message.client, message.guild.id, userRow, activityChannel);
                         message.client.activityPulseCache.set(cooldownKey, now);
                     }

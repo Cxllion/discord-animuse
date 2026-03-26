@@ -2,67 +2,81 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 
+/**
+ * Loads all commands from the commands directory recursively.
+ * @param {Client} client The Discord client instance.
+ */
 const loadCommands = (client) => {
     const foldersPath = path.join(__dirname, '../../commands');
-    let commandFolders = [];
-
-    try {
-        commandFolders = fs.readdirSync(foldersPath);
-    } catch (err) {
-        logger.error("Could not read 'commands' directory:", err);
+    
+    if (!fs.existsSync(foldersPath)) {
+        logger.error(`Commands directory not found at: ${foldersPath}`, 'Loader');
         return;
     }
 
+    const commandFolders = fs.readdirSync(foldersPath, { withFileTypes: true });
+    let totalLoaded = 0;
+
     for (const folder of commandFolders) {
-        const commandsPath = path.join(foldersPath, folder);
-        // Ensure it's a directory
-        if (fs.existsSync(commandsPath) && fs.statSync(commandsPath).isDirectory()) {
-            const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-            for (const file of commandFiles) {
-                const filePath = path.join(commandsPath, file);
-                try {
-                    const command = require(filePath);
-                    if ('data' in command && 'execute' in command) {
-                        client.commands.set(command.data.name, command);
-                        logger.debug(`Loaded command: ${command.data.name}`, 'Loader');
-                    } else {
-                        logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`, 'Loader');
-                    }
-                } catch (e) {
-                    logger.error(`Failed to load command ${file}:`, e, 'Loader');
+        if (!folder.isDirectory()) continue;
+
+        const commandsPath = path.join(foldersPath, folder.name);
+        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+        for (const file of commandFiles) {
+            const filePath = path.join(commandsPath, file);
+            try {
+                const command = require(filePath);
+                
+                if ('data' in command && 'execute' in command) {
+                    client.commands.set(command.data.name, command);
+                    logger.debug(`Loaded command: ${command.data.name}`, 'Loader');
+                    totalLoaded++;
+                } else {
+                    logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`, 'Loader');
                 }
+            } catch (e) {
+                logger.error(`Failed to load command ${file} from ${folder.name}:`, e, 'Loader');
             }
         }
     }
-    logger.info(`Successfully curated ${client.commands.size} command volumes.`, 'Loader');
+    
+    logger.info(`Successfully curated ${totalLoaded} command volumes across ${commandFolders.filter(f => f.isDirectory()).length} categories.`, 'Loader');
 };
 
+/**
+ * Loads all events from the events directory.
+ * @param {Client} client The Discord client instance.
+ */
 const loadEvents = (client) => {
     const eventsPath = path.join(__dirname, '../../events');
-    let eventFiles = [];
-
-    try {
-        eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
-    } catch (err) {
-        logger.error("Could not read 'events' directory:", err);
+    
+    if (!fs.existsSync(eventsPath)) {
+        logger.error(`Events directory not found at: ${eventsPath}`, 'Loader');
         return;
     }
+
+    const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
     for (const file of eventFiles) {
         const filePath = path.join(eventsPath, file);
         try {
             const event = require(filePath);
+            const eventName = event.name || path.basename(file, '.js');
+            
             if (event.once) {
-                client.once(event.name, (...args) => event.execute(...args));
+                client.once(eventName, (...args) => event.execute(...args));
             } else {
-                client.on(event.name, (...args) => event.execute(...args));
+                client.on(eventName, (...args) => event.execute(...args));
             }
-            logger.debug(`Loaded event: ${event.name}`, 'Loader');
+            logger.debug(`Loaded event: ${eventName}`, 'Loader');
         } catch (e) {
             logger.error(`Failed to load event ${file}:`, e, 'Loader');
         }
     }
+    
     logger.info(`Successfully bound ${eventFiles.length} runtime events.`, 'Loader');
 };
 
 module.exports = { loadCommands, loadEvents };
+

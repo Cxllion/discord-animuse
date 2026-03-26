@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder, MessageFlag
 const { fetchConfig } = require('../../utils/core/database');
 const { generateWelcomeCard } = require('../../utils/generators/welcomeGenerator');
 const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
-const { getMediaById, getTrendingAnime, getTrendingManga, getAniListProfile } = require('../../utils/services/anilistService');
+const { getMediaById, getTrendingAnime, getTrendingManga, getTrendingMovies, getAniListProfile } = require('../../utils/services/anilistService');
 const { sendNotifications } = require('../../utils/services/scheduler');
 const { getUserColor, getUserAvatarConfig, getLinkedAnilist, getUserTitle } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
@@ -24,7 +24,8 @@ module.exports = {
                             { name: '✨ Welcome', value: 'welcome' },
                             { name: '📢 Airing', value: 'airing' },
                             { name: '🎯 Bingo', value: 'bingo' },
-                            { name: '🔔 Activity', value: 'activity' }
+                            { name: '🔔 Activity', value: 'activity' },
+                            { name: '🔎 Search', value: 'search' }
                         ))
                 .addStringOption(option =>
                     option.setName('query')
@@ -111,25 +112,36 @@ module.exports = {
                     }
 
                     const nextEpNum = (media.nextAiringEpisode?.episode) || (media.episodes ? media.episodes + 1 : 12);
-                    const episode = {
-                        episode: nextEpNum,
-                        airingAt: Math.floor(Date.now() / 1000),
-                        timeUntilAiring: 0
-                    };
+                    const { generateAiringCard } = require('../../utils/generators/airingGenerator');
 
-                    await interaction.editReply({ content: `✅ **Record Retrieved**: **${media.title.english || media.title.romaji}**\nInitiating notification simulation...` });
+                    await interaction.editReply({ content: `✅ **Airing Graphic Diagnostic**: **${media.title.english || media.title.romaji}**\n🎨 Generating solo and community variants...` });
 
                     try {
-                        const config = await fetchConfig(interaction.guild.id);
-                        if (!config || !config.airing_channel_id) {
-                            return await interaction.editReply({ content: '⚠️ **Configuration Warning**: Airing Channel is NOT set. The simulation runs, but no message will appear.\nUse `/channel assign type:airing` to set it.' });
-                        }
+                        const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+                        
+                        // Scenario A: Solo Airing
+                        const bufferSolo = await generateAiringCard(media, { episode: nextEpNum }, [], themeColor);
+                        const attachmentSolo = new AttachmentBuilder(bufferSolo, { name: 'airing-test-solo.webp' });
 
-                        await sendNotifications(interaction.client, media, episode, { forceGuildId: interaction.guild.id });
-                        await interaction.followUp({ content: '✅ **Simulation Triggered**\nCheck your configured Airing Channel.', flags: MessageFlags.Ephemeral });
+                        // Scenario B: Community Trackers
+                        const mockTrackers = [
+                            { displayName: 'Alex', level: 85, avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' },
+                            { displayName: 'Sami', level: 124, avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' },
+                            { displayName: 'Jordan', level: 42, avatarURL: 'https://cdn.discordapp.com/embed/avatars/2.png' },
+                            { displayName: 'Casey', level: 10, avatarURL: 'https://cdn.discordapp.com/embed/avatars/3.png' },
+                            { displayName: 'Taylor', level: 67, avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' }
+                        ];
+                        const bufferCommunity = await generateAiringCard(media, { episode: nextEpNum }, mockTrackers, themeColor);
+                        const attachmentCommunity = new AttachmentBuilder(bufferCommunity, { name: 'airing-test-community.webp' });
+
+                        await interaction.followUp({
+                            content: `🏁 **Visual Diagnostic Complete**\nGenerated cards for **${media.title.english || media.title.romaji}** (Episode ${nextEpNum})`,
+                            files: [attachmentSolo, attachmentCommunity]
+                        });
+
                     } catch (e) {
                         logger.error('Airing Test Error:', e.message, 'FeatureCommand');
-                        await interaction.followUp({ content: `❌ **Simulation Failed**: ${e.message}`, flags: MessageFlags.Ephemeral });
+                        await interaction.followUp({ content: `❌ **Diagnostic Failed**: ${e.message}`, flags: MessageFlags.Ephemeral });
                     }
                 }
 
@@ -209,6 +221,7 @@ module.exports = {
                     // Fetch trending items mix
                     const trendingAnime = await getTrendingAnime();
                     const trendingManga = await getTrendingManga();
+                    const trendingMovies = await getTrendingMovies();
                     const trending = [...trendingAnime, ...trendingManga];
 
                     // Resolve User Avatar
@@ -237,26 +250,51 @@ module.exports = {
                     };
 
                     const mockActivities = [
-                        { status: 'watched episode', progress: '12', score: 8.5 },
-                        { status: 'read chapter', progress: '42', score: 9 }, // Manga
-                        { status: 'completed', score: 85 }, // Anime finished
-                        { status: 'completed', score: 10, mediaType: 'MANGA' }, // Manga finished
-                        { status: 'planning to watch', score: null }, 
-                        { status: 'dropped', score: 1 }, // Anime Quit
-                        { status: 'dropped', score: 2, mediaType: 'MANGA' } // Manga Quit
+                        // ── Anime Variants ──
+                        { status: 'watched episode', progress: '12', score: 8.5, format: 'TV' },
+                        { status: 'watched episode', progress: '1-12', score: 9.2, format: 'TV' }, // Binge
+                        { status: 'completed', score: 9.5, format: 'TV' },
+                        { status: 'dropped', score: 3, format: 'TV' },
+                        { status: 'planning to watch', score: null, format: 'TV' },
+                        // ── Movie ──
+                        { status: 'watched movie', progress: null, score: 9.8, format: 'MOVIE' },
+                        { status: 'completed', score: 10, format: 'MOVIE' },
+                        // ── OVA / ONA / Special ──
+                        { status: 'watched episode', progress: '3', score: 7.5, format: 'OVA' },
+                        { status: 'watched episode', progress: '6', score: 8, format: 'ONA' },
+                        { status: 'completed', score: 8.2, format: 'SPECIAL' },
+                        // ── Manga Variants ──
+                        { status: 'read chapter', progress: '42', score: 9, mediaType: 'MANGA', format: 'MANGA' },
+                        { status: 'read chapter', progress: '10-15', score: 8.8, mediaType: 'MANGA', format: 'MANGA' }, // Binge
+                        { status: 'read volume', progress: '3', score: 8, mediaType: 'MANGA', format: 'MANGA' },
+                        { status: 'completed', score: 10, mediaType: 'MANGA', format: 'MANGA' },
+                        { status: 'dropped', score: 2, mediaType: 'MANGA', format: 'MANGA' },
+                        // ── No-Score Variants ──
+                        { status: 'watched episode', progress: '5', score: null, format: 'TV' },
+                        { status: 'read chapter', progress: '20', score: null, mediaType: 'MANGA', format: 'MANGA' },
                     ];
                     
+                    const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+                    const shuffledAnime = shuffle([...trendingAnime]);
+                    const shuffledManga = shuffle([...trendingManga]);
+                    const shuffledMovies = shuffle([...trendingMovies]);
+
                     const { generateActivityCard } = require('../../utils/generators/activityGenerator');
                     const attachments = [];
 
                     for (let i = 0; i < mockActivities.length; i++) {
                         const s = mockActivities[i];
                         const isManga = s.mediaType === 'MANGA' || s.status.includes('read');
-                        const pool = isManga ? trendingManga : trendingAnime;
+                        const isMovie = s.format === 'MOVIE';
+                        const pool = isManga ? shuffledManga : isMovie ? shuffledMovies : shuffledAnime;
                         const mockMedia = pool[i % pool.length] || pool[0] || {};
                         
                         const activityData = {
-                            media: { ...mockMedia, type: isManga ? 'MANGA' : 'ANIME' },
+                            media: { 
+                                ...mockMedia, 
+                                type: isManga ? 'MANGA' : 'ANIME',
+                                format: s.format || (isManga ? 'MANGA' : 'TV')
+                            },
                             status: s.status,
                             progress: s.progress,
                             score: s.score === undefined ? (s.status.includes('planning') ? null : (Math.floor(Math.random() * 4) + 7)) : s.score
@@ -264,9 +302,9 @@ module.exports = {
 
                         try {
                             const buffer = await generateActivityCard(userMeta, activityData);
-                            attachments.push(new AttachmentBuilder(buffer, { name: `activity-${i}-${s.status.replace(/\s+/g, '-')}.webp` }));
+                            attachments.push(new AttachmentBuilder(buffer, { name: `activity-${i}-${s.format || 'tv'}-${s.status.replace(/\s+/g, '-')}.webp` }));
                         } catch (err) {
-                            logger.error(`Batch Gen Failed for ${s.status}:`, err, 'FeatureTest');
+                            logger.error(`Batch Gen Failed for ${s.status} (${s.format}):`, err, 'FeatureTest');
                         }
                     }
 
@@ -277,6 +315,51 @@ module.exports = {
                             content: i === 0 ? '🏁 **Activity Feed Generation Complete!**' : '',
                             files: chunk 
                         });
+                    }
+                }
+
+                // --- SEARCH CARD TEST ---
+                else if (type === 'search') {
+                    let media;
+                    let mediaId;
+
+                    if (query) {
+                        mediaId = parseInt(query);
+                        if (isNaN(mediaId)) {
+                            return await interaction.editReply({ content: '❌ **Error**: ID must be a number.' });
+                        }
+                        await interaction.editReply({ content: `⏳ **Fetching** data for Media ID: \`${mediaId}\`...` });
+                        media = await getMediaById(mediaId);
+                        if (!media) {
+                            return await interaction.editReply({ content: '❌ **Error**: Media not found on AniList.' });
+                        }
+                    } else {
+                        await interaction.editReply({ content: '🎲 **Random Mode**: Picking a trending anime...' });
+                        const trending = await getTrendingAnime();
+                        if (!trending.length) {
+                            return await interaction.editReply({ content: '❌ **Error**: Could not fetch trending anime.' });
+                        }
+                        media = trending[Math.floor(Math.random() * trending.length)];
+                    }
+
+                    const { generateSearchCard } = require('../../utils/generators/searchGenerator');
+                    await interaction.editReply({ content: `✅ **Search Graphic Diagnostic**: **${media.title.english || media.title.romaji}**\n🎨 Generating premium cinematic card...` });
+
+                    try {
+                        const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+                        
+                        // Scenario: Full Search Card
+                        const buffer = await generateSearchCard(media, themeColor);
+                        const attachment = new AttachmentBuilder(buffer, { name: `search-test-${media.id}.webp` });
+
+                        await interaction.followUp({
+                            content: `🏁 **Visual Diagnostic Complete**\nGenerated search result card for **${media.title.english || media.title.romaji}** (${media.format || 'TV'})`,
+                            files: [attachment]
+                        });
+
+                    } catch (e) {
+                        logger.error('Search Test Error:', e.message, 'FeatureCommand');
+                        await interaction.followUp({ content: `❌ **Diagnostic Failed**: ${e.message}`, flags: MessageFlags.Ephemeral });
                     }
                 }
 

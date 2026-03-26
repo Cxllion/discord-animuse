@@ -17,7 +17,8 @@ const {
     updateUserBackground, getUserBackground, getUserTitle, 
     updateUserTitle, getUserColor, updateUserColor, 
     getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, 
-    getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal 
+    getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal,
+    getLinkedUsersForFeed, updateLastActivityId, getActivityCache, upsertActivityCache, clearActivityCache
 } = require('../services/userService');
 
 const { 
@@ -74,6 +75,11 @@ module.exports = {
     addUserFavorite,
     removeUserFavorite,
     getUserFavoritesLocal,
+    getLinkedUsersForFeed,
+    updateLastActivityId,
+    getActivityCache,
+    upsertActivityCache,
+    clearActivityCache,
 
     // Anime Tracker
     addTracker,

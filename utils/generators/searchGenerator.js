@@ -176,11 +176,12 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     if (isManga) {
         baseMeta = `${format}  •  ${year}`;
     } else {
-        studioNodes = media.studios?.nodes || [];
-        const rawStudio = studioNodes[0]?.name || 'TBA';
-        const studio = rawStudio.replace(/studio/gi, '').trim().split(' ')[0] || 'TBA';
-        extraCount = studioNodes.length - 1;
-        baseMeta = `${format}  •  ${year}  •  ${studio.toUpperCase()}`;
+        const studioEdges = media.studios?.edges || [];
+        const mainStudios = studioEdges.filter(e => e.isMain).map(e => e.node.name);
+        const rawStudio = mainStudios[0] || studioEdges[0]?.node?.name || 'TBA';
+        const studioName = rawStudio.replace(/studio/gi, '').trim().split(' ')[0] || 'TBA';
+        extraCount = mainStudios.length > 0 ? mainStudios.length - 1 : Math.max(0, studioEdges.length - 1);
+        baseMeta = `${format}  •  ${year}  •  ${studioName.toUpperCase()}`;
     }
 
     ctx.save();
@@ -190,11 +191,11 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     
     // Calculate Extra Pill if needed (Anime only)
     let extraPillW = 0;
-    const extraPillH = 18; // Matched to studio name font size (18px)
+    const extraPillH = 24; // Further enlarged
     if (!isManga && extraCount > 0) {
-        ctx.font = '900 11px sans-serif'; // Tighter font for the smaller pill
+        ctx.font = '900 14px sans-serif'; // Upscaled font
         ctx.letterSpacing = '1px';
-        extraPillW = ctx.measureText(`+${extraCount}`).width + 14; 
+        extraPillW = ctx.measureText(`+${extraCount}`).width + 18; 
     }
 
     const totalTargetW = baseMetaW + (extraCount > 0 ? extraPillW + 12 : 0);
@@ -218,24 +219,24 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const startX = baseW - (pillW/2) - (totalTargetW/2) + 20; 
+    const startX = baseW - (pillW/2) - (totalTargetW/2) + 12; // Balanced for optial curve centering
     ctx.fillText(baseMeta, startX, pillH/2 + 2);
 
     // Draw Extra Cluster Pill (V8.8 Matched Scale)
     if (extraCount > 0) {
-        const pillX = startX + baseMetaW + 2; 
-        const pillY = pillH/2 - (extraPillH/2) + 2; // Precise sync with 18px text
+        const pillX = startX + baseMetaW + 10; // Better separation
+        const pillY = pillH/2 - (extraPillH/2) + 2; 
         ctx.beginPath();
-        ctx.roundRect(pillX, pillY, extraPillW, extraPillH, 9);
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.roundRect(pillX, pillY, extraPillW, extraPillH, 12);
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
         ctx.fill();
         
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
         
-        ctx.font = '900 11px sans-serif';
-        ctx.letterSpacing = '1px';
+        ctx.font = '900 14px sans-serif';
+        ctx.letterSpacing = '0.5px';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#FFF';
         ctx.fillText(`+${extraCount}`, pillX + extraPillW/2, pillY + extraPillH/2 + 1);
@@ -308,7 +309,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
             if (fill > 0) {
                 ctx.save();
                 ctx.clip();
-                ctx.fillStyle = tokens.surface; 
+                ctx.fillStyle = '#FFF'; // Brighter filled star
                 ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
                 ctx.restore();
             }
@@ -405,8 +406,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     curY += 90; 
 
     // D. SYNOPSIS ZONE (V9.6: High Precision Tyopgraphy)
-    ctx.letterSpacing = '0px'; // CRITICAL: Reset tracking to avoid Title/HUD bleeding
-    let descRaw = (media?.description || 'No database summary.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    ctx.letterSpacing = '0px'; 
+    let descRaw = (media?.description || 'No database summary, Manager. We are currently scouting for records.').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     
     // Phase 1: word-limit/sentence truncation
     const targetLimit = 50;

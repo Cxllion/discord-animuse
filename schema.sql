@@ -8,7 +8,8 @@ create table if not exists public.guild_configs (
   gallery_channel_ids text[],
   xp_enabled boolean default true,
   muse_role_id text,
-  mafia_channel_id text
+  mafia_channel_id text,
+  activity_channel_id text
 );
 
 -- 2. Users (New)
@@ -32,3 +33,17 @@ on public.guild_configs for all using (true) with check (true);
 
 create policy "Enable all access for service role on users"
 on public.users for all using (true) with check (true);
+
+-- 3. Archive Stats (Mafia)
+create table if not exists public.archive_stats (
+  user_id text primary key,
+  wins integer default 0,
+  losses integer default 0,
+  games_played integer default 0,
+  last_played timestamp with time zone default now()
+);
+
+alter table public.archive_stats enable row level security;
+
+create policy "Enable all access for service role on archive_stats"
+on public.archive_stats for all using (true) with check (true);
