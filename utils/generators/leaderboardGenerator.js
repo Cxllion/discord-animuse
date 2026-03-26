@@ -384,7 +384,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     await drawPodiumUser(topUsers[1], pX - 50, podiumY + 40, 40, 2);
     await drawPodiumUser(topUsers[0], pX, podiumY - 20, 50, 1);
 
-    return await canvas.toBuffer('image/png');
+    return await canvas.encode('webp', { quality: 85 });
 };
 
 module.exports = { generateLeaderboard };

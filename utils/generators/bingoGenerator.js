@@ -530,7 +530,7 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
     // The grid area now extends fully to the bottom padding.
     // No text is rendered here.
 
-    return await canvas.toBuffer('image/png');
+    return await canvas.encode('webp', { quality: 85 });
 };
 
 module.exports = { generateBingoCard };

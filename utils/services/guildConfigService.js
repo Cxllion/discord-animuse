@@ -35,6 +35,7 @@ const fetchConfig = async (guildId) => {
             greeting_channel_id: null,
             logs_channel_id: null,
             gallery_channel_ids: [],
+            activity_channel_id: null,
             xp_enabled: true,
             muse_role_id: null,
             member_role_id: null,
@@ -80,9 +81,80 @@ const getArchiveSettings = async (guildId) => {
     return config?.archive_mirror_channel_id;
 };
 
+// --- Parent Server Engine ---
+const registerParentServer = async (guildId) => {
+    if (!supabase) return { error: 'No DB' };
+    return await supabase
+        .from('parent_server_settings')
+        .upsert({ guild_id: guildId })
+        .select()
+        .single();
+};
+
+const getParentSettings = async (guildId) => {
+    if (!supabase) return null;
+    const { data } = await supabase
+        .from('parent_server_settings')
+        .select('*')
+        .eq('guild_id', guildId)
+        .single();
+    return data;
+};
+
+const isParentServer = async (guildId) => {
+    const settings = await getParentSettings(guildId);
+    return !!settings;
+};
+
+// --- Channel Activity & Organization ---
+/**
+ * Updates the last active timestamp for a channel.
+ * @param {string} guildId 
+ * @param {string} channelId 
+ */
+const pulseChannelActivity = async (guildId, channelId) => {
+    if (!supabase) return;
+    await supabase.from('guild_channels').upsert({
+        guild_id: guildId,
+        channel_id: channelId,
+        last_active_at: new Date().toISOString()
+    }, { onConflict: 'guild_id, channel_id' });
+};
+
+/**
+ * Sets a pinned position for a channel within its category.
+ * @param {string} guildId 
+ * @param {string} channelId 
+ * @param {number} position 
+ */
+const pinChannelPosition = async (guildId, channelId, position) => {
+    if (!supabase) return;
+    await supabase.from('guild_channels').upsert({
+        guild_id: guildId,
+        channel_id: channelId,
+        pinned_position: position
+    }, { onConflict: 'guild_id, channel_id' });
+};
+
+/**
+ * Fetches activity and pin data for all channels in a guild.
+ * @param {string} guildId 
+ */
+const getGuildChannelData = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('guild_channels').select('*').eq('guild_id', guildId);
+    return data || [];
+};
+
 module.exports = {
     fetchConfig,
     upsertConfig,
     assignChannel,
-    getArchiveSettings
+    getArchiveSettings,
+    registerParentServer,
+    getParentSettings,
+    isParentServer,
+    pulseChannelActivity,
+    pinChannelPosition,
+    getGuildChannelData
 };

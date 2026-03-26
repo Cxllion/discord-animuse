@@ -138,7 +138,7 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
         const buffer = await generateProfileCard(interaction.user, userData, favorites, bg, color, interaction.member.displayName);
         loader.stop();
 
-        const attachment = new AttachmentBuilder(buffer, { name: 'preview.png' });
+        const attachment = new AttachmentBuilder(buffer, { name: 'preview.webp' });
         const msgs = [
             "✨ Looking sharp! Here is your updated design.",
             "🎨 A fresh coat of paint! How does it look?",

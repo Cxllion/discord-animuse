@@ -45,11 +45,21 @@ setupClientHandlers(client);
 
 // Basic HTTP server for satisfying platform health checks
 const port = process.env.PORT || 3000;
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.write('Animuse Test Library: ONLINE');
     res.end();
-}).listen(port);
+});
+
+server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') {
+        logger.warn(`Port ${port} is already in use by another instance. Skipping health-check server startup, but continuing with the bot...`, 'System');
+    } else {
+        logger.error('Web Server Error:', e, 'System');
+    }
+});
+
+server.listen(port);
 
 (async () => {
     try {

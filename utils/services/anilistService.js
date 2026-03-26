@@ -9,10 +9,12 @@ const anilistClient = axios.create({
     },
 });
 
+const NodeCache = require('node-cache');
+
 // Cache for AniList requests
-const mediaCache = new Map();
-const searchCache = new Map();
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// stdTTL: 1 hour, checkperiod: 120 seconds
+const mediaCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
+const searchCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 
 /**
  * Helper function to make GraphQL requests to AniList
@@ -61,11 +63,8 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
  */
 const searchMedia = async (search, type = 'ANIME') => {
     const cacheKey = `search_${type}_${search.toLowerCase()}`;
-    if (searchCache.has(cacheKey)) {
-        const { data, timestamp } = searchCache.get(cacheKey);
-        if (Date.now() - timestamp < CACHE_TTL) return data;
-        searchCache.delete(cacheKey);
-    }
+    const cached = searchCache.get(cacheKey);
+    if (cached) return cached;
 
     const query = `
     query ($search: String, $type: MediaType) {
@@ -88,7 +87,7 @@ const searchMedia = async (search, type = 'ANIME') => {
     if (!data || !data.Page || !data.Page.media) return [];
     const results = data.Page.media;
 
-    searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+    searchCache.set(cacheKey, results);
     return results;
 };
 
@@ -100,11 +99,8 @@ const searchMedia = async (search, type = 'ANIME') => {
  */
 const getMediaById = async (id) => {
     const cacheKey = `media_${id}`;
-    if (mediaCache.has(cacheKey)) {
-        const { data, timestamp } = mediaCache.get(cacheKey);
-        if (Date.now() - timestamp < CACHE_TTL) return data;
-        mediaCache.delete(cacheKey);
-    }
+    const cached = mediaCache.get(cacheKey);
+    if (cached) return cached;
 
     const query = `
     query ($id: Int) {
@@ -154,7 +150,7 @@ const getMediaById = async (id) => {
     const data = await queryAnilist(query, { id });
     const result = data.Media;
 
-    mediaCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    mediaCache.set(cacheKey, result);
     return result;
 };
 
@@ -200,6 +196,8 @@ const getPlanningList = async (username, type = 'ANIME') => {
                         coverImage { large extraLarge }
                         status
                         format
+                        averageScore
+                        meanScore
                     }
                 }
             }
@@ -229,6 +227,8 @@ const getMediaByIds = async (ids) => {
                 title { english romaji }
                 siteUrl
                 coverImage { large extraLarge }
+                averageScore
+                meanScore
             }
         }
     }
@@ -379,6 +379,8 @@ const getTrendingAnime = async () => {
                 }
                 siteUrl
                 format
+                averageScore
+                meanScore
                 genres
                 studios(isMain: true) {
                     nodes { name }
@@ -395,9 +397,85 @@ const getTrendingAnime = async () => {
     }
 };
 
+/**
+ * Fetch a random subset of currently trending manga.
+ * @returns {Promise<Array>} List of media
+ */
+const getTrendingManga = async () => {
+    const query = `
+    query {
+        Page(perPage: 10) {
+            media(sort: TRENDING_DESC, type: MANGA) {
+                id
+                title { romaji english }
+                coverImage { extraLarge large color }
+                bannerImage
+                siteUrl
+                format
+                averageScore
+                meanScore
+                genres
+                type
+            }
+        }
+    }
+    `;
+    try {
+        const data = await queryAnilist(query);
+        return data.Page.media || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+/**
+ * Fetch recent activities for a user.
+ * @param {string} userName AniList Username
+ * @returns {Promise<Array>} List of activities
+ */
+const getUserActivity = async (userName) => {
+    const query = `
+    query ($userName: String) {
+        Page(page: 1, perPage: 5) {
+            activities(userName: $userName, type_in: [ANIME_LIST, MANGA_LIST], sort: ID_DESC) {
+                ... on ListActivity {
+                    id
+                    status
+                    progress
+                    score
+                    type
+                    createdAt
+                    media {
+                        id
+                        type
+                        title { english romaji }
+                        coverImage { extraLarge large color }
+                        bannerImage
+                        format
+                        averageScore
+                        meanScore
+                    }
+                    user {
+                        id
+                        name
+                        avatar { large }
+                    }
+                }
+            }
+        }
+    }
+    `;
+    try {
+        const data = await queryAnilist(query, { userName });
+        return data.Page.activities || [];
+    } catch (e) {
+        return [];
+    }
+};
+
 const flushAniListCache = () => {
-    mediaCache.clear();
-    searchCache.clear();
+    mediaCache.flushAll();
+    searchCache.flushAll();
     logger.info('AniList Data Caches have been flushed. ♡', 'AniList');
 };
 
@@ -418,6 +496,8 @@ module.exports = {
     getUserStats,
     getAniListProfile,
     getTrendingAnime,
+    getTrendingManga,
+    getUserActivity,
     flushAniListCache,
     formatMediaTitle
 };

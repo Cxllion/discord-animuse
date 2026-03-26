@@ -117,6 +117,25 @@ const getUserFavoritesLocal = async (userId) => {
     return data || [];
 };
 
+const getLinkedUsersForFeed = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase
+        .from('users')
+        .select('user_id, anilist_username, last_activity_id')
+        .eq('guild_id', guildId)
+        .not('anilist_username', 'is', null);
+    return data || [];
+};
+
+const updateLastActivityId = async (userId, guildId, activityId) => {
+    if (!supabase) return;
+    await supabase
+        .from('users')
+        .update({ last_activity_id: activityId })
+        .eq('user_id', userId)
+        .eq('guild_id', guildId);
+};
+
 module.exports = {
     linkAnilistAccount,
     unlinkAnilistAccount,
@@ -134,5 +153,7 @@ module.exports = {
     addTitle,
     addUserFavorite,
     removeUserFavorite,
-    getUserFavoritesLocal
+    getUserFavoritesLocal,
+    getLinkedUsersForFeed,
+    updateLastActivityId
 };

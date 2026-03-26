@@ -121,7 +121,7 @@ module.exports = {
         // 4. Generate
         let challengerName = interaction.member ? interaction.member.displayName : interaction.user.username;
         const buffer = await generateLeaderboard(interaction.user, challengerData, topUsers, bgUrl, color, challengerName, challengerAvatarUrl);
-        const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard.png' });
+        const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard.webp' });
 
         // MERGED DELIVERY: 100% + Leaderboard in one call
         await loader.stop({ files: [attachment] });

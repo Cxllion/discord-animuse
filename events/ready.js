@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { checkAiringAnime } = require('../utils/services/scheduler');
+const { checkAiringAnime, checkUserActivity } = require('../utils/services/scheduler');
 const { deployCommands } = require('../utils/core/commandDeployer');
 const logger = require('../utils/core/logger');
 
@@ -53,10 +53,11 @@ module.exports = {
             setInterval(async () => {
                 try {
                     await checkAiringAnime(client);
+                    await checkUserActivity(client);
                 } catch (error) {
                     logger.error('Notification loop failure:', error, 'Scheduler');
                 }
-            }, 10 * 60 * 1000);
+            }, 5 * 60 * 1000); // 5 minute polling cycle
         } else {
             logger.info('Internal Scheduler disabled. Assuming external cron via worker.js', 'System');
         }

@@ -1,15 +1,21 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder , MessageFlags } = require('discord.js');
 const { generateAiringCard } = require('../generators/airingGenerator');
 const { watchInteraction } = require('../handlers/interactionManager');
-const { queryAnilist } = require('./anilistService');
+const { queryAnilist, getUserActivity } = require('./anilistService');
 const {
     getAllTrackersForAnime,
     getTrackedAnimeState,
     updateTrackedAnimeState,
     fetchConfig,
     addTracker,
-    getAnimeDueForUpdate
+    getAnimeDueForUpdate,
+    getLinkedUsersForFeed,
+    updateLastActivityId,
+    getUserColor,
+    getUserAvatarConfig,
+    getUserTitle
 } = require('../core/database');
+const { generateActivityCard } = require('../generators/activityGenerator');
 const logger = require('../core/logger');
 
 // Batch size for AniList queries to avoid hitting complexity limits
@@ -64,34 +70,37 @@ const processBatch = async (client, ids) => {
         const mediaList = data.Page.media;
 
         for (const media of mediaList) {
-            const nextEp = media.nextAiringEpisode;
-            const trackedState = await getTrackedAnimeState(media.id);
-            const knownLastEpisode = trackedState ? trackedState.last_episode : 0;
+            try {
+                const nextEp = media.nextAiringEpisode;
+                const trackedState = await getTrackedAnimeState(media.id);
+                const knownLastEpisode = trackedState ? trackedState.last_episode : 0;
 
-            // Update DB with fresh "Next Airing" time so Smart Polling works
-            const nextAiringDate = nextEp
-                ? new Date(nextEp.airingAt * 1000).toISOString()
-                : null; // If null, it means no next episode (finished?) or unknown.
+                // Update DB with fresh "Next Airing" time so Smart Polling works
+                const nextAiringDate = nextEp
+                    ? new Date(nextEp.airingAt * 1000).toISOString()
+                    : null;
 
-            // 1. If not airing soon, just update the timer and skip
-            if (!nextEp || nextEp.timeUntilAiring > 1200) {
-                // Optimization: Update state so we don't query this again until needed
-                if (nextAiringDate) {
-                    await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
+                // 1. If not airing soon, just update the timer and skip
+                if (!nextEp || nextEp.timeUntilAiring > 1200) {
+                    if (nextAiringDate) {
+                        await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            // 2. It's Airing Soon (<= 20 mins)
-            if (nextEp.episode > knownLastEpisode) {
-                // IT IS TIME
-                await sendNotifications(client, media, nextEp);
-                await updateTrackedAnimeState(media.id, nextEp.episode, nextAiringDate);
+                // 2. It's Airing Soon (<= 20 mins)
+                if (nextEp.episode > knownLastEpisode) {
+                    await sendNotifications(client, media, nextEp);
+                    await updateTrackedAnimeState(media.id, nextEp.episode, nextAiringDate);
+                }
+            } catch (mediaError) {
+                logger.error(`[Scheduler] Error processing media ${media.id}:`, mediaError, 'Scheduler');
+                // Continue with next media in batch
             }
         }
 
     } catch (e) {
-        logger.error('[Scheduler] Error checking airing:', e, 'Scheduler');
+        logger.error('[Scheduler] Error in batch processing:', e, 'Scheduler');
     }
 };
 
@@ -118,7 +127,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
     let attachment = null;
     try {
         const buffer = await generateAiringCard(media, episode);
-        attachment = new AttachmentBuilder(buffer, { name: `airing-${media.id}.png` });
+        attachment = new AttachmentBuilder(buffer, { name: `airing-${media.id}.webp` });
     } catch (e) {
         logger.error('Failed to generate airing card:', e, 'Scheduler');
     }
@@ -204,4 +213,93 @@ const sendNotifications = async (client, media, episode, options = {}) => {
     }
 };
 
-module.exports = { checkAiringAnime, sendNotifications };
+/**
+ * BROADCASTER: Fetches and posts activities for a single user in a guild.
+ * @param {Client} client 
+ * @param {string} guildId 
+ * @param {object} userRow { user_id, anilist_username, last_activity_id }
+ * @param {TextChannel} channel 
+ */
+const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) => {
+    try {
+        const activities = await getUserActivity(userRow.anilist_username);
+        if (!activities || activities.length === 0) return;
+
+        // Sort: ID Ascending (Oldest to Newest)
+        const sorted = activities.sort((a, b) => a.id - b.id);
+        
+        let lastSeenId = userRow.last_activity_id || 0;
+        let newMaxId = lastSeenId;
+
+        // Initial scan skip logic (don't spam history)
+        if (lastSeenId === 0) {
+            const latestId = sorted[sorted.length - 1].id;
+            await updateLastActivityId(userRow.user_id, guildId, latestId);
+            return;
+        }
+
+        for (const act of sorted) {
+            if (act.id <= lastSeenId) continue;
+            
+            try {
+                const userColor = await getUserColor(userRow.user_id, guildId);
+                const userAvatar = await getUserAvatarConfig(userRow.user_id, guildId);
+
+                const guild = client.guilds.cache.get(guildId);
+                const member = guild ? await guild.members.fetch(userRow.user_id).catch(() => null) : null;
+                const username = member ? member.displayName : userRow.anilist_username;
+
+                const userMeta = {
+                    username: username.toUpperCase(),
+                    themeColor: userColor,
+                    avatarUrl: userAvatar.customUrl || (member ? member.user.displayAvatarURL({ extension: 'png' }) : null)
+                };
+
+                const buffer = await generateActivityCard(userMeta, act);
+                const attachment = new AttachmentBuilder(buffer, { name: `activity-${act.id}.webp` });
+
+                await channel.send({ files: [attachment] });
+                newMaxId = Math.max(newMaxId, act.id);
+            } catch (genErr) {
+                logger.error(`[Activity Feed] Post Error for ${userRow.user_id}:`, genErr, 'Scheduler');
+            }
+        }
+
+        if (newMaxId > lastSeenId) {
+            await updateLastActivityId(userRow.user_id, guildId, newMaxId);
+        }
+    } catch (error) {
+        logger.error(`[Activity Feed] Polling failure for ${userRow.user_id}:`, error, 'Scheduler');
+    }
+};
+
+/**
+ * Checks for recent AniList activity updates and broadcasts to configured channels.
+ * @param {Client} client - Discord Client
+ */
+const checkUserActivity = async (client) => {
+    const guilds = Array.from(client.guilds.cache.values());
+    
+    for (const guild of guilds) {
+        try {
+            const config = await fetchConfig(guild.id);
+            if (!config || !config.activity_channel_id) continue;
+
+            const channel = await guild.channels.fetch(config.activity_channel_id).catch(() => null);
+            if (!channel) continue;
+
+            const linkedUsers = await getLinkedUsersForFeed(guild.id);
+            if (linkedUsers.length === 0) continue;
+
+            for (const userRow of linkedUsers) {
+                // Rate limit padding
+                await new Promise(r => setTimeout(r, 600));
+                await checkAndBroadcastUserActivity(client, guild.id, userRow, channel);
+            }
+        } catch (guildError) {
+            logger.error(`[Scheduler] Guild Polling Error (${guild.id}):`, guildError, 'Scheduler');
+        }
+    }
+};
+
+module.exports = { checkAiringAnime, checkUserActivity, checkAndBroadcastUserActivity, sendNotifications };

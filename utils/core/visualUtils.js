@@ -87,13 +87,16 @@ const generateColorTokens = (hex) => {
 
     return {
         primary,
-        primaryContainer: toHex(h, s * 0.7, 0.18), // Deeper, more sophisticated container
-        surface: toHex(h, s * 0.1, 0.05), // Ultra-deep neutral surface
-        surfaceVariant: toHex(h, s * 0.15, 0.12), // Elevated surface
+        secondary: toHex(h + 0.1, s * 0.5, 0.4),
+        tertiary: toHex(h - 0.1, s * 0.5, 0.4),
+        primaryContainer: toHex(h, s * 0.7, 0.18),
+        secondaryContainer: toHex(h + 0.1, s * 0.3, 0.2),
+        surface: toHex(h, s * 0.1, 0.05),
+        surfaceVariant: toHex(h, s * 0.15, 0.12),
         onSurface: '#FFFFFF',
         onSurfaceVariant: 'rgba(255, 255, 255, 0.7)',
-        outline: toHex(h, s * 0.2, 0.2), // Contextual 1px border color
-        glow: toHex(h, s * 0.6, 0.4) // Dynamic glow token
+        outline: toHex(h, s * 0.2, 0.2),
+        glow: toHex(h, s * 0.6, 0.4) 
     };
 };
 

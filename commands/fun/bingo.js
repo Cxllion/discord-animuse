@@ -365,7 +365,7 @@ module.exports = {
 // 364: } 
 // Removed separate loader.stop() to allow merged delivery
 
-                const att = new AttachmentBuilder(buffer, { name: 'bingo.png' });
+                const att = new AttachmentBuilder(buffer, { name: 'bingo.webp' });
 
                 // Dropdown for switching
                 const options = cards.map(item => ({
@@ -470,7 +470,7 @@ module.exports = {
             // 1. Generate Live Image
             const themeColor = await retrieveColor(interaction.user.id, interaction.guild.id) || '#FFACD1';
             const buffer = await generateBingoCard(card, interaction.client.user, themeColor);
-            const attachment = new AttachmentBuilder(buffer, { name: 'bingo_live.png' });
+            const attachment = new AttachmentBuilder(buffer, { name: 'bingo_live.webp' });
 
             const embed = baseEmbed()
                 .setTitle(`⚙️ Dashboard: ${card.title}`)

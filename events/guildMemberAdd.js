@@ -49,7 +49,7 @@ module.exports = {
                 try {
                     // Generate Image
                     const buffer = await generateWelcomeCard(member);
-                    const attachment = new AttachmentBuilder(buffer, { name: 'welcome-card.png' });
+                    const attachment = new AttachmentBuilder(buffer, { name: 'welcome-card.webp' });
 
                     await channel.send({
                         files: [attachment]

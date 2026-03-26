@@ -1,16 +1,16 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { normalizeColor, parseMetadata } = require('../core/visualUtils');
+const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
 const logger = require('../core/logger');
 
 /**
- * ARCHIVIST AIRING GENERATOR - V2 (Redesigned)
- * Aligning with Search Generator V24 aesthetics.
- * Features: 2x Scale, Elastic Titles, Blurred Backdrop, High-Impact Episode Count.
+ * ARCHIVIST AIRING GENERATOR - V3 (Premium Redesign)
+ * Inspired by Search Generator Design.
+ * Features: 2x HD Scale, Cinematic Backdrops, Glassmorphism UI, High-Contrast Typography.
  */
 const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') => {
-    const SCALE = 2; // Reverting to safe 2.0 scale to prevent crashes
+    const SCALE = 2; 
     const baseW = 800;
-    const baseH = 250; // Compacted from 310 as requested
+    const baseH = 250; 
     const width = baseW * SCALE;
     const height = baseH * SCALE;
 
@@ -18,261 +18,379 @@ const generateAiringCard = async (media, episode = {}, userColor = '#FFACD1') =>
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    // Color Palette
-    const primary = normalizeColor(media.coverImage?.color || userColor);
-    const surfaceColor = '#0A0A0E';
-    const onSurface = '#FFFFFF';
-    const onSurfaceMuted = 'rgba(255, 255, 255, 0.45)';
-    const accent = primary;
-
-    // --- 1. IMAGE LOADING (SEQUENTIAL FOR STABILITY) ---
-    const bgUrl = media.bannerImage || media.coverImage?.extraLarge;
-    const coverUrl = media.coverImage?.large || media.coverImage?.extraLarge; // Large is faster
-
-    let bgImg = null;
-    let coverImg = null;
-
-    // Load BG
-    if (bgUrl) {
-        try {
-            bgImg = await loadImage(bgUrl);
-        } catch (e) {
-            logger.warn('AiringGen BG Load Failed: ' + e.message, 'AiringGenerator');
-        }
-    }
-
-    // Load Cover
-    if (coverUrl) {
-        try {
-            coverImg = await loadImage(coverUrl);
-        } catch (e) {
-            logger.warn('AiringGen Cover Load Failed: ' + e.message, 'AiringGenerator');
-        }
-    }
-
-    // --- 2. THE CANVAS ---
-    ctx.fillStyle = surfaceColor;
+    const tokens = generateColorTokens(media.coverImage?.color || userColor);
+    // console.log('DEBUG TOKENS:', tokens);
+    
+    // --- 1. THE CANVAS (GLOBAL EDGE) ---
+    ctx.save(); 
+    ctx.beginPath();
+    ctx.roundRect(0, 0, baseW, baseH, 40);
+    ctx.clip(); 
+    ctx.fillStyle = tokens.surface;
     ctx.fillRect(0, 0, baseW, baseH);
 
-    // DRAW BACKGROUND
-    if (bgImg) {
-        try {
+    // --- 2. THE BACKGROUND (CINEMATIC BACKDROP) ---
+    const bgUrl = media.bannerImage || media.coverImage?.extraLarge;
+    const coverUrl = media.coverImage?.large || media.coverImage?.extraLarge;
+
+    try {
+        if (bgUrl) {
+            const bgImg = await loadImage(bgUrl);
             ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(0, 0, baseW, baseH, 40);
-            ctx.clip();
-            const imgScale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
-            const x = (baseW / 2) - (bgImg.width / 2) * imgScale;
-            const y = (baseH / 2) - (bgImg.height / 2) * imgScale;
-            // Darker blur for high contrast
-            ctx.filter = 'blur(60px) brightness(0.25) saturate(1.4)';
-            ctx.drawImage(bgImg, x, y, bgImg.width * imgScale, bgImg.height * imgScale);
+            const scale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
+            const x = (baseW - bgImg.width * scale) / 2;
+            const y = (baseH - bgImg.height * scale) / 2;
+            ctx.drawImage(bgImg, x, y, bgImg.width * scale, bgImg.height * scale);
+            
+            // Atmospheric Bloom & Depth
+            ctx.filter = 'blur(40px) saturate(1.8)';
+            ctx.globalAlpha = 0.6;
+            ctx.drawImage(bgImg, x, y, baseW, baseH);
+            
+            // The Dark Curtain (Vignette)
+            const v = ctx.createLinearGradient(0, 0, 0, baseH);
+            v.addColorStop(0, 'rgba(0,0,0,0.2)');
+            v.addColorStop(0.6, 'rgba(0,0,0,0.7)');
+            v.addColorStop(1, tokens.surface);
+            ctx.fillStyle = v;
+            ctx.globalAlpha = 1.0;
+            ctx.fillRect(0, 0, baseW, baseH);
             ctx.restore();
-        } catch (e) { logger.error('AiringGen BG Draw Error:', e, 'AiringGenerator'); }
+        }
+    } catch (e) {
+        logger.warn('AiringGen BG Load Failed: ' + e.message, 'AiringGenerator');
     }
+
+    // Content Layer: Mesh Accents (Refined & Vibrant)
+    const g1 = ctx.createRadialGradient(baseW * 0.8, baseH * 0.1, 0, baseW * 0.8, baseH * 0.1, baseW * 0.7);
+    g1.addColorStop(0, tokens.primary + '25');
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    const g2 = ctx.createRadialGradient(baseW * 0.2, baseH * 0.8, 0, baseW * 0.2, baseH * 0.8, baseW * 0.5);
+    g2.addColorStop(0, tokens.glow + '15');
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    // Material Noise
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = 0.04;
+    for (let i = 0; i < 2000; i++) {
+        ctx.fillStyle = '#FFF';
+        ctx.fillRect(Math.random() * baseW, Math.random() * baseH, 1, 1);
+    }
+    ctx.restore();
 
     // --- 3. THE POSTER ---
     const margin = 20;
     const posterH = baseH - (margin * 2);
-    const posterW = posterH * 0.72; // Slightly wider
+    const posterW = posterH * 0.70; 
     const posterX = margin;
     const posterY = margin;
 
-    // DRAW POSTER
-    if (coverImg) {
-        try {
+    const { title: cleanTitle, tags: metadataTags } = parseMetadata(media.title.english || media.title.romaji);
+
+    try {
+        if (coverUrl) {
+            const coverImg = await loadImage(coverUrl);
             ctx.save();
-            ctx.shadowColor = 'rgba(0,0,0,0.85)';
-            ctx.shadowBlur = 40;
+            
+            // Poster Shadow (Deep Cinematic)
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 60;
+            ctx.shadowOffsetY = 15;
+            
             ctx.beginPath();
-            ctx.roundRect(posterX, posterY, posterW, posterH, 18);
+            ctx.roundRect(posterX, posterY, posterW, posterH, 32);
+            ctx.fillStyle = '#000';
+            ctx.fill();
             ctx.clip();
+            
+            ctx.shadowColor = 'transparent';
             ctx.drawImage(coverImg, posterX, posterY, posterW, posterH);
+
+            // --- Poster-Locked Metadata Tags (Refined HUD Pillars) ---
+            if (metadataTags && metadataTags.length > 0) {
+                const th = 26;
+                const fontSize = 11;
+                const radius = 6;
+                const horizontalPadding = 20;
+                
+                let tagY = posterY + 12;
+                metadataTags.slice(0, 2).forEach(tag => {
+                    ctx.font = `900 ${fontSize}px sans-serif`;
+                    ctx.letterSpacing = '1px';
+                    const tagText = tag.toUpperCase();
+                    const tw = ctx.measureText(tagText).width + horizontalPadding;
+                    const tagX = posterX + posterW - tw - 12;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.roundRect(tagX, tagY, tw, th, radius); 
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#FFF';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(tagText, tagX + tw/2, tagY + th/2 + 0.5); 
+                    ctx.restore();
+
+                    tagY += th + 8;
+                });
+            }
+
+            // High-end gloss edge
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
             ctx.restore();
-        } catch (e) { logger.error('AiringGen Poster Draw Error:', e, 'AiringGenerator'); }
+        }
+    } catch (e) {
+        logger.error('AiringGen Poster Load/Draw Error:', e, 'AiringGenerator');
     }
 
     // --- 4. THE CONTENT GRID ---
     const anchorX = posterX + posterW + 30;
     const contentW = baseW - anchorX - margin;
 
-    // A. HEADER & STATUS PILL
-    const headerY = posterY + 5;
+    // A. CONTENT SHIELD
+    ctx.save();
+    const maskG = ctx.createLinearGradient(anchorX - 30, 0, baseW, 0);
+    maskG.addColorStop(0, 'rgba(0,0,0,0)');
+    maskG.addColorStop(0.3, 'rgba(0,0,0,0.5)');
+    maskG.addColorStop(1, 'rgba(0,0,0,0.8)');
+    ctx.fillStyle = maskG;
+    ctx.fillRect(anchorX - 30, 0, baseW, baseH);
+    ctx.restore();
 
-    // Header Text
-    const format = (media.format || 'TV').replace(/_/g, ' ');
-    const year = media.seasonYear || media.startDate?.year || 'NEW';
-    const studio = media.studios?.nodes?.[0]?.name;
-    let headerText = `${format}  •  ${year}`;
-    if (studio) headerText += `  •  ${studio}`;
+    // Content Shield moved below for layering
 
-    ctx.font = 'bold 12px sans-serif';
-    ctx.letterSpacing = '1.5px';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(headerText.toUpperCase(), anchorX, headerY + 11); // Center vertically with pill
 
-    // "AIRING NOW" Pill (Top Right)
+    // --- 5. THE EPISODE BLOCK (Top Row Alignment) ---
+    const epNumStr = (episode.episode || '??').toString();
+    const curY = margin;
+
+    // "AIRING NOW" Pod (Vibrant Gradient Refinement)
     const statusText = "AIRING NOW";
-    ctx.font = '900 11px sans-serif';
-    const pillW = ctx.measureText(statusText).width + 20;
-    const pillH = 24;
-    const pillX = baseW - margin - pillW;
-    const pillY = posterY; // Aligned with top
+    ctx.font = '900 12px sans-serif';
+    ctx.letterSpacing = '3px';
+    const stW = ctx.measureText(statusText).width + 30;
+    const podH = 36;
 
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(pillX, pillY, pillW, pillH, 8);
-    ctx.fillStyle = accent;
+    ctx.roundRect(anchorX, curY, stW, podH, 18);
+    const greenStart = '#00E676';
+    const greenEnd = '#00C853';
+    const statusGrad = ctx.createLinearGradient(anchorX, curY, anchorX + stW, curY);
+    statusGrad.addColorStop(0, greenStart + '25');
+    statusGrad.addColorStop(1, greenEnd + '35');
+    ctx.fillStyle = statusGrad;
     ctx.fill();
-    ctx.shadowColor = accent;
-    ctx.shadowBlur = 12; // Glow
-    ctx.fillStyle = '#FFFFFF';
+
+    ctx.shadowColor = greenEnd + '50';
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = greenEnd + '80';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = greenStart;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(statusText, pillX + (pillW / 2), pillY + (pillH / 2) + 1);
+    ctx.fillText(statusText, anchorX + stW/2, curY + podH/2 + 1);
     ctx.restore();
 
-    // Anchored to bottom margin, aligned with Poster Bottom
-    const epNumBaseline = baseH - margin;
-    // Positioned to sit naturally above the smaller number (baseline - 60)
-    const epLabelY = epNumBaseline - 60;
+    // --- 5. THE EPISODE BLOCK (Premium Nested HUD) ---
+    const epNumW = ctx.measureText(epNumStr).width;
+    const innerPillW = epNumW + 24;
+    const innerPillH = 26;
+    const iconSpace = 34;
+    const epPodW = iconSpace + innerPillW + 4; 
+    const epPodX = anchorX + stW + 12;
 
-    // C. DYNAMIC TITLE & SMART EXTRACTION
-    const { title: fullTitle, tags: extraTags } = parseMetadata(media.title.english || media.title.romaji);
+    ctx.save();
+    // Outer Capsule
+    ctx.beginPath();
+    ctx.roundRect(epPodX, curY, epPodW, 36, 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-    // Draw Season Pills if extracted (Next to Header Text)
-    if (extraTags.length > 0) {
-        ctx.font = 'bold 12px sans-serif';
-        ctx.letterSpacing = '1.5px';
-        let currentX = anchorX + ctx.measureText(headerText.toUpperCase()).width + 16;
-        const tagY = headerY + 11;
+    // TV Icon
+    const iconX = epPodX + (iconSpace / 2);
+    const iconY = curY + 18;
+    const iconSize = 13;
+    ctx.strokeStyle = tokens.primary;
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.roundRect(iconX - iconSize/2, iconY - iconSize/2 + 2, iconSize, iconSize * 0.75, 3);
+    ctx.stroke();
+    // Antennae
+    ctx.beginPath();
+    ctx.moveTo(iconX - 3.5, iconY - 6.5);
+    ctx.lineTo(iconX, iconY - 3);
+    ctx.lineTo(iconX + 3.5, iconY - 6.5);
+    ctx.stroke();
 
-        ctx.font = 'bold 10px sans-serif';
-        ctx.letterSpacing = '0px';
+    // Inner Pill (The "Pill within a Pill")
+    const innerX = epPodX + iconSpace;
+    const innerY = curY + (36 - innerPillH) / 2;
+    ctx.beginPath();
+    ctx.roundRect(innerX, innerY, innerPillW, innerPillH, 13);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; 
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-        extraTags.forEach(tag => {
-            const tagW = ctx.measureText(tag).width + 12;
+    // Nested Number
+    ctx.font = '900 18px sans-serif';
+    ctx.fillStyle = '#FFF';
+    ctx.shadowColor = 'rgba(255,255,255,0.3)';
+    ctx.shadowBlur = 10;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(epNumStr, innerX + (innerPillW / 2), innerY + (innerPillH / 2) + 0.5);
+    ctx.restore();
 
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(currentX, headerY + 2, tagW, 18, 4);
-            ctx.fillStyle = accent; // Solid Fill
-            ctx.fill();
+    // --- 4B. METADATA PILL (Refined & Sequenced) ---
+    const formatValue = (media.format || 'TV').replace(/_/g, ' ');
+    const studioValue = (media.studios?.nodes?.[0]?.name || 'STUDIO').toUpperCase().split(' ')[0];
+    const metaText = `${formatValue}  •  ${studioValue}`;
 
-            ctx.fillStyle = '#FFFFFF'; // White text
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(tag.toUpperCase(), currentX + (tagW / 2), tagY);
-            ctx.restore();
+    ctx.save();
+    ctx.font = '900 12px sans-serif'; 
+    ctx.letterSpacing = '4px';
+    const metaW = ctx.measureText(metaText).width;
+    const pillW = metaW + 40;
+    const pillH = 36;
+    const pillX = epPodX + epPodW + 12; // Consistent 12px gap
+    const pillY = margin;
 
-            currentX += tagW + 8; // Gap between pills
-        });
-    }
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillW, pillH, 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    // Fit Title Logic
-    let fontSize = 76;
-    const maxLines = 3;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(metaText, pillX + (pillW/2), pillY + (pillH/2) + 1);
+    ctx.restore();
+
+    // --- 5. TITLE ---
+    let fontSize = 52; 
+    const maxLines = 2;
     let lines = [];
+    const maxTitleW = contentW;
 
     while (fontSize > 20) {
         ctx.font = `900 ${fontSize}px sans-serif`;
-        ctx.letterSpacing = '-1.2px';
-        const words = fullTitle.split(' ');
+        ctx.letterSpacing = '-3.5px';
+        const words = cleanTitle.split(' ');
         lines = [];
         let cur = '';
 
         for (let w of words) {
-            let t = cur + w + ' ';
-            if (ctx.measureText(t).width > contentW) {
+            if (ctx.measureText(cur + w + ' ').width > maxTitleW) {
                 lines.push(cur.trim());
                 cur = w + ' ';
             } else {
-                cur = t;
+                cur += w + ' ';
             }
         }
         lines.push(cur.trim());
 
-        if (lines.length <= maxLines) break;
-        fontSize -= 4;
+        const totalTitleH = lines.length * (fontSize * 0.9);
+        if (lines.length <= maxLines && totalTitleH < 100) break;
+        fontSize -= 2;
     }
 
-    const lineHeight = fontSize * 1.05;
-    const titleY = epLabelY - (lines.length * lineHeight) - 10;
+    const lineHeight = fontSize * 0.88;
+    const titleBlockH = lines.length * lineHeight;
+    const genreH = 32;
+    const verticalGap = 20;
+    const totalContentH = titleBlockH + verticalGap + genreH;
+    
+    // Center it between top row pods and the bottom watermark area
+    const topRowBottom = margin + podH;
+    const cardBottomBoundary = baseH - margin - 15; 
+    const availableH = cardBottomBoundary - topRowBottom;
+    
+    const contentStartOffset = Math.max(0, (availableH - totalContentH) / 2);
+    const titleY = topRowBottom + contentStartOffset;
+    const footerY = titleY + titleBlockH + verticalGap;
 
-    ctx.fillStyle = onSurface;
-    ctx.textBaseline = 'top';
+    ctx.save();
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    // Depth Shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 15;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = '#FFF';
 
     lines.forEach((line, i) => {
         ctx.fillText(line, anchorX, titleY + (i * lineHeight));
     });
-
-    // --- 5. THE EPISODE BLOCK ---
-    const epNumStr = (episode.episode || '??').toString();
-
-    // Reset baseline so we draw UP from the bottom anchor (Poster Bottom)
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
-
-    // A. "EPISODE" Label (Solid Pill)
-    ctx.font = '900 13px sans-serif';
-    ctx.letterSpacing = '2px';
-    const epLabelText = 'EPISODE';
-    const elW = ctx.measureText(epLabelText).width + 24;
-    const elH = 22;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(anchorX, epLabelY - 18, elW, elH, 6);
-    ctx.fillStyle = accent; // Solid Filled Pill
-    ctx.fill();
-
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(epLabelText, anchorX + (elW / 2), epLabelY - 18 + (elH / 2));
     ctx.restore();
 
-    // B. Episode Number
-    ctx.font = '900 54px sans-serif'; // Dialed back slightly
-    ctx.letterSpacing = '-2px';
-    ctx.fillStyle = onSurface;
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(epNumStr, anchorX - 2, epNumBaseline);
+    // Section 6 (Episode Block) was moved to top
 
-    // --- 6. GENRES ---
-    const genres = media.genres || [];
-    let gpX = baseW - margin;
-    const gpY = baseH - margin - 26;
 
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'right';
-
-    for (let i = 0; i < Math.min(genres.length, 3); i++) {
-        const genreText = genres[i].toUpperCase();
-        const gW = ctx.measureText(genreText).width + 34;
-
+    // --- 7. GENRES (Material Polish) ---
+    let gx = anchorX;
+    
+    ctx.font = '900 11px sans-serif'; 
+    ctx.letterSpacing = '1px';
+    (media.genres || []).slice(0, 3).forEach(g => {
+        const txt = g.toUpperCase();
+        const gw = ctx.measureText(txt).width + 30;
+        
         ctx.save();
         ctx.beginPath();
-        const pX = gpX - gW;
-        ctx.roundRect(pX, gpY, gW, 26, 8);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.roundRect(gx, footerY, gw, 32, 10); 
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; 
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        
+        // Material Highlight Edge
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        ctx.fillStyle = '#EEEEEE';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'; 
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(genreText, pX + (gW / 2), gpY + 14);
+        ctx.fillText(txt, gx + gw/2, footerY + 16.5);
         ctx.restore();
+        gx += gw + 10;
+    });
 
-        gpX -= (gW + 8);
-    }
+    // WATERMARK
+    ctx.restore(); 
+    ctx.textAlign = 'right';
+    ctx.font = '900 11px sans-serif';
+    ctx.letterSpacing = '8.5px';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('ANIMUSE ALERTS', baseW - margin, baseH - margin); 
 
-    return await canvas.encode('png');
+    return await canvas.encode('webp', { quality: 85 });
 };
 
 module.exports = { generateAiringCard };

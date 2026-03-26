@@ -142,5 +142,45 @@ module.exports = {
             const { addXp } = require('../utils/services/leveling');
             await addXp(message.author.id, message.guild.id, message.member, message);
         }
+
+        // --- AniList Activity Pulse (Instant Tracking) ---
+        if (config.activity_channel_id) {
+            const { getLinkedAnilist, updateLastActivityId } = require('../utils/services/userService');
+            const { checkAndBroadcastUserActivity } = require('../utils/services/scheduler');
+            
+            // Local Cooldown Map (Resets on restart, which is fine for ephemeral intent)
+            if (!message.client.activityPulseCache) message.client.activityPulseCache = new Map();
+            
+            const cooldownKey = `${message.author.id}_${message.guild.id}`;
+            const lastPulse = message.client.activityPulseCache.get(cooldownKey) || 0;
+            const now = Date.now();
+            
+            // Check every 10 minutes when talking (to avoid spamming AniList API)
+            if (now - lastPulse > 10 * 60 * 1000) {
+                const anilistUsername = await getLinkedAnilist(message.author.id, message.guild.id);
+                if (anilistUsername) {
+                    const activityChannel = message.guild.channels.cache.get(config.activity_channel_id);
+                    if (activityChannel) {
+                        // We basically fake a userRow for the recruiter
+                        const { data: userData } = await require('../utils/core/supabaseClient')
+                            .from('users')
+                            .select('last_activity_id')
+                            .eq('user_id', message.author.id)
+                            .eq('guild_id', message.guild.id)
+                            .single();
+
+                        const userRow = {
+                            user_id: message.author.id,
+                            anilist_username: anilistUsername,
+                            last_activity_id: userData?.last_activity_id || 0
+                        };
+
+                        // Pulse check!
+                        await checkAndBroadcastUserActivity(message.client, message.guild.id, userRow, activityChannel);
+                        message.client.activityPulseCache.set(cooldownKey, now);
+                    }
+                }
+            }
+        }
     },
 };

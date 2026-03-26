@@ -509,7 +509,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillText('ANIMUSE ARCHIVES', baseW - 50, footerY + 20); 
 
-    return await canvas.encode('png');
+    return await canvas.encode('webp', { quality: 85 });
 };
 
 module.exports = { generateSearchCard };

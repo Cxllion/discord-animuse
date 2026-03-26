@@ -19,7 +19,8 @@ module.exports = {
                             { name: '✨ Welcome', value: 'welcome' },
                             { name: '👋 Greeting', value: 'greeting' },
                             { name: '📸 Media', value: 'media' },
-                            { name: '📢 Airing', value: 'airing' }
+                            { name: '📢 Airing', value: 'airing' },
+                            { name: '🔔 Activity', value: 'activity' }
                         ))
                 .addChannelOption(option =>
                     option.setName('channel')
@@ -67,6 +68,14 @@ module.exports = {
 
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThis wing of the library (${channel}) has been officially designated as the **Welcome Hall**.`
+                    });
+                }
+                else if (type === 'activity') {
+                    // Scalar assignment
+                    await upsertConfig(guildId, { activity_channel_id: channel.id });
+
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nThe AniList Activity Feed will now be broadcasted in ${channel}.`
                     });
                 }
                 else if (type === 'airing') {
@@ -127,6 +136,7 @@ module.exports = {
                         { name: '🎱 Bingo', value: fmt(config?.bingo_channel_id), inline: true },
                         { name: '👋 Greeting', value: fmt(config?.greeting_channel_id), inline: true },
                         { name: '📢 Airing', value: fmt(config?.airing_channel_id), inline: true },
+                        { name: '🔔 Activity', value: fmt(config?.activity_channel_id), inline: true },
                         { name: '📸 Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
                     .setColor(0x3b82f6) // Blue

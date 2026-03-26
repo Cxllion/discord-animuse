@@ -113,7 +113,7 @@ module.exports = {
         loader.startProgress('Materializing Profile...', 6); // No await: allow Canvas to start immediately
 
         const buffer = await generateProfileCard(targetUser, userData, favorites, backgroundUrl, color, displayName);
-        const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.png' });
+        const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.webp' });
 
         // Interactive Button
         const dashboardBtn = new ButtonBuilder()

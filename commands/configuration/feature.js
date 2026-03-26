@@ -2,9 +2,9 @@ const { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder, MessageFlag
 const { fetchConfig } = require('../../utils/core/database');
 const { generateWelcomeCard } = require('../../utils/generators/welcomeGenerator');
 const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
-const { getMediaById, getTrendingAnime, getAniListProfile } = require('../../utils/services/anilistService');
+const { getMediaById, getTrendingAnime, getTrendingManga, getAniListProfile } = require('../../utils/services/anilistService');
 const { sendNotifications } = require('../../utils/services/scheduler');
-const { getUserColor, getUserAvatarConfig, getLinkedAnilist } = require('../../utils/core/database');
+const { getUserColor, getUserAvatarConfig, getLinkedAnilist, getUserTitle } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
@@ -23,7 +23,8 @@ module.exports = {
                         .addChoices(
                             { name: '✨ Welcome', value: 'welcome' },
                             { name: '📢 Airing', value: 'airing' },
-                            { name: '🎯 Bingo', value: 'bingo' }
+                            { name: '🎯 Bingo', value: 'bingo' },
+                            { name: '🔔 Activity', value: 'activity' }
                         ))
                 .addStringOption(option =>
                     option.setName('query')
@@ -67,7 +68,7 @@ module.exports = {
                     // 3. Generate Card
                     await interaction.editReply({ content: `⏳ **Generating** welcome card for **${member.user.username}**...` });
                     const buffer = await generateWelcomeCard(member);
-                    const attachment = new AttachmentBuilder(buffer, { name: 'welcome-test.png' });
+                    const attachment = new AttachmentBuilder(buffer, { name: 'welcome-test.webp' });
 
                     // 4. Send to Channel
                     const sentMsg = await channel.send({
@@ -185,7 +186,7 @@ module.exports = {
                             const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
 
                             const buffer = await generateBingoCard(dummyCard, interaction.member.user, themeColor, avatarUrl);
-                            const attachment = new AttachmentBuilder(buffer, { name: `bingo-${size}x${size}.png` });
+                            const attachment = new AttachmentBuilder(buffer, { name: `bingo-${size}x${size}.webp` });
 
                             await interaction.followUp({
                                 content: `✅ **Generated ${size}x${size} Layout**`,
@@ -199,6 +200,84 @@ module.exports = {
 
                     }
                     await interaction.followUp({ content: '🏁 **Bingo Test Sequence Complete**' });
+                }
+
+                // --- ACTIVITY GRAPHICS TEST ---
+                else if (type === 'activity') {
+                    await interaction.editReply({ content: '🎨 **Generating All Activity Feed States**...' });
+                    
+                    // Fetch trending items mix
+                    const trendingAnime = await getTrendingAnime();
+                    const trendingManga = await getTrendingManga();
+                    const trending = [...trendingAnime, ...trendingManga];
+
+                    // Resolve User Avatar
+                    let avatarUrl = interaction.member.displayAvatarURL({ extension: 'png' });
+                    const avatarConfig = await getUserAvatarConfig(interaction.member.id, interaction.guild.id);
+                    if (avatarConfig) {
+                        if (avatarConfig.source === 'CUSTOM' && avatarConfig.customAvatarUrl) {
+                            avatarUrl = avatarConfig.customAvatarUrl;
+                        } else if (avatarConfig.source === 'ANILIST') {
+                            const linkedUser = await getLinkedAnilist(interaction.member.id, interaction.guild.id);
+                            if (linkedUser) {
+                                const { avatar } = await getAniListProfile(linkedUser);
+                                if (avatar) avatarUrl = avatar;
+                            }
+                        }
+                    }
+
+                    const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+
+                    // Prepare Mock User Data
+                    const userMeta = {
+                        username: interaction.member.user.username || 'Testing',
+                        avatarUrl: avatarUrl,
+                        themeColor: themeColor,
+                        title: await getUserTitle(interaction.member.id, interaction.guild.id)
+                    };
+
+                    const mockActivities = [
+                        { status: 'watched episode', progress: '12', score: 8.5 },
+                        { status: 'read chapter', progress: '42', score: 9 }, // Manga
+                        { status: 'completed', score: 85 }, // Anime finished
+                        { status: 'completed', score: 10, mediaType: 'MANGA' }, // Manga finished
+                        { status: 'planning to watch', score: null }, 
+                        { status: 'dropped', score: 1 }, // Anime Quit
+                        { status: 'dropped', score: 2, mediaType: 'MANGA' } // Manga Quit
+                    ];
+                    
+                    const { generateActivityCard } = require('../../utils/generators/activityGenerator');
+                    const attachments = [];
+
+                    for (let i = 0; i < mockActivities.length; i++) {
+                        const s = mockActivities[i];
+                        const isManga = s.mediaType === 'MANGA' || s.status.includes('read');
+                        const pool = isManga ? trendingManga : trendingAnime;
+                        const mockMedia = pool[i % pool.length] || pool[0] || {};
+                        
+                        const activityData = {
+                            media: { ...mockMedia, type: isManga ? 'MANGA' : 'ANIME' },
+                            status: s.status,
+                            progress: s.progress,
+                            score: s.score === undefined ? (s.status.includes('planning') ? null : (Math.floor(Math.random() * 4) + 7)) : s.score
+                        };
+
+                        try {
+                            const buffer = await generateActivityCard(userMeta, activityData);
+                            attachments.push(new AttachmentBuilder(buffer, { name: `activity-${i}-${s.status.replace(/\s+/g, '-')}.webp` }));
+                        } catch (err) {
+                            logger.error(`Batch Gen Failed for ${s.status}:`, err, 'FeatureTest');
+                        }
+                    }
+
+                    // Send in chunks of 4 for better UI and to avoid rate limits/attachment limits
+                    for (let i = 0; i < attachments.length; i += 4) {
+                        const chunk = attachments.slice(i, i + 4);
+                        await interaction.followUp({
+                            content: i === 0 ? '🏁 **Activity Feed Generation Complete!**' : '',
+                            files: chunk 
+                        });
+                    }
                 }
 
             } catch (error) {

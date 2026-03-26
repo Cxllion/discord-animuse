@@ -21,7 +21,7 @@ async function createMediaResponse(media, userId, guildId) {
 
         // 2. Generate Image
         const buffer = await generateSearchCard(media, userColor);
-        const attachment = new AttachmentBuilder(buffer, { name: `search-${media.id}.png` });
+        const attachment = new AttachmentBuilder(buffer, { name: `search-${media.id}.webp` });
 
         // 3. Components
         const row = new ActionRowBuilder();

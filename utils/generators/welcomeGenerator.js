@@ -247,7 +247,7 @@ const generateWelcomeCard = async (member) => {
 
     ctx.restore(); // Use Clip
 
-    return await canvas.toBuffer('image/png');
+    return await canvas.encode('webp', { quality: 85 });
 };
 
 module.exports = { generateWelcomeCard };
