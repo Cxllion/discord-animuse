@@ -258,6 +258,21 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
     }
 };
 
+/**
+ * Purge activity logs older than 24 hours from Supabase to prevent table bloat.
+ * We only need this data during the active binge window.
+ */
+const clearOldActivityPostsInDB = async () => {
+    if (!supabase) return;
+    try {
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        await supabase
+            .from('activity_posted')
+            .delete()
+            .lt('posted_at', cutoff);
+    } catch (e) {}
+};
+
 module.exports = {
     linkAnilistAccount,
     unlinkAnilistAccount,
@@ -284,4 +299,5 @@ module.exports = {
     wasPostedInDB,
     markPostedInDB,
     findRecentActivityPostInDB,
+    clearOldActivityPostsInDB,
 };

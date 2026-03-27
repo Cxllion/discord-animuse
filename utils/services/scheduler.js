@@ -248,7 +248,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
 // ── Two-Tier Persistent Post Cache ────────────────────────────────────────────
 // Tier 1: Supabase `activity_posted` table (works on Render, survives restarts)
 // Tier 2: Local JSON file fallback (works locally without the DB table)
-const { wasPostedInDB, markPostedInDB, findRecentActivityPostInDB } = require('./userService');
+const { wasPostedInDB, markPostedInDB, findRecentActivityPostInDB, clearOldActivityPostsInDB } = require('./userService');
 const fs = require('fs');
 const path = require('path');
 const CACHE_PATH = path.join(__dirname, '../../.activity_posted_cache.json');
@@ -262,10 +262,10 @@ const loadFileCache = () => {
 
 const saveFileCache = (cache) => {
     try {
-        const weekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+        const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60; // 24h prune
         const pruned = {};
         for (const [id, ts] of Object.entries(cache)) {
-            if (ts > weekAgo) pruned[id] = ts;
+            if (ts > cutoff) pruned[id] = ts;
         }
         fs.writeFileSync(CACHE_PATH, JSON.stringify(pruned), 'utf-8');
     } catch (e) {}
@@ -436,6 +436,8 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                 });
 
                 const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
+                
+                logger.info(`[Activity Broadcast] 🚀 Sending ${bingeMode ? 'BINGED' : 'WATCHED'} card for ${userRow.anilist_username} (Media: ${g.media.id})`, 'Scheduler');
                 const newMsg = await channel.send({ files: [attachment] });
 
                 // 4. Mark AS POSTED with session metadata for future merges
@@ -467,6 +469,9 @@ const checkUserActivity = async (client) => {
     isActivityPolling = true;
 
     try {
+        // --- 🧹 Cleanup legacy records (24h TTL) ---
+        clearOldActivityPostsInDB().catch(() => null);
+
         logger.info('[Scheduler] Pulse: Activity Feed checks across all guilds starting...', 'Scheduler');
         const guilds = Array.from(client.guilds.cache.values());
         if (guilds.length === 0) {

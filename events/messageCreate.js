@@ -155,14 +155,14 @@ module.exports = {
             const lastPulse = message.client.activityPulseCache.get(cooldownKey) || 0;
             const now = Date.now();
             
-            // Check every 2 minutes when talking in dev/test mode (10m in prod usually)
-            const cooldownMs = isSelfTest ? 2 * 60 * 1000 : 10 * 60 * 1000;
+            // Check every 2 minutes for activity pulse (responsive feel)
+            const cooldownMs = 2 * 60 * 1000;
 
             if (now - lastPulse > cooldownMs) {
                 const anilistUsername = await getLinkedAnilist(message.author.id, message.guild.id);
                 if (anilistUsername) {
                     logger.info(`[Activity Pulse] Triggering check for ${message.author.tag} (${anilistUsername})`, 'Scheduler');
-                    const activityChannel = message.guild.channels.cache.get(config.activity_channel_id);
+                    const activityChannel = await message.guild.channels.fetch(config.activity_channel_id).catch(() => null);
                     if (activityChannel) {
                         const { data: userData } = await require('../utils/core/supabaseClient')
                             .from('users')
