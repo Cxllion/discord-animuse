@@ -437,7 +437,7 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
 
                 const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
                 
-                logger.info(`[Activity Broadcast] 🚀 Sending ${bingeMode ? 'BINGED' : 'WATCHED'} card for ${userRow.anilist_username} (Media: ${g.media.id})`, 'Scheduler');
+                logger.info(`[Activity Broadcast] 🚀 Sending ${bingeMode ? 'BINGED' : 'WATCHED'} card for ${userRow.anilist_username} to ${channel.name} (${channel.id})`, 'Scheduler');
                 const newMsg = await channel.send({ files: [attachment] });
 
                 // 4. Mark AS POSTED with session metadata for future merges

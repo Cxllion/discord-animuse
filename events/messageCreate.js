@@ -27,7 +27,6 @@ module.exports = {
         // But the Activity Pulse is allowed for live-dev testing
         const isSelfTest = message.client.isTestBot;
 
-
         // Fetch config (Note: In production, caching this is recommended to avoid DB spam)
         const config = await fetchConfig(message.guild.id);
         
@@ -145,17 +144,14 @@ module.exports = {
 
         // --- AniList Activity Pulse (Instant Tracking) ---
         if (config.activity_channel_id && !message.client.isTestBot) {
-            const { getLinkedAnilist, updateLastActivityId } = require('../utils/services/userService');
+            const { getLinkedAnilist } = require('../utils/services/userService');
             const { checkAndBroadcastUserActivity } = require('../utils/services/scheduler');
             
-            // Local Cooldown Map (Resets on restart, which is fine for ephemeral intent)
             if (!message.client.activityPulseCache) message.client.activityPulseCache = new Map();
             
             const cooldownKey = `${message.author.id}_${message.guild.id}`;
             const lastPulse = message.client.activityPulseCache.get(cooldownKey) || 0;
             const now = Date.now();
-            
-            // Check every 2 minutes for activity pulse (responsive feel)
             const cooldownMs = 2 * 60 * 1000;
 
             if (now - lastPulse > cooldownMs) {
@@ -164,19 +160,10 @@ module.exports = {
                     logger.info(`[Activity Pulse] Triggering check for ${message.author.tag} (${anilistUsername})`, 'Scheduler');
                     const activityChannel = await message.guild.channels.fetch(config.activity_channel_id).catch(() => null);
                     if (activityChannel) {
-                        const { data: userData } = await require('../utils/core/supabaseClient')
-                            .from('users')
-                            .select('last_activity_id')
-                            .eq('user_id', message.author.id)
-                            .eq('guild_id', message.guild.id)
-                            .single();
-
                         const userRow = {
-                            user_id: message.author.id,
-                            anilist_username: anilistUsername,
-                            last_activity_id: userData?.last_activity_id || 0
+                            user_id: String(message.author.id),
+                            anilist_username: anilistUsername
                         };
-
                         await checkAndBroadcastUserActivity(message.client, message.guild.id, userRow, activityChannel);
                         message.client.activityPulseCache.set(cooldownKey, now);
                     }
