@@ -258,10 +258,21 @@ const generateActivityCard = async (userMeta, activityData) => {
     const isManga = media.type === 'MANGA' || rawStatus.includes('chapter') || rawStatus.includes('volume');
     const verb = isManga ? 'READING' : 'WATCHING';
 
+    const progStr = String(activityData.progress || '');
+    const isRange = progStr.match(/[-–—/]/);
+
     let displayVerb = 'INTERACTED WITH';
     if (rawStatus.includes('watched movie')) displayVerb = `WATCHED MOVIE`;
-    else if (rawStatus.includes('watched')) displayVerb = `WATCHED EPISODE ${activityData.progress || '??'}`;
-    else if (rawStatus.includes('read')) displayVerb = `READ ${rawStatus.includes('volume') ? 'VOLUME' : 'CHAPTER'} ${activityData.progress || '??'}`;
+    else if (rawStatus.includes('watched')) {
+        displayVerb = `WATCHED ${isRange ? 'EPISODES' : 'EPISODE'} ${progStr || '??'}`;
+    }
+    else if (rawStatus.includes('read')) {
+        if (rawStatus.includes('volume')) {
+            displayVerb = `READ ${isRange ? 'VOLUMES' : 'VOLUME'} ${progStr || '??'}`;
+        } else {
+            displayVerb = `READ ${isRange ? 'CHAPTERS' : 'CHAPTER'} ${progStr || '??'}`;
+        }
+    }
     else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${verb}`;
     else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
     else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${verb}`;
