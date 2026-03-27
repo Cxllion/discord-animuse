@@ -383,7 +383,7 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                         displayProgress = `${nums[0]}-${nums[nums.length-1]}`;
                     } else if (nums.length === 1) {
                         displayProgress = nums[0].toString();
-                    } else {
+                    } else if (g.progress.length > 0) {
                         displayProgress = g.progress[0].toString();
                     }
                 }
@@ -435,28 +435,31 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     score: score 
                 });
 
-                // Calculate bingeMode for logging (same logic as used in generator)
-                let bingeMode = false;
-                const rangeNums = finalProgress.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-                if (rangeNums.length >= 2) {
-                    const count = Math.max(...rangeNums) - Math.min(...rangeNums) + 1;
-                    if (count > 5) bingeMode = true;
-                }
-
                 const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
                 
-                logger.info(`[Activity Broadcast] 🚀 Sending ${bingeMode ? 'BINGED' : 'WATCHED'} card for ${userRow.anilist_username} to ${channel.name} (${channel.id})`, 'Scheduler');
+                // Calculate binge status for logging
+                const finalProgStr = String(finalProgress || '');
+                const rangeNums = finalProgStr.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                const bingeMode = rangeNums.length >= 2 && (Math.max(...rangeNums) - Math.min(...rangeNums) + 1) > 5;
+                const isManga = g.media.type === 'MANGA' || (g.status || '').toLowerCase().includes('read');
+                const verb = bingeMode ? (isManga ? 'BINGE READ' : 'BINGED') : (isManga ? 'READ' : 'WATCHED');
+
+                logger.info(`[Activity Broadcast] 🚀 Sending ${verb} card for ${userRow.anilist_username} to ${channel.name} (${channel.id})`, 'Scheduler');
                 const newMsg = await channel.send({ files: [attachment] });
 
-                // 4. Mark AS POSTED with session metadata for future merges
-                await markPosted(g.ids, {
-                    userId: userRow.user_id,
-                    mediaId: g.media.id,
-                    channelId: channel.id,
-                    messageId: newMsg.id, // Fixed typo: was message_id, DB uses messageId in the mapper
-                    progress: finalProgress,
-                    status: g.status
-                });
+                // 4. Mark AS POSTED with session metadata for future merges (Skip in development for repeated testing)
+                if (!client.isTestBot) {
+                    await markPosted(g.ids, {
+                        userId: userRow.user_id,
+                        mediaId: g.media.id,
+                        channelId: channel.id,
+                        messageId: newMsg.id, // Fixed typo: was message_id, DB uses messageId in the mapper
+                        progress: finalProgress,
+                        status: g.status
+                    });
+                } else {
+                    logger.info(`[Activity Feed] Post NOT marked as posted (Test Bot Mode).`, 'Scheduler');
+                }
 
             } catch (err) {
                 logger.error(`[Activity Feed] Generation Error:`, err, 'Scheduler');

@@ -272,21 +272,29 @@ const generateActivityCard = async (userMeta, activityData) => {
 
     let displayVerb = 'INTERACTED WITH';
     if (rawStatus.includes('watched movie')) displayVerb = `WATCHED MOVIE`;
+    else if (rawStatus.includes('paused')) {
+        const verb = isManga ? 'READING' : 'WATCHING';
+        displayVerb = `PAUSED ${verb}`;
+    }
+    else if (rawStatus.includes('rewatched') || (rawStatus.includes('watching') && activityData.status.toLowerCase().includes('rewatch'))) {
+        displayVerb = `REWATCHED EPISODE ${progStr || '??'}`;
+    }
+    else if (rawStatus.includes('reread') || (rawStatus.includes('reading') && activityData.status.toLowerCase().includes('reread'))) {
+        displayVerb = `REREAD CHAPTER ${progStr || '??'}`;
+    }
     else if (rawStatus.includes('watched')) {
         const verb = bingeMode ? 'BINGED' : 'WATCHED';
-        displayVerb = `${verb} ${isRange ? 'EPISODES' : 'EPISODE'} ${progStr || '??'}`;
+        const progLabel = isRange ? 'EPISODES' : 'EPISODE';
+        displayVerb = progStr ? `${verb} ${progLabel} ${progStr}` : `${verb} ${progLabel}`;
     }
     else if (rawStatus.includes('read')) {
-        const verb = bingeMode ? 'BINGED' : 'READ';
-        if (rawStatus.includes('volume')) {
-            displayVerb = `${verb} ${isRange ? 'VOLUMES' : 'VOLUME'} ${progStr || '??'}`;
-        } else {
-            displayVerb = `${verb} ${isRange ? 'CHAPTERS' : 'CHAPTER'} ${progStr || '??'}`;
-        }
+        const verb = bingeMode ? 'BINGE READ' : 'READ';
+        const progLabel = isRange ? (rawStatus.includes('volume') ? 'VOLUMES' : 'CHAPTERS') : (rawStatus.includes('volume') ? 'VOLUME' : 'CHAPTER');
+        displayVerb = progStr ? `${verb} ${progLabel} ${progStr}` : `${verb} ${progLabel}`;
     }
-    else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${verb}`;
+    else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${isManga ? 'READING' : 'WATCHING'}`;
     else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
-    else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${verb}`;
+    else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${isManga ? 'READING' : 'WATCHING'}`;
 
     ctx.save();
     ctx.font = '800 11px sans-serif';
