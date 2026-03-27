@@ -53,11 +53,6 @@ module.exports = {
             logger.warn('⚠️ [Activity Dedup] Could not reach Supabase for migration probe.', 'System');
         }
 
-        if (client.isTestBot) {
-            logger.info('Test bot detected. Background scheduler polling is DISABLED to avoid redundant activity alerts in production channels. (Use /feature test to manually verify graphics).', 'System');
-            return;
-        }
-
         if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
             setTimeout(async () => {
                 logger.info('Initializing scheduler polling (5m cycles)...', 'System');

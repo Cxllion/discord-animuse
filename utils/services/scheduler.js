@@ -435,6 +435,14 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     score: score 
                 });
 
+                // Calculate bingeMode for logging (same logic as used in generator)
+                let bingeMode = false;
+                const rangeNums = finalProgress.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                if (rangeNums.length >= 2) {
+                    const count = Math.max(...rangeNums) - Math.min(...rangeNums) + 1;
+                    if (count > 5) bingeMode = true;
+                }
+
                 const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
                 
                 logger.info(`[Activity Broadcast] 🚀 Sending ${bingeMode ? 'BINGED' : 'WATCHED'} card for ${userRow.anilist_username} to ${channel.name} (${channel.id})`, 'Scheduler');

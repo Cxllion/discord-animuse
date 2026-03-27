@@ -143,7 +143,7 @@ module.exports = {
         }
 
         // --- AniList Activity Pulse (Instant Tracking) ---
-        if (config.activity_channel_id && !message.client.isTestBot) {
+        if (config.activity_channel_id) {
             const { getLinkedAnilist } = require('../utils/services/userService');
             const { checkAndBroadcastUserActivity } = require('../utils/services/scheduler');
             
