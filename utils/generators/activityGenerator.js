@@ -260,17 +260,28 @@ const generateActivityCard = async (userMeta, activityData) => {
 
     const progStr = String(activityData.progress || '');
     const isRange = progStr.match(/[-–—/]/);
+    let bingeMode = false;
+
+    if (isRange) {
+        const rangeNums = progStr.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+        if (rangeNums.length >= 2) {
+            const count = Math.max(...rangeNums) - Math.min(...rangeNums) + 1;
+            if (count > 5) bingeMode = true;
+        }
+    }
 
     let displayVerb = 'INTERACTED WITH';
     if (rawStatus.includes('watched movie')) displayVerb = `WATCHED MOVIE`;
     else if (rawStatus.includes('watched')) {
-        displayVerb = `WATCHED ${isRange ? 'EPISODES' : 'EPISODE'} ${progStr || '??'}`;
+        const verb = bingeMode ? 'BINGED' : 'WATCHED';
+        displayVerb = `${verb} ${isRange ? 'EPISODES' : 'EPISODE'} ${progStr || '??'}`;
     }
     else if (rawStatus.includes('read')) {
+        const verb = bingeMode ? 'BINGED' : 'READ';
         if (rawStatus.includes('volume')) {
-            displayVerb = `READ ${isRange ? 'VOLUMES' : 'VOLUME'} ${progStr || '??'}`;
+            displayVerb = `${verb} ${isRange ? 'VOLUMES' : 'VOLUME'} ${progStr || '??'}`;
         } else {
-            displayVerb = `READ ${isRange ? 'CHAPTERS' : 'CHAPTER'} ${progStr || '??'}`;
+            displayVerb = `${verb} ${isRange ? 'CHAPTERS' : 'CHAPTER'} ${progStr || '??'}`;
         }
     }
     else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${verb}`;
