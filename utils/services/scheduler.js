@@ -349,7 +349,13 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
             }
             const g = groups.get(groupKey);
             g.ids.push(act.id);
-            if (act.progress) g.progress.push(parseInt(act.progress) || act.progress);
+            if (act.progress) {
+                // If the progress is already a range (e.g. "1-12"), treat it as a string
+                // Otherwise try to convert to number for sorting/merging
+                const progStr = String(act.progress);
+                if (progStr.match(/[-–—/]/)) g.progress.push(progStr);
+                else g.progress.push(parseInt(progStr) || progStr);
+            }
         }
 
         if (groups.size === 0) {
@@ -366,9 +372,20 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                 let displayProgress = '';
                 let nums = [];
                 if (g.progress.length > 0) {
-                    nums = g.progress.filter(p => typeof p === 'number').sort((a,b) => a - b);
+                    const allNums = [];
+                    g.progress.forEach(p => {
+                        if (typeof p === 'number') allNums.push(p);
+                        else {
+                            const rangeNums = p.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                            allNums.push(...rangeNums);
+                        }
+                    });
+                    
+                    const nums = [...new Set(allNums)].sort((a,b) => a - b);
                     if (nums.length > 1) {
                         displayProgress = `${nums[0]}-${nums[nums.length-1]}`;
+                    } else if (nums.length === 1) {
+                        displayProgress = nums[0].toString();
                     } else {
                         displayProgress = g.progress[0].toString();
                     }
@@ -429,7 +446,7 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     userId: userRow.user_id,
                     mediaId: g.media.id,
                     channelId: channel.id,
-                    message_id: newMsg.id,
+                    messageId: newMsg.id, // Fixed typo: was message_id, DB uses messageId in the mapper
                     progress: finalProgress,
                     status: g.status
                 });
