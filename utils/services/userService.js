@@ -245,7 +245,8 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
             .eq('user_id', String(userId))
             .eq('media_id', String(mediaId))
             .eq('channel_id', String(channelId))
-            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
+            .not('message_id', 'is', null) // Prioritize posts we can actually delete
+            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
             .order('posted_at', { ascending: false })
             .limit(1)
             .maybeSingle();

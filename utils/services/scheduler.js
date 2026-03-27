@@ -280,11 +280,8 @@ const wasPosted = async (activityId) => {
 };
 
 const markPosted = async (activityIds, meta = null) => {
-    // Construct payload for DB: first ID gets metadata, others are just linked
-    const dbPayload = activityIds.map((id, index) => {
-        if (index === 0 && meta) return { id: String(id), ...meta };
-        return String(id);
-    });
+    // Construct payload for DB: EVERY ID gets the metadata for consistent lookups
+    const dbPayload = activityIds.map(id => ({ id: String(id), ...meta }));
 
     // Try DB first
     const savedToDB = await markPostedInDB(dbPayload);
