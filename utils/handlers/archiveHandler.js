@@ -57,8 +57,8 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         if (interaction.customId.startsWith('archive_hub_')) {
-            const { buildActionHub } = require('../archive/ArchiveUI');
-            return interaction.reply(buildActionHub(game, interaction.user));
+            // No longer used, but kept for legacy button cleanup if needed
+            return interaction.reply({ content: 'Please use the dropdown menu on the main sanctuary message.', flags: MessageFlags.Ephemeral });
         }
 
         if (interaction.customId.startsWith('archive_lobby_back_')) {
@@ -181,30 +181,18 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         const action = interaction.values[0];
-        const { buildLobbyPayload, buildActionHub } = require('../archive/ArchiveUI');
+        const { buildLobbyPayload } = require('../archive/ArchiveUI');
         
         if (action === 'join') {
             if (game.addPlayer(interaction.user)) {
-                // Update ephemeral hub to show "Leave" now
-                await interaction.update(buildActionHub(game, interaction.user));
-                // Update public lobby message
-                try {
-                    const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                    await lobbyMsg.edit(buildLobbyPayload(game));
-                } catch(e) {}
+                await interaction.update(buildLobbyPayload(game));
             } else {
                 await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
         }
         else if (action === 'leave') {
             if (game.removePlayer(interaction.user.id)) {
-                // Update ephemeral hub
-                await interaction.update(buildActionHub(game, interaction.user));
-                // Update public lobby message
-                try {
-                    const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                    await lobbyMsg.edit(buildLobbyPayload(game));
-                } catch(e) {}
+                await interaction.update(buildLobbyPayload(game));
             } else {
                 await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
@@ -239,11 +227,7 @@ const handleArchiveInteraction = async (interaction) => {
                 game.addPlayer({ id: botId, username: `Virtual Bot ${botNumber}`, displayName: `Virtual Bot ${botNumber}` }, true);
             }
             
-            await interaction.editReply(buildActionHub(game, interaction.user));
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(buildLobbyPayload(game));
-            } catch(e) {}
+            await interaction.editReply(buildLobbyPayload(game));
         }
         else if (action === 'settings') {
             if (interaction.user.id !== game.hostId) {

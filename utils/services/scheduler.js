@@ -38,9 +38,12 @@ const checkAiringAnime = async (client) => {
     isAiringPolling = true;
 
     try {
-        // 1. Get IDs due for update (Smart Polling)
+        logger.info('[Scheduler] Pulse: Airing Anime check started.', 'Scheduler');
         const monitorIds = await getAnimeDueForUpdate();
-        if (monitorIds.length === 0) return;
+        if (monitorIds.length === 0) {
+            logger.info('[Scheduler] No airing anime to monitor at this time.', 'Scheduler');
+            return;
+        }
 
         // 2. Process in batches
         for (let i = 0; i < monitorIds.length; i += BATCH_SIZE) {
@@ -312,18 +315,30 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
         const groups = new Map();
 
         for (const act of activities) {
+            // Debug: Let's see what we found
+            logger.info(`[Activity Discovery] Found ID: ${act.id} | Status: ${act.status} | Progress: ${act.progress} | ${act.media?.title?.english || act.media?.title?.romaji}`, 'Scheduler');
+
             // Skip if older than 24 hours
-            if (act.createdAt && act.createdAt < cutoff) continue;
+            if (act.createdAt && act.createdAt < cutoff) {
+                logger.debug(`[Activity Skip] ID ${act.id} is too old. Created at ${act.createdAt}, cutoff ${cutoff}`, 'Scheduler');
+                continue;
+            }
             // Skip if already posted (persistent dedup via file/DB cache)
-            if (await wasPosted(act.id)) continue;
+            if (await wasPosted(act.id)) {
+                logger.debug(`[Activity Skip] ID ${act.id} was already posted according to cache.`, 'Scheduler');
+                continue;
+            }
             // Skip non-media activities (e.g. text status posts)
-            if (!act.media) continue;
+            if (!act.media) {
+                logger.debug(`[Activity Skip] ID ${act.id} has no attached media data.`, 'Scheduler');
+                continue;
+            }
             
             const mediaId = act.media.id;
             const status = (act.status || '').toLowerCase();
             const groupKey = `${mediaId}_${status}`;
             
-            if (!groups.has(groupKey)) {
+            if (!groups.get(groupKey)) {
                 groups.set(groupKey, { 
                     media: act.media, 
                     status: act.status, 
@@ -438,20 +453,37 @@ const checkUserActivity = async (client) => {
     isActivityPolling = true;
 
     try {
+        logger.info('[Scheduler] Pulse: Activity Feed checks across all guilds starting...', 'Scheduler');
         const guilds = Array.from(client.guilds.cache.values());
+        if (guilds.length === 0) {
+            logger.info('[Scheduler] Pulse: No guilds to check for activity.', 'Scheduler');
+            return;
+        }
         
         for (const guild of guilds) {
             try {
+                logger.info(`[Scheduler] Fetching config for Guild: ${guild.id}`, 'Scheduler');
                 const config = await fetchConfig(guild.id);
-                if (!config || !config.activity_channel_id) continue;
+                logger.debug(`[Scheduler] Config found for ${guild.id}: ${!!config}`, 'Scheduler');
+                
+                if (!config || !config.activity_channel_id) {
+                    logger.info(`[Scheduler] Skipping guild ${guild.id}: No activity channel.`, 'Scheduler');
+                    continue;
+                }
 
-                const channel = await guild.channels.fetch(config.activity_channel_id).catch(() => null);
-                if (!channel) continue;
-
+                logger.info(`[Scheduler] Fetching linked users for Guild: ${guild.id}`, 'Scheduler');
                 const linkedUsers = await getLinkedUsersForFeed(guild.id);
+                logger.info(`[Scheduler] Found ${linkedUsers.length} linked user(s) in guild ${guild.id}`, 'Scheduler');
                 if (linkedUsers.length === 0) continue;
 
+                const channel = await guild.channels.fetch(config.activity_channel_id).catch(() => null);
+                if (!channel) {
+                    logger.warn(`[Scheduler] Could not fetch channel ${config.activity_channel_id} in guild ${guild.id}`, 'Scheduler');
+                    continue;
+                }
+
                 for (const userRow of linkedUsers) {
+                    logger.info(`[Scheduler] Processing activity for user: ${userRow.anilist_username}`, 'Scheduler');
                     // Rate limit padding
                     await new Promise(r => setTimeout(r, 600));
                     await checkAndBroadcastUserActivity(client, guild.id, userRow, channel);

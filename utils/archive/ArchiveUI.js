@@ -5,8 +5,7 @@ function buildLobbyPayload(game) {
         .setTitle('📚 The Final Library | Sanctuary Lobby')
         .setColor('#8B5CF6') 
         .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivors:** ${game.players.size}/15 (Min: 4)`)
-        .setThumbnail('https://i.imgur.com/vHqB7d1.png') 
-        .setFooter({ text: 'The world is ending. The library must endure.', iconURL: null })
+        .setFooter({ text: 'The world is ending. The library must endure.' })
         .setTimestamp();
 
     let playersList = Array.from(game.players.values()).map(p => {
@@ -17,10 +16,19 @@ function buildLobbyPayload(game) {
 
     embed.addFields({ name: 'Players Joined', value: playersList });
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_hub_${game.lobbyMessageId}`).setLabel('📖 Sanctuary Terminal').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`archive_spectate_${game.lobbyMessageId}`).setLabel('👁️ Peer into Sanctuary').setStyle(ButtonStyle.Secondary)
-    );
+    const dropdown = new StringSelectMenuBuilder()
+        .setCustomId(`archive_lobby_${game.lobbyMessageId}`)
+        .setPlaceholder('📜 Sanctuary Protocols...')
+        .addOptions([
+            { label: 'Join Sanctuary', value: 'join', description: 'Enter the safe-zone.', emoji: '📥' },
+            { label: 'Leave Sanctuary', value: 'leave', description: 'Venture into the wastes.', emoji: '📤' },
+            { label: 'Seal the Gates (Host Only)', value: 'start', description: 'Begin the survival simulation.', emoji: '▶️' },
+            { label: 'Sanctuary Settings (Host Only)', value: 'settings', description: 'Adjust security protocols.', emoji: '⚙️' },
+            { label: 'Inject Test Bots (Admin Only)', value: 'inject_bots', description: 'Add virtual test players.', emoji: '🧪' },
+            { label: 'Sanctuary Guide', value: 'help', description: 'Review the rules.', emoji: '❓' }
+        ]);
+
+    const row = new ActionRowBuilder().addComponents(dropdown);
 
     return { embeds: [embed], components: [row] };
 }
@@ -89,7 +97,7 @@ function buildStartedLobbyPayload(game) {
     const embed = new EmbedBuilder()
         .setTitle('📚 The Final Library | Locked Session')
         .setColor('#2ecc71')
-        .setDescription(`**Status:** Lockdown Active\n**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivor Count:** ${game.getAlivePlayers().length}/${game.players.size}\n\nThe Gates are sealed, but you can still peer into the sanctuary or join the rescue queue.`)
+        .setDescription(`**Status:** Lockdown Active\n**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivor Count:** ${game.getAlivePlayers().length}/${game.players.size}\n\nThe Gates are sealed, but you can still join the rescue queue or review the guide.`)
         .setFooter({ text: 'Humanity\'s last hope is currently being written.' })
         .setTimestamp();
     
@@ -98,7 +106,6 @@ function buildStartedLobbyPayload(game) {
     }
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_spectate_${game.lobbyMessageId}`).setLabel('👁️ Peer into Sanctuary').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(`archive_queue_${game.lobbyMessageId}`).setLabel('⏳ Join Rescue Queue').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId(`archive_help_general_${game.lobbyMessageId}`).setLabel('💡 Sanctuary Protocols').setStyle(ButtonStyle.Secondary)
     );

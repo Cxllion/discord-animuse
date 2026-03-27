@@ -119,11 +119,17 @@ const getUserFavoritesLocal = async (userId) => {
 
 const getLinkedUsersForFeed = async (guildId) => {
     if (!supabase) return [];
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('users')
-        .select('user_id, anilist_username, last_activity_id')
-        .eq('guild_id', guildId)
+        .select('user_id, anilist_username')
+        .eq('guild_id', String(guildId))
         .not('anilist_username', 'is', null);
+
+    if (error) {
+        logger.error(`[userService] Error fetching linked users for ${guildId}:`, error);
+        return [];
+    }
+    
     return data || [];
 };
 

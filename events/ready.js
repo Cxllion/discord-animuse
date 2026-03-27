@@ -53,13 +53,19 @@ module.exports = {
             logger.warn('⚠️ [Activity Dedup] Could not reach Supabase for migration probe.', 'System');
         }
 
+        if (client.isTestBot) {
+            logger.info('Test bot detected. Background scheduler polling is DISABLED to avoid redundant activity alerts in production channels. (Use /feature test to manually verify graphics).', 'System');
+            return;
+        }
+
         if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
             setTimeout(async () => {
                 logger.info('Initializing scheduler polling (5m cycles)...', 'System');
                 
                 // Runs immediately on startup (after 10s delay)
-                await checkAiringAnime(client).catch(e => logger.error('Initial check crash:', e, 'Scheduler'));
-                await checkUserActivity(client).catch(e => logger.error('Initial check crash:', e, 'Scheduler'));
+                // Runs immediately in background
+                checkAiringAnime(client).catch(e => logger.error('[Scheduler] Initial Airing crash:', e));
+                checkUserActivity(client).catch(e => logger.error('[Scheduler] Initial Activity crash:', e));
 
                 setInterval(async () => {
                     try {
