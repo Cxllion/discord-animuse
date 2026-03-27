@@ -40,6 +40,8 @@ module.exports = {
             logger.error('Failed to load archive state:', e);
         }
 
+        // ── Start Component Task Schedulers ─────────────────────────────────────────
+
         // ── Dedup Table Probe (Render-safe check) ───────────────────────────
         try {
             const supabase = require('../utils/core/supabaseClient');
@@ -58,20 +60,25 @@ module.exports = {
                 logger.info('Initializing scheduler polling (5m cycles)...', 'System');
                 
                 // Runs immediately on startup (after 10s delay)
-                // Runs immediately in background
                 checkAiringAnime(client).catch(e => logger.error('[Scheduler] Initial Airing crash:', e));
-                checkUserActivity(client).catch(e => logger.error('[Scheduler] Initial Activity crash:', e));
+                
+                if (!client.isTestBot) {
+                    checkUserActivity(client).catch(e => logger.error('[Scheduler] Initial Activity crash:', e));
+                } else {
+                    logger.info('Test bot detected. Background activity polling is DISABLED.', 'System');
+                }
 
                 setInterval(async () => {
                     try {
                         await checkAiringAnime(client);
-                        await checkUserActivity(client);
+                        if (!client.isTestBot) await checkUserActivity(client);
                     } catch (error) {
                         logger.error('Notification loop failure:', error, 'Scheduler');
                     }
                 }, 5 * 60 * 1000); 
             }, 10000);
-        } else {
+        }
+ else {
             logger.info('Internal Scheduler disabled. Assuming external cron via worker.js', 'System');
         }
 
