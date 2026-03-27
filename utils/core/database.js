@@ -24,7 +24,7 @@ const {
 const { 
     addTracker, removeTracker, getUserTrackedAnime, 
     getAllTrackersForAnime, getAnimeDueForUpdate, 
-    getTrackedAnimeState, updateTrackedAnimeState 
+    getTrackedAnimeState, updateTrackedAnimeState, removeAllTrackersForAnime
 } = require('../services/animeTrackerService');
 
 const { logModerationAction, getModerationLogs } = require('../services/moderationService');
@@ -89,6 +89,7 @@ module.exports = {
     getAnimeDueForUpdate,
     getTrackedAnimeState,
     updateTrackedAnimeState,
+    removeAllTrackersForAnime,
 
     // Moderation
     logModerationAction,

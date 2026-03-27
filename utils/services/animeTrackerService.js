@@ -44,6 +44,14 @@ const updateTrackedAnimeState = async (anilistId, lastEpisode, nextAiring) => {
     await supabase.from('tracked_anime_state').upsert({ anilist_id: anilistId, last_episode: lastEpisode, next_airing: nextAiring, updated_at: new Date().toISOString() }).select();
 };
 
+const removeAllTrackersForAnime = async (anilistId) => {
+    if (!supabase) return;
+    // Remove all users' subscriptions to this anime
+    await supabase.from('subscriptions').delete().eq('anilist_id', anilistId);
+    // Remove the global tracking state for this anime
+    await supabase.from('tracked_anime_state').delete().eq('anilist_id', anilistId);
+};
+
 module.exports = {
     addTracker,
     removeTracker,
@@ -51,5 +59,6 @@ module.exports = {
     getAllTrackersForAnime,
     getAnimeDueForUpdate,
     getTrackedAnimeState,
-    updateTrackedAnimeState
+    updateTrackedAnimeState,
+    removeAllTrackersForAnime
 };

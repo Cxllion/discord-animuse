@@ -6,6 +6,7 @@ const {
     getAllTrackersForAnime,
     getTrackedAnimeState,
     updateTrackedAnimeState,
+    removeAllTrackersForAnime,
     fetchConfig,
     addTracker,
     getAnimeDueForUpdate,
@@ -24,19 +25,30 @@ const logger = require('../core/logger');
 // Batch size for AniList queries to avoid hitting complexity limits
 const BATCH_SIZE = 50;
 
+// Concurrency locks to preven duplicate broadcasts
+let isAiringPolling = false;
+let isActivityPolling = false;
+
 /**
  * Checks for airing anime and sends notifications.
  * @param {Client} client - Discord Client
  */
 const checkAiringAnime = async (client) => {
-    // 1. Get IDs due for update (Smart Polling)
-    const monitorIds = await getAnimeDueForUpdate();
-    if (monitorIds.length === 0) return;
+    if (isAiringPolling) return;
+    isAiringPolling = true;
 
-    // 2. Process in batches
-    for (let i = 0; i < monitorIds.length; i += BATCH_SIZE) {
-        const batch = monitorIds.slice(i, i + BATCH_SIZE);
-        await processBatch(client, batch);
+    try {
+        // 1. Get IDs due for update (Smart Polling)
+        const monitorIds = await getAnimeDueForUpdate();
+        if (monitorIds.length === 0) return;
+
+        // 2. Process in batches
+        for (let i = 0; i < monitorIds.length; i += BATCH_SIZE) {
+            const batch = monitorIds.slice(i, i + BATCH_SIZE);
+            await processBatch(client, batch);
+        }
+    } finally {
+        isAiringPolling = false;
     }
 };
 
@@ -47,6 +59,7 @@ const processBatch = async (client, ids) => {
         Page {
             media(id_in: $ids, type: ANIME) {
                 id
+                status
                 title { romaji english }
                 coverImage { extraLarge large color }
                 bannerImage
@@ -90,6 +103,11 @@ const processBatch = async (client, ids) => {
                 if (!nextEp || nextEp.timeUntilAiring > 1200) {
                     if (nextAiringDate) {
                         await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
+                    } else if (media.status === 'FINISHED') {
+                        // All episodes have aired and AniList marks it as Finished.
+                        // We can stop observing and clear the archive records.
+                        logger.info(`[Scheduler] ${media.id} has finished airing. Removing ${media.id} from all archives. ♡`, 'Scheduler');
+                        await removeAllTrackersForAnime(media.id);
                     }
                     continue;
                 }
@@ -115,7 +133,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
     let subscriptions = [];
     if (options.forceGuildId) {
         // Test Mode: Simulate a subscription for this guild
-        subscriptions = [{ guild_id: options.forceGuildId, user_id: null }]; // user_id null = no ping
+        subscriptions = [{ guild_id: options.forceGuildId, user_id: options.forceUserId || null }]; 
     } else {
         subscriptions = await getAllTrackersForAnime(media.id);
     }
@@ -168,13 +186,11 @@ const sendNotifications = async (client, media, episode, options = {}) => {
                 continue;
             }
 
-            // Construct Pings
-            let content = '';
+            // Construct Invisible Pings (Zero-width space + pings)
+            let content = '\u200B'; 
             if (userIds.length > 0) {
                 const pings = userIds.map(uid => `<@${uid}>`).join(' ');
-                content = `🔔 **New Episode detected!** ${pings}`;
-            } else {
-                content = `🔔 **New Episode detected!**`; // No pings (Test Mode or empty subs)
+                content += ` ${pings}`;
             }
 
             const title = media.title.english || media.title.romaji;
@@ -229,7 +245,7 @@ const sendNotifications = async (client, media, episode, options = {}) => {
 // ── Two-Tier Persistent Post Cache ────────────────────────────────────────────
 // Tier 1: Supabase `activity_posted` table (works on Render, survives restarts)
 // Tier 2: Local JSON file fallback (works locally without the DB table)
-const { wasPostedInDB, markPostedInDB } = require('./userService');
+const { wasPostedInDB, markPostedInDB, findRecentActivityPostInDB } = require('./userService');
 const fs = require('fs');
 const path = require('path');
 const CACHE_PATH = path.join(__dirname, '../../.activity_posted_cache.json');
@@ -260,9 +276,15 @@ const wasPosted = async (activityId) => {
     return !!loadFileCache()[String(activityId)];
 };
 
-const markPosted = async (activityIds) => {
+const markPosted = async (activityIds, meta = null) => {
+    // Construct payload for DB: first ID gets metadata, others are just linked
+    const dbPayload = activityIds.map((id, index) => {
+        if (index === 0 && meta) return { id: String(id), ...meta };
+        return String(id);
+    });
+
     // Try DB first
-    const savedToDB = await markPostedInDB(activityIds);
+    const savedToDB = await markPostedInDB(dbPayload);
     if (!savedToDB) {
         // DB table doesn't exist yet — use local file fallback
         const cache = loadFileCache();
@@ -325,23 +347,49 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
         // Process each Group
         for (const [key, g] of groups) {
             try {
-                // Determine Range (e.g. 1-5 or just 5)
+                // 1. Determine local range for THIS poll (e.g. 1-2)
                 let displayProgress = '';
+                let nums = [];
                 if (g.progress.length > 0) {
-                    const nums = g.progress.filter(p => typeof p === 'number').sort((a,b) => a - b);
+                    nums = g.progress.filter(p => typeof p === 'number').sort((a,b) => a - b);
                     if (nums.length > 1) {
                         displayProgress = `${nums[0]}-${nums[nums.length-1]}`;
                     } else {
-                        displayProgress = g.progress[0];
+                        displayProgress = g.progress[0].toString();
                     }
                 }
 
-                // Render Card
+                // 2. CHECK FOR MERGE (Binge Compression across polls)
+                const recentPost = await findRecentActivityPostInDB(userRow.user_id, g.media.id, channel.id);
+                let finalProgress = displayProgress;
+                
+                if (recentPost && recentPost.message_id && g.status.toLowerCase() === (recentPost.status || '').toLowerCase()) {
+                    // Try to merge progress strings (e.g. "1-2" + "3" -> "1-3")
+                    const oldProg = recentPost.progress || '';
+                    const oldNums = oldProg.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                    const newNums = displayProgress.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                    
+                    if (oldNums.length > 0 && newNums.length > 0) {
+                        const allCombined = [...oldNums, ...newNums].sort((a,b) => a - b);
+                        const min = allCombined[0];
+                        const max = allCombined[allCombined.length - 1];
+                        if (min === max) finalProgress = String(min);
+                        else finalProgress = `${min}-${max}`;
+
+                        // Delete the old message to "replace" it (binging UX)
+                        try {
+                            const oldMsg = await channel.messages.fetch(recentPost.message_id).catch(() => null);
+                            if (oldMsg) await oldMsg.delete().catch(() => null);
+                        } catch (e) {
+                            logger.warn(`[Activity Feed] Cleanup failed for old post ${recentPost.message_id}: ${e.message}`, 'Scheduler');
+                        }
+                    }
+                }
+
+                // 3. Render and Post New Card
                 const userColor = await getUserColor(userRow.user_id, guildId);
                 const userAvatar = await getUserAvatarConfig(userRow.user_id, guildId);
-
                 const score = await getUserMediaScore(g.user.id, g.media.id);
-
                 const guild = client.guilds.cache.get(guildId);
                 const member = guild ? await guild.members.fetch(userRow.user_id).catch(() => null) : null;
                 const username = member ? member.displayName : g.user.name;
@@ -354,15 +402,22 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
 
                 const buffer = await generateActivityCard(userMeta, { 
                     ...g, 
-                    progress: displayProgress, 
+                    progress: finalProgress, 
                     score: score 
                 });
 
-                const attachment = new AttachmentBuilder(buffer, { name: `burst-${g.media.id}.webp` });
-                await channel.send({ files: [attachment] });
+                const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
+                const newMsg = await channel.send({ files: [attachment] });
 
-                // Persistently mark all IDs in this group so they're never re-posted
-                await markPosted(g.ids);
+                // 4. Mark AS POSTED with session metadata for future merges
+                await markPosted(g.ids, {
+                    userId: userRow.user_id,
+                    mediaId: g.media.id,
+                    channelId: channel.id,
+                    message_id: newMsg.id,
+                    progress: finalProgress,
+                    status: g.status
+                });
 
             } catch (err) {
                 logger.error(`[Activity Feed] Generation Error:`, err, 'Scheduler');
@@ -379,27 +434,34 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
  * @param {Client} client - Discord Client
  */
 const checkUserActivity = async (client) => {
-    const guilds = Array.from(client.guilds.cache.values());
-    
-    for (const guild of guilds) {
-        try {
-            const config = await fetchConfig(guild.id);
-            if (!config || !config.activity_channel_id) continue;
+    if (isActivityPolling) return;
+    isActivityPolling = true;
 
-            const channel = await guild.channels.fetch(config.activity_channel_id).catch(() => null);
-            if (!channel) continue;
+    try {
+        const guilds = Array.from(client.guilds.cache.values());
+        
+        for (const guild of guilds) {
+            try {
+                const config = await fetchConfig(guild.id);
+                if (!config || !config.activity_channel_id) continue;
 
-            const linkedUsers = await getLinkedUsersForFeed(guild.id);
-            if (linkedUsers.length === 0) continue;
+                const channel = await guild.channels.fetch(config.activity_channel_id).catch(() => null);
+                if (!channel) continue;
 
-            for (const userRow of linkedUsers) {
-                // Rate limit padding
-                await new Promise(r => setTimeout(r, 600));
-                await checkAndBroadcastUserActivity(client, guild.id, userRow, channel);
+                const linkedUsers = await getLinkedUsersForFeed(guild.id);
+                if (linkedUsers.length === 0) continue;
+
+                for (const userRow of linkedUsers) {
+                    // Rate limit padding
+                    await new Promise(r => setTimeout(r, 600));
+                    await checkAndBroadcastUserActivity(client, guild.id, userRow, channel);
+                }
+            } catch (guildError) {
+                logger.error(`[Scheduler] Guild Polling Error (${guild.id}):`, guildError, 'Scheduler');
             }
-        } catch (guildError) {
-            logger.error(`[Scheduler] Guild Polling Error (${guild.id}):`, guildError, 'Scheduler');
         }
+    } finally {
+        isActivityPolling = false;
     }
 };
 

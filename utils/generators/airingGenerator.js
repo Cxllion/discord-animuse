@@ -175,7 +175,8 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
 
     // --- 5. THE EPISODE BLOCK (Top Row Alignment) ---
-    const epNumStr = (episode.episode || '??').toString();
+    const isFinal = media.episodes && (episode.episode === media.episodes);
+    const epNumStr = isFinal ? 'FINAL' : (episode.episode || '??').toString();
     const curY = margin;
 
     // "AIRING NOW" Pod (Vibrant Gradient Refinement)
@@ -268,14 +269,14 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     ctx.stroke();
 
     // Nested Number (Robust Centering)
-    ctx.font = '900 18px sans-serif';
-    ctx.letterSpacing = '0px';
+    ctx.font = isFinal ? '900 13px sans-serif' : '900 18px sans-serif';
+    ctx.letterSpacing = isFinal ? '1.5px' : '0px';
     ctx.fillStyle = '#FFF';
     ctx.shadowColor = 'rgba(255,255,255,0.3)';
     ctx.shadowBlur = 10;
-    ctx.textAlign = 'left'; // Using left-aligned for manual centering calculation
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(epNumStr, innerX + innerPadding, innerY + (innerPillH / 2) - 0.5);
+    ctx.fillText(epNumStr, innerX + (innerPillW / 2), innerY + (innerPillH / 2));
     ctx.restore();
 
     // --- 4B. METADATA PILL (Refined & Sequenced) ---

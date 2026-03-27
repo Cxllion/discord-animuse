@@ -134,10 +134,21 @@ module.exports = {
                         const bufferCommunity = await generateAiringCard(media, { episode: nextEpNum }, mockTrackers, themeColor);
                         const attachmentCommunity = new AttachmentBuilder(bufferCommunity, { name: 'airing-test-community.webp' });
 
+                        // Scenario C: Final Episode
+                        const mockFinalMedia = { ...media, episodes: nextEpNum };
+                        const bufferFinal = await generateAiringCard(mockFinalMedia, { episode: nextEpNum }, [], themeColor);
+                        const attachmentFinal = new AttachmentBuilder(bufferFinal, { name: 'airing-test-final.webp' });
+
+                        await interaction.editReply({ files: [attachmentSolo, attachmentCommunity, attachmentFinal] });
                         await interaction.followUp({
-                            content: `🏁 **Visual Diagnostic Complete**\nGenerated cards for **${media.title.english || media.title.romaji}** (Episode ${nextEpNum})`,
-                            files: [attachmentSolo, attachmentCommunity]
+                            content: `🏁 **Visual Diagnostic Complete**\nGenerated cards (Solo, Community, and Final Episode) for **${media.title.english || media.title.romaji}**`,
+                            flags: MessageFlags.Ephemeral
                         });
+
+                        // Phase D: Live Simulation (Simulate one broadcast with a ping)
+                        await interaction.followUp({ content: '📤 **Simulation**: Broadcasting live notification to your airing channel...', flags: MessageFlags.Ephemeral });
+                        const episodeData = { episode: nextEpNum, airingAt: Math.floor(Date.now() / 1000), timeUntilAiring: 0 };
+                        await sendNotifications(interaction.client, media, episodeData, { forceGuildId: interaction.guild.id, forceUserId: interaction.user.id });
 
                     } catch (e) {
                         logger.error('Airing Test Error:', e.message, 'FeatureCommand');

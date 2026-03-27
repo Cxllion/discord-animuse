@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, MessageFlags } = require('discord.js');
 const { fetchConfig, assignChannel, getGuildChannelData, pinChannelPosition, pulseChannelActivity } = require('../core/database');
+const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
 
 // Unified Progress Bar Helper
@@ -22,15 +23,15 @@ const safeUpdate = async (i, options) => {
 };
 
 const displayChannelDashboard = async (interaction, isUpdate = false) => {
-    const embed = new EmbedBuilder()
-        .setTitle('Channel Architect Dashboard')
+    const { getNavigationRow } = require('./roleDashboard');
+    const embed = baseEmbed()
+        .setTitle('🏗️ Channel Architect Dashboard')
         .setDescription('Welcome to the Server Infrastructure Bureau. Configure your server zones, activity sorting, and feature bindings below.')
-        .setColor(CONFIG.COLORS?.PRIMARY || '#A78BFA')
         .addFields(
-            { name: '🔗 Assignment Hub', value: 'Bind bot features (Welcome, Logs, Airing, levels) to specific channels.', inline: false },
-            { name: '📏 Hybrid Sorting', value: 'Manage Intra-Category sorting. Pin priority channels and enable activity-based rising.', inline: false },
-            { name: '👻 Ghost Detection', value: 'Scan for inactive channels that havent seen activity in weeks.', inline: false },
-            { name: '📌 Archive Bureau', value: 'Configure pinning mirrors and permanent history backups.', inline: false }
+            { name: '🔗 Assignment Hub', value: 'Bind bot features (Airing, Levels, etc.) to channels.', inline: true },
+            { name: '📏 Hybrid Sorting', value: 'Manage priority pins and pulse rising.', inline: true },
+            { name: '👻 Ghost Detection', value: 'Scan for stagnant and silent channels.', inline: true },
+            { name: '📌 Archive Bureau', value: 'Configure pinning mirrors and mirrors.', inline: true }
         );
 
     const row = new ActionRowBuilder().addComponents(
@@ -42,14 +43,16 @@ const displayChannelDashboard = async (interaction, isUpdate = false) => {
                 { label: 'Hybrid Sorting Control', value: 'opt_sorting', emoji: '📏' },
                 { label: 'Zoning & Ghost Scan', value: 'opt_zoning', emoji: '👻' },
                 { label: 'Archive & Pinned Mirror', value: 'opt_archive', emoji: '📌' },
-                { label: 'Return to Hub', value: 'opt_home', emoji: '🏠' }
+                { label: 'Refresh Wing', value: 'opt_home', emoji: '🔄' }
             ])
     );
 
+    const rows = [getNavigationRow(interaction, 'opt_channels'), row];
+
     if (isUpdate) {
-        await safeUpdate(interaction, { embeds: [embed], components: [row] });
+        await safeUpdate(interaction, { embeds: [embed], components: rows });
     } else {
-        await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [embed], components: rows, flags: MessageFlags.Ephemeral });
     }
 };
 
@@ -146,10 +149,9 @@ const handlePinManagement = async (interaction) => {
     const channelData = await getGuildChannelData(interaction.guildId);
     const pinnedChannels = channelData.filter(d => d.pinned_position !== -1);
     
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed()
         .setTitle('📌 Pin Management')
-        .setDescription('Set manual priority positions for channels. Pinned channels always stay at the top of their category, ignoring activity pulses.')
-        .setColor('#A78BFA');
+        .setDescription('Set manual priority positions for channels. Pinned channels always stay at the top of their category, ignoring activity pulses.');
 
     if (pinnedChannels.length > 0) {
         embed.addFields({ 
@@ -190,10 +192,9 @@ const handlePinManagement = async (interaction) => {
 const handleAssignmentHub = async (interaction, isUpdate = false, successMsg = null) => {
     const config = await fetchConfig(interaction.guildId);
     
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed()
         .setTitle('🔗 Assignment Hub')
         .setDescription('Link server features to specific channels. This ensures the bot knows exactly where to direct its energy.')
-        .setColor('#A78BFA')
         .addFields(
             { name: '🖼️ Welcome (Image)', value: config.welcome_channel_id ? `<#${config.welcome_channel_id}>` : '*Not Assigned*', inline: true },
             { name: '💬 Greeting (Text)', value: config.greeting_channel_id ? `<#${config.greeting_channel_id}>` : '*Not Assigned*', inline: true },
@@ -343,7 +344,7 @@ const performGhostScan = async (interaction) => {
         return lastActive < cutoff;
     });
 
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed()
         .setTitle('🔍 Ghost Scan Results')
         .setDescription(ghosts.size > 0 
             ? `Found **${ghosts.size}** stagnant channels that have been silent for over ${THRESHOLD_DAYS} days.` 

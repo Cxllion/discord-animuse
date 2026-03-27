@@ -10,6 +10,7 @@ const {
 } = require('discord.js');
 const { fetchConfig, assignChannel } = require('../core/database');
 const { getDynamicUserTitle } = require('../core/userMeta');
+const baseEmbed = require('../generators/baseEmbed');
 const supabase = require('../core/supabaseClient');
 
 /**
@@ -18,28 +19,30 @@ const supabase = require('../core/supabaseClient');
  * @param {boolean} isUpdate 
  */
 const displayMuseBureau = async (interaction, isUpdate = false) => {
+    const { getNavigationRow } = require('./roleDashboard');
     const config = await fetchConfig(interaction.guildId);
     const title = await getDynamicUserTitle(interaction.member);
 
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed()
         .setTitle('🎭 The Muse Bureau')
         .setDescription(`Welcome, **${title}**, to the auxiliary wing of the Archives. Here you can fine-tune the bot's miscellaneous behaviors and aesthetic flavor.`)
-        .setColor('#A78BFA')
         .addFields(
             { name: '✨ Level-Up Reaction', value: config.xp_level_up_emoji || '`<a:level_up:1483138860417286358>`', inline: true },
-            { name: '📍 Local Announcements', value: '`Enabled` (Localized to active channel)', inline: true }
+            { name: '📍 Local Announcements', value: '`Enabled` (Localized)', inline: true }
         )
         .setFooter({ text: 'These settings apply server-wide.' });
 
-    const row = new ActionRowBuilder().addComponents(
+    const btnRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('muse_edit_emoji').setLabel('Set Level-Up Emoji').setStyle(ButtonStyle.Primary).setEmoji('✨'),
-        new ButtonBuilder().setCustomId('role_dash_home').setLabel('Back to Dashboard').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('role_dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
     );
 
+    const rows = [getNavigationRow(interaction, 'opt_muses'), btnRow];
+
     if (isUpdate) {
-        await interaction.update({ embeds: [embed], components: [row] });
+        await interaction.update({ embeds: [embed], components: rows });
     } else {
-        await interaction.reply({ embeds: [embed], components: [row] });
+        await interaction.reply({ embeds: [embed], components: rows });
     }
 };
 

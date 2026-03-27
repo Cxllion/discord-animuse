@@ -196,19 +196,58 @@ const wasPostedInDB = async (activityId) => {
 
 /**
  * Persistently mark activity IDs as posted (DB-backed, Render-safe).
- * Returns true if successfully saved to DB, false if table missing (caller uses file fallback).
+ * Can accept simple IDs or objects with metadata for session merging.
+ * @param {Array<string|object>} activities - List of activity IDs or objects { id, userId, mediaId, channelId, messageId, progress, status }
  */
-const markPostedInDB = async (activityIds) => {
+const markPostedInDB = async (activities) => {
     if (!supabase) return false;
     try {
-        const rows = activityIds.map(id => ({ activity_id: String(id) }));
+        const rows = activities.map(act => {
+            if (typeof act === 'string') return { activity_id: String(act) };
+            return {
+                activity_id: String(act.id),
+                user_id: String(act.userId),
+                media_id: String(act.mediaId),
+                channel_id: String(act.channelId),
+                message_id: String(act.messageId),
+                progress: String(act.progress),
+                status: String(act.status),
+                posted_at: new Date()
+            };
+        });
+
         const { error } = await supabase
             .from('activity_posted')
             .upsert(rows, { onConflict: 'activity_id' });
+            
         if (error && error.code === 'PGRST200') return false; // Table missing
         return !error;
     } catch (e) {
         return false;
+    }
+};
+
+/**
+ * Find the most recent post for a user/media combination to allow for merging.
+ */
+const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
+    if (!supabase) return null;
+    try {
+        const { data, error } = await supabase
+            .from('activity_posted')
+            .select('*')
+            .eq('user_id', String(userId))
+            .eq('media_id', String(mediaId))
+            .eq('channel_id', String(channelId))
+            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
+            .order('posted_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) return null;
+        return data;
+    } catch (e) {
+        return null;
     }
 };
 
@@ -237,4 +276,5 @@ module.exports = {
     clearActivityCache,
     wasPostedInDB,
     markPostedInDB,
+    findRecentActivityPostInDB,
 };

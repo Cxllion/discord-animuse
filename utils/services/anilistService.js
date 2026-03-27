@@ -61,17 +61,18 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
  * Uses local cache.
  * @param {string} search 
  * @param {string} type 'ANIME' or 'MANGA'
+ * @param {Array<string>} statusIn Optional list of MediaStatus
  * @returns {Promise<Array>} List of media
  */
-const searchMedia = async (search, type = 'ANIME') => {
-    const cacheKey = `search_${type}_${search.toLowerCase()}`;
+const searchMedia = async (search, type = 'ANIME', statusIn = null) => {
+    const cacheKey = `search_${type}_${search.toLowerCase()}${statusIn ? `_${statusIn.join(',')}` : ''}`;
     const cached = searchCache.get(cacheKey);
     if (cached) return cached;
 
     const query = `
-    query ($search: String, $type: MediaType) {
-        Page(perPage: 10) {
-            media(search: $search, type: $type, sort: POPULARITY_DESC) {
+    query ($search: String, $type: MediaType${statusIn ? ', $statusIn: [MediaStatus]' : ''}) {
+        Page(perPage: 25) {
+            media(search: $search, type: $type${statusIn ? ', status_in: $statusIn' : ''}, sort: POPULARITY_DESC) {
                 id
                 title {
                     romaji
@@ -80,12 +81,18 @@ const searchMedia = async (search, type = 'ANIME') => {
                 }
                 siteUrl
                 format
+                status
+                averageScore
+                meanScore
                 startDate { year }
             }
         }
     }
     `;
-    const data = await queryAnilist(query, { search, type });
+    const variables = { search, type };
+    if (statusIn) variables.statusIn = statusIn;
+
+    const data = await queryAnilist(query, variables);
     if (!data || !data.Page || !data.Page.media) return [];
     const results = data.Page.media;
 
@@ -215,6 +222,36 @@ const getPlanningList = async (username, type = 'ANIME') => {
 };
 
 /**
+ * Fetches user's current Watching list.
+ * @param {string} username 
+ * @returns {Promise<Array>} List of media objects
+ */
+const getWatchingList = async (username) => {
+    const query = `
+    query ($username: String) {
+        MediaListCollection(userName: $username, type: ANIME, status: CURRENT) {
+            lists {
+                entries {
+                    media {
+                        id
+                        title { english romaji }
+                        status
+                    }
+                }
+            }
+        }
+    }
+    `;
+    try {
+        const data = await queryAnilist(query, { username });
+        if (!data || !data.MediaListCollection || !data.MediaListCollection.lists.length) return [];
+        return data.MediaListCollection.lists.flatMap(list => list.entries.map(e => e.media));
+    } catch (e) {
+        return [];
+    }
+};
+
+/**
  * Fetches multiple media items by ID in a single query.
  * @param {Array<number|string>} ids 
  * @returns {Promise<Array>} List of media objects
@@ -229,7 +266,13 @@ const getMediaByIds = async (ids) => {
                 id
                 title { english romaji }
                 siteUrl
-                coverImage { large extraLarge }
+                coverImage { large extraLarge color }
+                status
+                format
+                nextAiringEpisode {
+                    episode
+                    airingAt
+                }
                 averageScore
                 meanScore
             }
@@ -382,6 +425,8 @@ const getTrendingAnime = async () => {
                 }
                 siteUrl
                 format
+                averageScore
+                meanScore
                 seasonYear
                 genres
                 status
@@ -455,6 +500,8 @@ const getTrendingMovies = async () => {
                 seasonYear
                 startDate { year }
                 genres
+                averageScore
+                meanScore
                 type
             }
         }
@@ -567,6 +614,7 @@ module.exports = {
     getMediaById,
     getAnilistUser,
     getPlanningList,
+    getWatchingList,
     getMediaByIds,
     getUserFavorites,
     getUserStats,

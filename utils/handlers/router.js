@@ -1,9 +1,5 @@
 const { handleProfileInteraction, handleProfileModals } = require('./profileHandlers');
 const { handleSearchInteraction, handleTrackInteraction } = require('./searchHandlers');
-const { updateMediaSettings } = require('./configHandlers');
-const registry = require('./super/registry');
-const mediaView = require('./super/views/media');
-const dashboardView = require('./super/views/dashboard');
 const { handleChannelDashboardInteraction } = require('./channelDashboard');
 const { handleMuseBureauInteraction } = require('./museBureau');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
@@ -36,36 +32,6 @@ const routeInteraction = async (interaction) => {
 
         if (customId.startsWith('track_anime_')) {
             await handleTrackInteraction(interaction);
-            return true;
-        }
-
-        // 3. Super Dashboard (Core Configurations)
-        if (customId.startsWith('super_')) {
-            if (customId === 'super_category_select') {
-                await interaction.deferUpdate();
-                const categoryKey = interaction.values[0];
-                const category = registry.getCategory(categoryKey);
-
-                if (category?.handler) {
-                    const payload = await category.handler(interaction, interaction.guild.id);
-                    await interaction.editReply(payload);
-                } else {
-                    await interaction.followUp({ 
-                        content: `The **${category?.label || 'Unknown'}** wing is currently under renovation.`, 
-                        flags: MessageFlags.Ephemeral 
-                    });
-                }
-            } else if (customId === 'super_media_select') {
-                const resultEmbed = await updateMediaSettings(interaction.guildId, interaction.values);
-                const payload = await mediaView(interaction, interaction.guildId);
-                await interaction.update({ 
-                    embeds: [resultEmbed, ...payload.embeds], 
-                    components: payload.components 
-                });
-            } else if (customId === 'super_home') {
-                const payload = await dashboardView(interaction, interaction.guild.id);
-                await interaction.update(payload);
-            }
             return true;
         }
 

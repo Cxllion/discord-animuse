@@ -79,7 +79,7 @@ function resolveNightStack(game) {
                     // Convert target's faction if applicable
                     if (target.role.faction === 'Archivists') {
                         target.role.faction = 'Revisions';
-                        readings.push({ viewerId: target.id, message: `🩸 **You have been corrupted.** You are now aligned with the **Revisions** (Archive). You win with them.` });
+                        readings.push({ viewerId: target.id, message: `🩸 **You have been infected.** The Viral Rot has taken hold. You are now aligned with the **Revisions** (Infected). You win with them.` });
                         
                         // Add to secret thread if it exists
                         if (game.archiveThreadId && !target.isBot) {
@@ -97,7 +97,7 @@ function resolveNightStack(game) {
                     // The Plagiarist reads as Archivist
                     let readFaction = target.role.faction;
                     if (target.role.name === 'The Plagiarist') readFaction = 'Archivists';
-                    readings.push({ viewerId: source.id, message: `Your reading on ${target.name} reveals they are aligned with the ${readFaction}.` });
+                    readings.push({ viewerId: source.id, message: `Your diagnostic of ${target.name} reveals they are aligned with the ${readFaction}.` });
                 }
                 if (role.name === 'The Scribe') {
                     // Scribe checks dead bodies for visitors across all previous nights
@@ -105,10 +105,10 @@ function resolveNightStack(game) {
                     if (visitors.length > 0) {
                         const v = visitors[Math.floor(Math.random() * visitors.length)];
                         const visitorName = game.players.get(v.sourceId)?.name || "Unknown";
-                        readings.push({ viewerId: source.id, message: `Your scribing of ${target.name}'s former self revealed traces of ${visitorName} (from night ${v.night}).\n\n⚠️ **You are now Ink-Bound and cannot vote for them.**` });
+                        readings.push({ viewerId: source.id, message: `Your forensic scan of ${target.name}'s bio-signature revealed traces of ${visitorName} (from night ${v.night}).\n\n⚠️ **You are now Ink-Bound (Biosync Conflict) and cannot vote for them.**` });
                         source.inkBoundTarget = v.sourceId;
                     } else {
-                        readings.push({ viewerId: source.id, message: `Your scribing of ${target.name} found no discernable traces across history.` });
+                        readings.push({ viewerId: source.id, message: `Your forensic scan of ${target.name} found no discernable bio-traces recorded.` });
                     }
                 }
                 break;

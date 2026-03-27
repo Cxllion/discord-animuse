@@ -1,6 +1,8 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 const { fetchConfig, upsertConfig, getRoleCategories, createRoleCategory, deleteRoleCategory, seedRoleCategories, getServerRoles, registerServerRole, registerServerRoles, unregisterServerRole, getLevelRoles, setLevelRole, removeLevelRole } = require('../core/database');
 const CONFIG = require('../config');
+const baseEmbed = require('../generators/baseEmbed');
+const { EMOJIS } = require('../config/emojiConfig');
 const { COLOR_FAMILIES, BASIC_COLORS } = require('../config/colorConfig');
 const { ROLE_DASHBOARD } = require('../config/constants');
 
@@ -61,35 +63,58 @@ const safeUpdate = async (i, options) => {
     }
 };
 
-const displayRoleDashboard = async (interaction, isUpdate = false) => {
-    const embed = new EmbedBuilder()
-        .setTitle('Role Management Dashboard')
-        .setDescription('Welcome to the Server Role Architect. Select a module below to begin configuring the server structure.')
-        .setColor(CONFIG.COLORS?.PRIMARY || '#A78BFA')
-        .addFields(
-            { name: '🤖 Auto-Roles', value: 'Configure roles assigned automatically on join to Members and Bots.', inline: false },
-            { name: '🗂️ Categories', value: 'Organize roles into groups (Pronouns, Colors, Regions, etc.) for menus.', inline: false },
-            { name: '📈 Level Rewards', value: 'Bind roles to specific level milestones that automatically stack.', inline: false },
-            { name: '🧹 Server Purge', value: 'Scan and safely bulk-delete undocumented "ghost" roles.', inline: false },
-            { name: '📏 Role Organizing', value: 'Automatically sort server roles based on category hierarchy.', inline: false }
-        );
+const getNavigationRow = (i, current = null) => {
+    const options = [
+        { label: 'Library Home', description: 'Return to the main management hub.', value: 'opt_refresh', emoji: EMOJIS.DASHBOARD },
+        { label: 'Auto-Roles', description: 'Member, Bot, and status roles.', value: 'opt_autoroles', emoji: '🤖' },
+        { label: 'Category Manager', description: 'Organize roles into group folders.', value: 'opt_categories', emoji: '🗂️' },
+        { label: 'Level Rewards', description: 'Manage milestone-based role rewards.', value: 'opt_levels', emoji: '📈' },
+        { label: 'Color Catalog', description: 'Deploy curated premium color shades.', value: 'opt_colors', emoji: '🎨' },
+        { label: 'Channel Architect', description: 'Zone management and feature binding.', value: 'opt_channels', emoji: '🏗️' },
+        { label: 'Media & Airing', description: 'Airing alerts and gallery settings.', value: 'opt_media', emoji: EMOJIS.MEDIA },
+        { label: 'Administrative Wing', description: 'Bans, Invites, and Server oversight.', value: 'opt_admin', emoji: EMOJIS.ADMIN },
+        { label: 'Bot Insight', description: 'System health and performance metrics.', value: 'opt_insight', emoji: '📊' },
+        { label: 'Server Purge', description: 'Clean up undocumented ghost roles.', value: 'opt_purge', emoji: '🧹' },
+        { label: 'Role Organizing', description: 'Re-sort the library hierarchy.', value: 'opt_organize', emoji: '📏' },
+        { label: 'Muse Bureau', description: 'Auxiliary flavor and extra settings.', value: 'opt_muses', emoji: '🎭' }
+    ];
 
-    const row = new ActionRowBuilder().addComponents(
+    if (current) {
+        options.forEach(o => o.default = (o.value === current));
+    }
+
+    return new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
             .setCustomId('role_dash_menu')
-            .setPlaceholder('Navigate to Bureau...')
-            .addOptions([
-                { label: 'Auto-Roles', description: 'Configure Member, Bot, and Booster roles.', value: 'opt_autoroles', emoji: '🤖' },
-                { label: 'Category Manager', description: 'Organize roles into group folders.', value: 'opt_categories', emoji: '🗂️' },
-                { label: 'Level Rewards', description: 'Manage milestone-based role rewards.', value: 'opt_levels', emoji: '📈' },
-                { label: 'Color Catalog', description: 'Deploy and manage premium color roles.', value: 'opt_colors', emoji: '🎨' },
-                { label: 'Server Purge', description: 'Clean up undocumented ghost roles.', value: 'opt_purge', emoji: '🧹' },
-                { label: 'Role Organizing', description: 'Sort hierarchy by category.', value: 'opt_organize', emoji: '📏' },
-                { label: 'Channel Architect', description: 'Zone management and sorting.', value: 'opt_channels', emoji: '🏗️' },
-                { label: 'Muse Bureau', description: 'Flavor and extras hub.', value: 'opt_muses', emoji: '🎭' },
-                { label: 'Refresh Hub', description: 'Reset and refresh the dashboard.', value: 'opt_refresh', emoji: '🔄' }
-            ])
+            .setPlaceholder('Explore another wing of the Library...')
+            .addOptions(options)
     );
+};
+
+const getBackRow = (customId = 'dash_home', label = 'Back to Hub') => {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(customId)
+            .setLabel(label)
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji(EMOJIS.BACK)
+    );
+};
+
+const displayRoleDashboard = async (interaction, isUpdate = false) => {
+    const embed = baseEmbed()
+        .setTitle('AniMuse Library Dashboard')
+        .setDescription('Welcome, Librarian. Manage the server architecture and bot configurations from this central hub.\n\n**Select a wing below to begin auditing or configuring.**')
+        .addFields(
+            { name: '🤖 Auto-Roles', value: 'Setup Member, Bot, and status roles.', inline: true },
+            { name: '🗂️ Categories', value: 'Organize roles into group folders.', inline: true },
+            { name: '📈 Level Rewards', value: 'Manage milestone-based role rewards.', inline: true },
+            { name: '🏗️ Infrastructure', value: 'Channels, Sorting, and Ghost Scans.', inline: true },
+            { name: '📐 Hierarchy', value: 'Purge roles and re-sort hierarchy.', inline: true },
+            { name: '📊 Metrics', value: 'Monitor bot health and server stats.', inline: true }
+        );
+
+    const row = getNavigationRow(interaction);
 
     if (isUpdate) {
         await safeUpdate(interaction, { embeds: [embed], components: [row] });
@@ -118,6 +143,9 @@ const handleDashboardInteraction = async (i) => {
                 if (choice === 'opt_colors') return handleColorRoles(i);
                 if (choice === 'opt_purge') return handlePurge(i);
                 if (choice === 'opt_organize') return handleOrganizeMenu(i);
+                if (choice === 'opt_insight') return handleBotInsight(i);
+                if (choice === 'opt_admin') return handleAdminWing(i);
+                if (choice === 'opt_media') return handleMediaAiring(i);
                 if (choice === 'opt_refresh') return await displayRoleDashboard(i, true);
                 if (choice === 'opt_channels') {
                     const { displayChannelDashboard } = require('./channelDashboard');
@@ -260,23 +288,28 @@ const handleDashboardInteraction = async (i) => {
 
 const handleAutoRoles = async (i) => {
     const config = await fetchConfig(i.guild.id);
-    const memberRole = config.member_role_id ? `<@&${config.member_role_id}>` : 'Not Set';
-    const botRole = config.bot_role_id ? `<@&${config.bot_role_id}>` : 'Not Set';
-    const boosterRole = config.booster_role_id ? `<@&${config.booster_role_id}>` : 'Not Set (Auto-Detect)';
-    const premiumRole = config.premium_role_id ? `<@&${config.premium_role_id}>` : 'Not Set (Seraphic Muse)';
+    const memberRole = config.member_role_id ? `<@&${config.member_role_id}>` : '`Not Set`';
+    const botRole = config.bot_role_id ? `<@&${config.bot_role_id}>` : '`Not Set`';
+    const boosterRole = config.booster_role_id ? `<@&${config.booster_role_id}>` : '`Not Set (Auto-Detect)`';
+    const premiumRole = config.premium_role_id ? `<@&${config.premium_role_id}>` : '`Not Set (Seraphic Muse)`';
     
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed()
         .setTitle('🤖 Auto-Roles & Status Configuration')
-        .setDescription(`Setup special roles for server members.\n\n**Current Configuration:**\n• **Member**: ${memberRole}\n• **Bot**: ${botRole}\n• **Booster**: ${boosterRole}\n• **Seraphic (Premium)**: ${premiumRole}`)
-        .setColor('#FFA500');
+        .setDescription(`Assign specialized roles automatically as members traverse the Library gates.`)
+        .addFields(
+            { name: '👥 Member', value: memberRole, inline: true },
+            { name: '🤖 Bot', value: botRole, inline: true },
+            { name: '💎 Booster', value: boosterRole, inline: true },
+            { name: '✨ Seraphic', value: premiumRole, inline: true }
+        );
 
     const rows = [
-        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_member').setPlaceholder('Update Member Role...')),
-        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_bot').setPlaceholder('Update Bot Role...')),
-        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_premium').setPlaceholder('Update Seraphic Muse (Premium) Role...')),
+        getNavigationRow(i, 'opt_autoroles'),
+        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_member').setPlaceholder('Designate Member Role...')),
+        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_bot').setPlaceholder('Designate Bot Role...')),
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('autorole_sync').setLabel('Retroactive Auto-Assign').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
-            new ButtonBuilder().setCustomId('dash_home').setLabel('Back to Menu').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('autorole_sync').setLabel('Retroactive Sync').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
+            new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
         )
     ];
 
@@ -338,7 +371,6 @@ const handleCategories = async (i) => {
     let categories = await seedRoleCategories(i.guild.id);
     const sRoles = await getServerRoles(i.guild.id);
     
-    // Filter out Gender and sort by our defined order
     categories = categories.filter(c => c.name !== 'Profile (Gender)')
         .sort((a, b) => {
             const idxA = ROLE_DASHBOARD.CATEGORY_ORDER.indexOf(a.name);
@@ -346,21 +378,27 @@ const handleCategories = async (i) => {
             return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
         });
 
-    let desc = 'Manage groupings. Quick stats:\n';
+    let desc = 'Organize your server records into logical wings for easy identification and menu population.\n\n**Current Vitality:**\n';
     categories.forEach(c => {
         const catRoles = sRoles.filter(r => r.category_id === c.id);
-        desc += `• **${c.name}**: ${catRoles.length} roles\n`;
+        desc += `◈ **${c.name}**: \`${catRoles.length}\` volumes\n`;
     });
-    const embed = new EmbedBuilder().setTitle('🗂️ Category Management').setDescription(desc).setColor('#5865F2');
+
+    const embed = baseEmbed()
+        .setTitle('🗂️ Category Management')
+        .setDescription(desc);
+
     const select = new StringSelectMenuBuilder()
         .setCustomId('cat_view_')
-        .setPlaceholder('Choose a Category...')
-        .addOptions(categories.map(c => ({ label: c.name, value: c.id.toString() })));
+        .setPlaceholder('Inspect a specific Category...')
+        .addOptions(categories.map(c => ({ label: c.name, value: c.id.toString(), emoji: '📂' })));
+
     const rows = [
+        getNavigationRow(i, 'opt_categories'),
         new ActionRowBuilder().addComponents(select),
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('cat_create').setLabel('Create Extra').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('dash_home').setLabel('Back to Menu').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('cat_create').setLabel('New Category').setStyle(ButtonStyle.Success).setEmoji('➕'),
+            new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
         )
     ];
     await safeUpdate(i, { embeds: [embed], components: rows });
@@ -372,35 +410,33 @@ const handleCategoryRoles = async (i, categoryId) => {
     if (!cat) return handleCategories(i);
     const sRoles = await getServerRoles(i.guild.id);
     const catRoles = sRoles.filter(r => r.category_id === cat.id);
-    const mentions = catRoles.length ? catRoles.map(r => `<@&${r.role_id}>`).join(', ') : 'None';
+    const mentions = catRoles.length ? catRoles.map(r => `<@&${r.role_id}>`).join(', ') : '*Empty*';
     
-    const embed = new EmbedBuilder()
-        .setTitle(`Category: ${cat.name}`)
-        .setDescription(`**Roles Registered:**\n${mentions}`)
-        .setFooter({ text: 'Tip: Roles in the bottom-most categories appear highest in sorting.' })
-        .setColor('#34D399');
+    const embed = baseEmbed()
+        .setTitle(`Category Wing: ${cat.name}`)
+        .setDescription(`**Registered Records:**\n${mentions}`)
+        .setFooter({ text: 'Hierarchy Logic: Bottom categories appear highest in sorting.' });
 
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`cat_role_create_${cat.id}`).setLabel('Create Role').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`cat_del_${cat.id}`).setLabel('Delete Category').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`cat_role_create_${cat.id}`).setLabel('Create Role').setStyle(ButtonStyle.Success).setEmoji('➕'),
+        new ButtonBuilder().setCustomId(`cat_del_${cat.id}`).setLabel('Delete Category').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
     );
     
     const row2 = new ActionRowBuilder().addComponents(
         new RoleSelectMenuBuilder().setCustomId(`cat_role_reg_${cat.id}`).setPlaceholder('Register Existing Role...')
     );
 
-    const rows = [row1, row2];
+    const rows = [getNavigationRow(i, 'opt_categories'), row1, row2];
 
     if (catRoles.length) {
-        // Add a select menu to UNREGISTER roles
         const unregOptions = catRoles.map(cr => {
             const role = i.guild.roles.cache.get(cr.role_id);
             return {
                 label: role ? role.name : `Unknown Role (${cr.role_id})`,
                 value: cr.role_id,
-                description: 'Click to remove this role from the category.'
+                description: 'Remove from this Category.'
             };
-        }).slice(0, 25); // Discord limit
+        }).slice(0, 25);
 
         const unregMenu = new StringSelectMenuBuilder()
             .setCustomId(`cat_role_unreg_${cat.id}`)
@@ -410,9 +446,7 @@ const handleCategoryRoles = async (i, categoryId) => {
         rows.push(new ActionRowBuilder().addComponents(unregMenu));
     }
 
-    rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('opt_categories').setLabel('Back').setStyle(ButtonStyle.Secondary)
-    ));
+    rows.push(getBackRow('opt_categories', 'Back to Categories'));
 
     await safeUpdate(i, { embeds: [embed], components: rows });
 };
@@ -422,22 +456,25 @@ const handleLevels = async (i) => {
     const lvls = await getLevelRoles(i.guild.id);
     const levelingEnabled = config.leveling_enabled !== false;
 
-    let desc = `**Leveling System**: ${levelingEnabled ? '✅ Enabled' : '❌ Disabled'}\n`;
-    desc += `**Announcements**: 📍 Localized (Same Channel)\n\n`;
-    desc += 'Milestone rewards:\n';
+    let desc = `**Pulse Status**: ${levelingEnabled ? '✅ Active' : '❌ Suspended'}\n`;
+    desc += `**Announcements**: 📍 Localized\n\n`;
+    desc += '**Milestone Records:**\n';
     
-    if (!lvls.length) desc += '*None*';
-    else lvls.forEach(l => { desc += `Lvl ${l.level} ➔ <@&${l.role_id}>\n`; });
+    if (!lvls.length) desc += '*No bindings established.*';
+    else lvls.forEach(l => { desc += `Lvl \`${l.level}\` ➔ <@&${l.role_id}>\n`; });
 
-    const embed = new EmbedBuilder().setTitle('📈 Level Rewards & Settings').setDescription(desc).setColor('#6366F1');
+    const embed = baseEmbed()
+        .setTitle('📈 Level Rewards & Milestones')
+        .setDescription(desc);
+
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('level_role_add').setLabel('Bind Level').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('level_role_add').setLabel('Bind Level').setStyle(ButtonStyle.Success).setEmoji('➕'),
         new ButtonBuilder().setCustomId('level_deploy_standard').setLabel('Deploy Tiers').setStyle(ButtonStyle.Primary).setEmoji('✨'),
-        new ButtonBuilder().setCustomId('level_toggle').setLabel(levelingEnabled ? 'Disable Leveling' : 'Enable Leveling').setStyle(levelingEnabled ? ButtonStyle.Danger : ButtonStyle.Success).setEmoji(levelingEnabled ? '⏸️' : '▶️'),
-        new ButtonBuilder().setCustomId('dash_home').setLabel('Back').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('level_toggle').setLabel(levelingEnabled ? 'Pause Tracking' : 'Resume Tracking').setStyle(levelingEnabled ? ButtonStyle.Danger : ButtonStyle.Success).setEmoji(levelingEnabled ? '⏸️' : '▶️'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
     );
 
-    const rows = [row];
+    const rows = [getNavigationRow(i, 'opt_levels'), row];
 
     if (lvls.length) {
         const delRow = new ActionRowBuilder();
@@ -448,13 +485,17 @@ const handleLevels = async (i) => {
 };
 
 const handlePurge = async (i) => {
-    const embed = new EmbedBuilder().setTitle('🧹 Server Purge').setDescription('Delete undocumented roles. RUN DRY RUN FIRST!').setColor('#ED4245');
+    const embed = baseEmbed()
+        .setTitle('🧹 Server Purge Utility')
+        .setDescription('Identify and dispose of undocumented "ghost" roles that do not belong to any library category or core system Feature.\n\n⚠️ **Warning**: Always run a **Dry Run** to inspect the target list before execution.')
+        .setColor('#ED4245');
+
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('purge_dryrun').setLabel('Dry Run').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('purge_confirm').setLabel('Nuke').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('dash_home').setLabel('Back to Menu').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('purge_dryrun').setLabel('Dry Run Scan').setStyle(ButtonStyle.Primary).setEmoji('🔍'),
+        new ButtonBuilder().setCustomId('purge_confirm').setLabel('Execute Nuke').setStyle(ButtonStyle.Danger).setEmoji('☢️'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
     );
-    await safeUpdate(i, { embeds: [embed], components: [row] });
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_purge'), row] });
 };
 
 const getUnmanagedRoles = async (guild) => {
@@ -513,10 +554,9 @@ const dryRunPurge = async (i) => {
             desc += `${empty.slice(0, 15).map(u => u.role.name).join(', ')}${empty.length > 15 ? '...' : ''}`;
         }
 
-        const embed = new EmbedBuilder()
+        const embed = baseEmbed()
             .setTitle('🔎 Purge Dry Run Results')
-            .setDescription(desc)
-            .setColor('#5865F2');
+            .setDescription(desc);
 
         await i.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => null);
     } catch (e) { await i.reply({ content: `❌ ${e.message}`, flags: MessageFlags.Ephemeral }).catch(() => null); }
@@ -571,26 +611,15 @@ const executePurge = async (i) => {
 };
 
 const handleOrganizeMenu = async (i) => {
-    const embed = new EmbedBuilder()
-        .setTitle('📏 Role Organization')
-        .setDescription('This will automatically sort your server roles based on the following hierarchy:\n\n' +
-            '1. **Council**\n' +
-            '2. **Colors (Premium/Basic)**\n' +
-            '3. **Nitro Booster** \n' +
-            '4. **Levels**\n' +
-            '5. **Auto-Member Role**\n' +
-            '6. **Profile (Pronouns/Age/etc.)**\n' +
-            '7. **Pings**\n' +
-            '8. **Everything Else** (Bottom)\n\n' +
-            '⚠️ **Note:** Roles above the bot\'s highest role will be skipped.')
-        .setColor('#10B981');
-    
+    const embed = baseEmbed()
+        .setTitle('📏 Role Organizing & Hierarchy')
+        .setDescription('Automatically sort the server\'s role hierarchy based on the designated category order. This ensures a clean, predictable Sidebar experience.');
+
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('organize_confirm').setLabel('Organize Now').setStyle(ButtonStyle.Success).setEmoji('📏'),
-        new ButtonBuilder().setCustomId('dash_home').setLabel('Back to Menu').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('organize_perform').setLabel('Surgical Organize').setStyle(ButtonStyle.Success).setEmoji('📐'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
     );
-    
-    await safeUpdate(i, { embeds: [embed], components: [row] });
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_organize'), row] });
 };
 
 const executeOrganize = async (i) => {
@@ -925,33 +954,29 @@ const handleColorRoles = async (i, page = 0) => {
     const familyName = families[page];
     const shades = COLOR_FAMILIES[familyName];
     
-    // Sort shades by LIGHTER to DARKER for each family
-    // Actually our config is already sorted but we can re-verify with luminence logic if needed.
-    // Let's use the provided order first.
-
-    const embed = new EmbedBuilder()
-        .setTitle('🎨 Color Management')
-        .setDescription(`Review and deploy color roles for your server.\n\n**Family:** ${familyName} (${page + 1}/${families.length})\n\n` +
-            shades.map(s => `• **${s.name}**: \`${s.hex}\``).join('\n'))
+    const embed = baseEmbed()
+        .setTitle('🎨 Color Catalog Management')
+        .setDescription(`Review and deploy curated color shades for your server.\n\n**Current Family:** ${familyName} (${page + 1}/${families.length})\n\n` +
+            shades.map(s => `◈ **${s.name}**: \`${s.hex}\``).join('\n'))
         .setColor(shades[0].hex)
         .addFields(
-            { name: '✨ Basic Set', value: '10 fundamental colors (Red, Blue, etc.)', inline: true },
-            { name: '💎 Premium Set', value: '90 curated shades (9 families x 10)', inline: true }
+            { name: '✨ Basic Set', value: '10 fundamental core colors.', inline: true },
+            { name: '💎 Premium Set', value: '90 curated shades (9 families).', inline: true }
         )
-        .setFooter({ text: 'Tip: Use "Deploy" to create/update all roles at once.' });
+        .setFooter({ text: 'Hierarchy: Colors are grouped into specialized categories.' });
 
     const navRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`color_page_${Math.max(0, page - 1)}`).setLabel('◀️ Previous').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-        new ButtonBuilder().setCustomId(`color_page_${Math.min(families.length - 1, page + 1)}`).setLabel('Next ▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === families.length - 1)
+        new ButtonBuilder().setCustomId(`color_page_${Math.max(0, page - 1)}`).setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId(`color_page_${Math.min(families.length - 1, page + 1)}`).setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === families.length - 1)
     );
 
     const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('color_deploy_basic').setLabel('Deploy Basic Set').setStyle(ButtonStyle.Primary).setEmoji('🌈'),
-        new ButtonBuilder().setCustomId('color_deploy_premium').setLabel('Deploy Premium Set').setStyle(ButtonStyle.Success).setEmoji('💎'),
-        new ButtonBuilder().setCustomId('dash_home').setLabel('Back to Menu').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('color_deploy_basic').setLabel('Deploy Basic').setStyle(ButtonStyle.Primary).setEmoji('🌈'),
+        new ButtonBuilder().setCustomId('color_deploy_premium').setLabel('Deploy Premium').setStyle(ButtonStyle.Success).setEmoji('💎'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
     );
 
-    await safeUpdate(i, { embeds: [embed], components: [navRow, actionRow] });
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_colors'), navRow, actionRow] });
 };
 
 const executeColorDeployment = async (i, type) => {
@@ -1194,6 +1219,71 @@ const executeColorDeployment = async (i, type) => {
     }
 };
 
+// --- Additional Category Handlers ---
+
+const handleBotInsight = async (i) => {
+    const uptime = process.uptime();
+    const days = Math.floor(uptime / 86400);
+    const hours = Math.floor((uptime % 86400) / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const uptimeStr = `${days}d ${hours}h ${minutes}m`;
+
+    const memory = process.memoryUsage().heapUsed / 1024 / 1024;
+    const latency = i.client.ws.ping;
+
+    const embed = baseEmbed()
+        .setTitle('📊 Library Analytics & Pulse')
+        .setDescription('Current operational metrics and system vitality.')
+        .addFields(
+            { name: '🕰️ Library Uptime', value: `\`${uptimeStr}\``, inline: true },
+            { name: '🛰️ Heartbeat (Ping)', value: `\`${latency}ms\``, inline: true },
+            { name: '🧠 Knowledge Core (RAM)', value: `\`${memory.toFixed(2)} MB\``, inline: true },
+            { name: '🏛️ Registered Guilds', value: `\`${i.client.guilds.cache.size}\``, inline: true },
+            { name: '📚 Total Volumes', value: `\`${i.client.commands.size}\``, inline: true },
+            { name: '🛠️ Environment', value: `\`${process.env.NODE_ENV || 'Production'}\``, inline: true }
+        );
+
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_insight')] });
+};
+
+const handleAdminWing = async (i) => {
+    await i.deferUpdate().catch(() => null);
+    const guild = i.guild;
+    const bans = await guild.bans.fetch({ limit: 5 }).catch(() => null);
+    const invites = await guild.invites.fetch({ limit: 5 }).catch(() => null);
+    const emojis = guild.emojis.cache.size;
+
+    const embed = baseEmbed()
+        .setTitle('🔨 Administrative Annex')
+        .setDescription('Overview of the server\'s administrative state.')
+        .addFields(
+            { name: '😀 Total Emojis', value: `\`${emojis}\``, inline: true },
+            { name: '📨 Active Invites', value: `\`${invites ? invites.size : '?'}\``, inline: true },
+            { name: '🔨 Recent Bans', value: bans && bans.size > 0 ? bans.map(b => b.user.username).join(', ').slice(0, 100) : '*No recent bans.*', inline: false }
+        );
+
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_admin')] });
+};
+
+const handleMediaAiring = async (i) => {
+    const config = await fetchConfig(i.guild.id);
+    const embed = baseEmbed()
+        .setTitle('📡 Media & Airing Systems')
+        .setDescription('Configure how AniMuse monitors and broadcasts media updates.')
+        .addFields(
+            { name: '📢 Airing Alerts', value: config.airing_channel_id ? `<#${config.airing_channel_id}>` : '*Not Assigned*', inline: true },
+            { name: '🔔 Activity Feed', value: config.activity_channel_id ? `<#${config.activity_channel_id}>` : '*Not Assigned*', inline: true },
+            { name: '📸 Gallery Wing', value: config.gallery_channel_ids?.length ? `${config.gallery_channel_ids.length} Channels Linked` : '*None Assigned*', inline: true }
+        );
+
+    const btnRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('opt_channels').setLabel('Assign Channels').setStyle(ButtonStyle.Primary).setEmoji('🏗️'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
+    );
+
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_media'), btnRow] });
+};
+
 module.exports = {
     displayRoleDashboard,
     handleDashboardInteraction,
@@ -1203,5 +1293,9 @@ module.exports = {
     handleCategories,
     handleCategoryRoles,
     handlePurge,
-    handleOrganizeMenu
+    handleOrganizeMenu,
+    handleBotInsight,
+    handleAdminWing,
+    handleMediaAiring,
+    getNavigationRow
 };
