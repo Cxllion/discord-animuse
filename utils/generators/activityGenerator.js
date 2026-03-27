@@ -163,9 +163,9 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Block heights (fixed)
     const avatarSize = 46;
     const identityBlockH = avatarSize + 6 + 20; // avatar + name gap + verb pill
-    const identityToTitle = 18;
+    const identityToTitle = 8;  // SHIFTED UP: tighter to the ID block
     const titleBlockH = Math.min(lines.length, 2) * lH;
-    const titleToStats = 16;
+    const titleToStats = 26; // SHIFTED DOWN: more room above the scorepod
     const statsBlockH = 38;
     const totalContentH = identityBlockH + identityToTitle + titleBlockH + titleToStats + statsBlockH;
 
