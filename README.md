@@ -159,7 +159,7 @@ No manual SQL execution needed! Just ensure your `DATABASE_URL` is correct.
 - `/mute <user> [reason]` - Mute a user
 - `/kick <user> [reason]` - Kick a user
 - `/ban <user> [reason]` - Ban a user
-- `/purge <amount>` - Delete messages
+- `/clear [amount] [user]` - Bulk delete messages with filtering (ignores pinned)
 - `/case <user>` - View moderation history
 
 ### Configuration
