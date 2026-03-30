@@ -146,6 +146,14 @@ const getGuildChannelData = async (guildId) => {
     return data || [];
 };
 
+/**
+ * Manually flushes the entire configuration cache.
+ */
+const clearConfigCache = () => {
+    configCache.clear();
+    logger.info('Library Config Cache has been cleared and synchronized. ♡', 'Database');
+};
+
 module.exports = {
     fetchConfig,
     upsertConfig,
@@ -156,5 +164,6 @@ module.exports = {
     isParentServer,
     pulseChannelActivity,
     pinChannelPosition,
-    getGuildChannelData
+    getGuildChannelData,
+    clearConfigCache
 };

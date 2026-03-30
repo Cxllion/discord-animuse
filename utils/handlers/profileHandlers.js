@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, AttachmentBuilder, ComponentType, MessageFlags } = require('discord.js');
-const { updateUserColor, updateUserTitle, updateUserBackground, getOwnedTitles, getUserColor, getUserTitle, getUserBackground, getUserAvatarConfig, updateUserAvatarConfig, getLinkedAnilist } = require('../core/database');
+const { updateUserColor, updateUserTitle, updateUserBackground, clearUserBackgroundGlobally, getOwnedTitles, getUserColor, getUserTitle, getUserBackground, getUserAvatarConfig, updateUserAvatarConfig, getLinkedAnilist } = require('../core/database');
 const { generateProfileCard, getDominantColor } = require('../generators/profileGenerator');
 const { getUserRank, getLevelProgress } = require('../services/leveling');
 const { getAniListProfile } = require('../services/anilistService');
@@ -135,7 +135,18 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
             'Applying fresh ink to the canvas...'
         ], 1000);
 
-        const buffer = await generateProfileCard(interaction.user, userData, favorites, bg, color, interaction.member.displayName);
+        const buffer = await generateProfileCard(
+            interaction.user, 
+            userData, 
+            favorites, 
+            bg, 
+            color, 
+            interaction.member.displayName,
+            async (failedUrl) => {
+                logger.warn(`Archival Cleanup: Global neutralization of dead background ${failedUrl} for user ${userId}.`, 'Profile');
+                await clearUserBackgroundGlobally(userId);
+            }
+        );
         loader.stop();
 
         const attachment = new AttachmentBuilder(buffer, { name: 'preview.webp' });
@@ -437,6 +448,22 @@ const handleProfileInteraction = async (interaction) => {
     const userId = interaction.user.id;
 
     if (id === 'profile_home') return showProfileDashboard(interaction, true);
+
+    // Profile Dashboard Open (from /profile command)
+    if (id.startsWith('profile_dashboard_open_')) {
+        const ownerId = id.split('_').pop();
+        if (userId === ownerId) {
+            return showProfileDashboard(interaction);
+        } else {
+            // Fetch owner name for the restricted message if possible
+            const owner = interaction.guild.members.cache.get(ownerId);
+            const ownerName = owner ? owner.user.username : 'that Patron';
+            return interaction.reply({
+                content: `**${ownerName}'s Identity File**\nLibrary records indicate this patron is currently registered in the archives.\n*Detailed usage stats are currently classified.*`,
+                flags: MessageFlags.Ephemeral
+            });
+        }
+    }
 
     // AVATAR MENU
     if (id === 'profile_opt_avatar') return showAvatarMenu(interaction);

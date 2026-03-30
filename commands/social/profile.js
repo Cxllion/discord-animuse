@@ -7,8 +7,11 @@ const {
     getUserTitle: retrieveTitle,
     getUserColor: retrieveColor,
     getUserAvatarConfig: retrieveAvatarConfig,
-    updateUserColor
+    updateUserColor,
+    updateUserBackground: retrieveUpdateBackground,
+    clearUserBackgroundGlobally
 } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 const { generateProfileCard } = require('../../utils/generators/profileGenerator');
 const { getDynamicUserTitle } = require('../../utils/core/userMeta');
 
@@ -53,21 +56,34 @@ module.exports = {
         const level = rankData ? parseInt(rankData.level) : 0;
         const progress = getLevelProgress(xp, level);
 
-        // Calculate Muse Rank (Dynamic based on bound level roles)
-        const { getLevelRoles } = require('../../utils/core/database');
-        const levelRoles = await getLevelRoles(guildId);
-        
-        // Find highest earned role
+        // --- IDENTITY & STATUS AUDIT ---
+        const { fetchConfig, getLevelRoles } = require('../../utils/core/database');
+        const [config, levelRoles] = await Promise.all([
+            fetchConfig(guildId),
+            getLevelRoles(guildId)
+        ]);
+
+        const isPremium = member ? member.roles.cache.has(config.premium_role_id) : false;
+        const isBooster = member ? member.roles.cache.has(config.booster_role_id) : false;
+
+        // Muse Rank / Title Calculation
         const earnedRoles = levelRoles.filter(lr => lr.level <= level);
-        let knowledgeRank = 'Patron'; // Default
-        
+        let knowledgeRank = 'Muse Reader';
+        let rankColor = color || '#3B82F6';
+
         if (earnedRoles.length > 0) {
             const highestRole = earnedRoles[earnedRoles.length - 1];
             const roleObj = interaction.guild.roles.cache.get(highestRole.role_id);
-            let name = roleObj ? roleObj.name : `Level ${highestRole.level} Muse`;
-            // Remove number prefix (e.g., "10 | Scribe Muse" -> "Scribe Muse")
-            knowledgeRank = name.replace(/^\d+\s*\|\s*/, '');
+            if (roleObj) {
+                knowledgeRank = roleObj.name.replace(/^\d+\s*[|-]\s*/, '').trim();
+                // Dynamically tint the profile dots by the rank color
+                if (roleObj.color) rankColor = `#${roleObj.color.toString(16).padStart(6, '0')}`;
+            }
         }
+
+        // Booster/Premium overrides for the rank badge color
+        if (isBooster) rankColor = '#A855F7';
+        else if (isPremium) rankColor = '#F5D17E';
 
         const joinedDate = member ? member.joinedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Unknown';
         const messages = Math.floor(xp / 20);
@@ -75,30 +91,27 @@ module.exports = {
         // Fetch AniList Data
         let anilistStats = { completed: 0, days: 0, meanScore: 0 };
         let favorites = [];
+        let alMaintenance = false;
 
         if (linkedUsername) {
-            const { stats, favorites: favs, avatar } = await getAniListProfile(linkedUsername);
-            if (stats) anilistStats = stats;
-            if (favs) favorites = favs;
-            // Inject AniList avatar into config if needed
-            if (avatarConfig && avatarConfig.source === 'ANILIST') {
-                avatarConfig.anilistAvatar = avatar;
-            }
+            const alRes = await getAniListProfile(linkedUsername);
+            anilistStats = alRes.stats;
+            favorites = alRes.favorites;
+            alMaintenance = !!alRes.maintenance;
+            if (avatarConfig && avatarConfig.source === 'ANILIST') avatarConfig.anilistAvatar = alRes.avatar;
         }
 
-        const titleVal = await getDynamicUserTitle(member);
+        const titleVal = member ? await getDynamicUserTitle(member) : 'Reader';
         const userData = {
-            xp,
-            level,
-            rank: rankData ? rankData.rank : '?',
-            current: progress.current,
-            required: progress.required,
-            percent: progress.percent,
-            title: (title && !title.includes('Muse Reader') && !title.includes('Muse Manager')) ? title : `Muse ${titleVal}`,
-            joinedDate,
-            messages,
-            knowledgeRank,
-            anilist_synced: !!linkedUsername,
+            xp, level, rank: rankData ? rankData.rank : '?',
+            current: progress.current, required: progress.required, percent: progress.percent,
+            title: (title && !title.includes('Muse')) ? title : knowledgeRank.toUpperCase(),
+            joinedDate, messages, knowledgeRank,
+            is_premium: isPremium, is_booster: isBooster,
+            rankColor,
+            anilist_maintenance: alMaintenance,
+            // FORCE COMPACT FALLBACK: If API is dead, act as if not synced for layout purposes
+            anilist_synced: !!linkedUsername && !alMaintenance,
             anilist: anilistStats,
             avatarConfig: avatarConfig,
             guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : targetUser.displayAvatarURL({ extension: 'png' })
@@ -112,35 +125,29 @@ module.exports = {
         const loader = new LoadingManager(interaction);
         loader.startProgress('Materializing Profile...', 6); // No await: allow Canvas to start immediately
 
-        const buffer = await generateProfileCard(targetUser, userData, favorites, backgroundUrl, color, displayName);
+        const buffer = await generateProfileCard(
+            targetUser, 
+            userData, 
+            favorites, 
+            backgroundUrl, 
+            color, 
+            displayName,
+            async (failedUrl) => {
+                logger.warn(`Archival Cleanup: Global neutralization of dead background ${failedUrl} for user ${targetUser.id}.`, 'Profile');
+                await clearUserBackgroundGlobally(targetUser.id);
+            }
+        );
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.webp' });
 
-        // Interactive Button
+        // Interactive Button: Routed through Global Router
         const dashboardBtn = new ButtonBuilder()
-            .setCustomId('dashboard_open')
+            .setCustomId(`profile_dashboard_open_${targetUser.id}`) // Encode owner ID
             .setEmoji('🔍')
             .setStyle(ButtonStyle.Secondary);
 
         const row = new ActionRowBuilder().addComponents(dashboardBtn);
 
         // MERGED DELIVERY: 100% + Card in one call
-        const response = await loader.stop({ files: [attachment], components: [row] });
-
-        // Button Collector
-        const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
-
-        collector.on('collect', async i => {
-            if (i.customId === 'dashboard_open') {
-                if (i.user.id === targetUser.id) {
-                    const { showProfileDashboard } = require('../../utils/handlers/profileHandlers');
-                    await showProfileDashboard(i);
-                } else {
-                    await i.reply({
-                        content: `**${targetUser.username}'s Identity File**\nLibrary records indicate this patron has been registered since ${joinedDate}.\n*Detailed usage stats are currently classified.*`,
-                        flags: MessageFlags.Ephemeral
-                    });
-                }
-            }
-        });
+        await loader.stop({ files: [attachment], components: [row] });
     },
 };

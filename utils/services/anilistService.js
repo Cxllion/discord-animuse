@@ -15,6 +15,11 @@ const NodeCache = require('node-cache');
 // stdTTL: 1 hour, checkperiod: 120 seconds
 const mediaCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 const searchCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
+const autoCompleteCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
+let isAniListMaintenance = false;
+let lastMaintenanceLog = 0;
+const MAINTENANCE_COOLDOWN = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Helper function to make GraphQL requests to AniList
@@ -23,6 +28,15 @@ const searchCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
  * @returns {Promise<any>}
  */
 const queryAnilist = async (query, variables = {}, retries = 3) => {
+    // 1. Maintenance Silencing Guard
+    if (isAniListMaintenance) {
+        if (Date.now() - lastMaintenanceLog < MAINTENANCE_COOLDOWN) {
+            throw new Error('AL_MAINTENANCE');
+        } else {
+            isAniListMaintenance = false; // Reset after cooldown
+        }
+    }
+
     let attempt = 0;
     while (attempt <= retries) {
         try {
@@ -33,6 +47,17 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
             return response.data.data;
         } catch (error) {
             const status = error.response ? error.response.status : null;
+            const aniErrors = error.response?.data?.errors;
+            const errorMsg = aniErrors?.[0]?.message || "";
+
+            // 2. Specific Maintenance Detection (403 + Specific Message)
+            if (status === 403 && errorMsg.toLowerCase().includes('temporarily disabled')) {
+                isAniListMaintenance = true;
+                lastMaintenanceLog = Date.now();
+                logger.warn('⚠️ [Maintenance] AniList API is currently DISABLED. Silencing requests for 10 minutes.', 'AniList');
+                throw new Error('AL_MAINTENANCE');
+            }
+
             const isRetryable = !status || (status >= 500 && status < 600) || status === 429;
 
             if (isRetryable && attempt < retries) {
@@ -41,7 +66,6 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
                 logger.warn(`AniList Request failed (${status || error.code}). Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`, 'AniList');
                 await new Promise(res => setTimeout(res, delay));
             } else {
-                const aniErrors = error.response?.data?.errors;
                 const errorDetail = aniErrors?.[0]?.message || (status ? `Status ${status}` : error.message);
                 
                 logger.error('AniList Request Failed: ' + errorDetail, null, 'AniList');
@@ -101,6 +125,55 @@ const searchMedia = async (search, type = 'ANIME', statusIn = null) => {
 };
 
 /**
+ * Fast search specifically for Slash Command Autocomplete.
+ */
+const searchMediaAutocomplete = async (search, type = 'ANIME') => {
+    if (!search || search.length < 3) return [];
+    
+    const cacheKey = `ac_${type}_${search.toLowerCase()}`;
+    const cached = autoCompleteCache.get(cacheKey);
+    if (cached) return cached;
+
+    const query = `
+    query ($search: String, $type: MediaType) {
+        Page(perPage: 25) {
+            media(search: $search, type: $type, sort: SEARCH_MATCH, isAdult: false) {
+                id
+                title { english romaji }
+                format
+                startDate { year }
+            }
+        }
+    }
+    `;
+
+    if (isAniListMaintenance && Date.now() - lastMaintenanceLog < MAINTENANCE_COOLDOWN) {
+        return [{ name: '⚠️ AniList API is currently in Maintenance.', value: 'maintenance' }];
+    }
+
+    try {
+        const data = await queryAnilist(query, { search, type });
+        const results = (data.Page.media || []).map(m => {
+            const title = m.title.english || m.title.romaji;
+            const year = m.startDate?.year ? ` [${m.startDate.year}]` : '';
+            const format = m.format ? ` (${m.format})` : '';
+            return {
+                name: `${title.substring(0, 100)}${format}${year}`,
+                value: m.id.toString()
+            };
+        });
+
+        autoCompleteCache.set(cacheKey, results);
+        return results;
+    } catch (e) {
+        if (e.message === 'AL_MAINTENANCE') {
+            return [{ name: '⚠️ AniList API is currently in Maintenance.', value: 'maintenance' }];
+        }
+        return [];
+    }
+};
+
+/**
  * Gets detailed media info by ID.
  * Uses local cache.
  * @param {number} id 
@@ -132,6 +205,7 @@ const getMediaById = async (id) => {
             status
             episodes
             chapters
+            isAdult
             averageScore
             meanScore
             studios {
@@ -334,14 +408,16 @@ const getUserStats = async (username) => {
     `;
     try {
         const data = await queryAnilist(query, { username });
+        if (!data || !data.User || !data.User.statistics) return { completed: 0, meanScore: 0, days: '0.0' };
+        
         const stats = data.User.statistics.anime;
         return {
             completed: stats.count || 0,
             meanScore: stats.meanScore || 0,
-            days: (stats.minutesWatched / 1440).toFixed(1)
+            days: ((stats.minutesWatched || 0) / 1440).toFixed(1)
         };
     } catch (e) {
-        return null;
+        return { completed: 0, meanScore: 0, days: '0.0' };
     }
 
 };
@@ -381,16 +457,18 @@ const getAniListProfile = async (username) => {
     `;
     try {
         const data = await queryAnilist(query, { username });
-        const anime = data.User.statistics.anime;
-        const manga = data.User.statistics.manga;
-        const favs = data.User.favourites.anime.nodes || [];
+        if (!data || !data.User) return { stats: { completed: 0, meanScore: 0, days: '0.0', episodes: 0, manga_completed: 0, chapters: 0, volumes: 0 }, favorites: [], avatar: null };
+
+        const anime = data.User.statistics?.anime || {};
+        const manga = data.User.statistics?.manga || {};
+        const favs = data.User.favourites?.anime?.nodes || [];
 
         return {
             stats: {
                 // Anime
                 completed: anime.count || 0,
                 meanScore: anime.meanScore || 0,
-                days: (anime.minutesWatched / 1440).toFixed(1),
+                days: ((anime.minutesWatched || 0) / 1440).toFixed(1),
                 episodes: anime.episodesWatched || 0,
                 // Manga
                 manga_completed: manga.count || 0,
@@ -398,10 +476,15 @@ const getAniListProfile = async (username) => {
                 volumes: manga.volumesRead || 0
             },
             favorites: favs,
-            avatar: data.User.avatar.large
+            avatar: data.User.avatar?.large || null
         };
     } catch (e) {
-        return { stats: null, favorites: [] };
+        return { 
+            stats: { completed: 0, meanScore: 0, days: '0.0', episodes: 0, manga_completed: 0, chapters: 0, volumes: 0 }, 
+            favorites: [], 
+            avatar: null,
+            maintenance: (e.message === 'AL_MAINTENANCE')
+        };
     }
 };
 
@@ -552,6 +635,7 @@ const getUserActivity = async (userName) => {
                         format
                         averageScore
                         meanScore
+                        isAdult
                         seasonYear
                         startDate { year }
                     }
@@ -625,6 +709,7 @@ module.exports = {
     getUserActivity,
     getUserMediaScore,
     flushAniListCache,
-    formatMediaTitle
+    formatMediaTitle,
+    searchMediaAutocomplete
 };
 

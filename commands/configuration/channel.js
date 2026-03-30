@@ -15,13 +15,7 @@ module.exports = {
                     option.setName('type')
                         .setDescription('The feature type to assign.')
                         .setRequired(true)
-                        .addChoices(
-                            { name: '✨ Welcome', value: 'welcome' },
-                            { name: '👋 Greeting', value: 'greeting' },
-                            { name: '📸 Media', value: 'media' },
-                            { name: '📢 Airing', value: 'airing' },
-                            { name: '🔔 Activity', value: 'activity' }
-                        ))
+                        .setAutocomplete(true))
                 .addChannelOption(option =>
                     option.setName('channel')
                         .setDescription('The channel to assign.')
@@ -34,6 +28,21 @@ module.exports = {
                 .setName('overview')
                 .setDescription('View the current channel configuration dashboard.')
         ),
+
+    async autocomplete(interaction) {
+        const focusedValue = interaction.options.getFocused().toLowerCase();
+        const choices = [
+            { name: '✨ Welcome Wing', value: 'welcome' },
+            { name: '👋 Greeting Wing', value: 'greeting' },
+            { name: '📸 Media Gallery', value: 'media' },
+            { name: '🔔 Activity Feed', value: 'activity' },
+            { name: '📢 Airing Tower', value: 'airing' },
+            { name: '📋 Security Logs', value: 'logs' }
+        ];
+
+        const filtered = choices.filter(choice => choice.name.toLowerCase().includes(focusedValue));
+        await interaction.respond(filtered);
+    },
 
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
@@ -111,6 +120,13 @@ module.exports = {
                         content: `✅ **Configuration Updated**\nAdded ${channel} to the **Media Gallery** network.\n(Total Galleries: ${newGalleries.length})`
                     });
                 }
+                else if (type === 'logs') {
+                    await upsertConfig(guildId, { logs_channel_id: channel.id });
+
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nThis channel (${channel}) will now receive institutional reports and library incident alerts.`
+                    });
+                }
 
             } catch (error) {
                 logger.error('Command Error: /channel assign', error, 'ChannelCommand');
@@ -137,6 +153,7 @@ module.exports = {
                         { name: '👋 Greeting', value: fmt(config?.greeting_channel_id), inline: true },
                         { name: '📢 Airing', value: fmt(config?.airing_channel_id), inline: true },
                         { name: '🔔 Activity', value: fmt(config?.activity_channel_id), inline: true },
+                        { name: '📋 Logs', value: fmt(config?.logs_channel_id), inline: true },
                         { name: '📸 Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
                     .setColor(0x3b82f6) // Blue

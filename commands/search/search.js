@@ -20,11 +20,24 @@ module.exports = {
         .addStringOption(option =>
             option.setName('query')
                 .setDescription('The name to search for')
-                .setRequired(true))
+                .setRequired(true)
+                .setAutocomplete(true))
         .addBooleanOption(option =>
             option.setName('quick')
                 .setDescription('Return the first result immediately without showing the dropdown menu')
                 .setRequired(false)),
+
+    async autocomplete(interaction) {
+        const { searchMediaAutocomplete } = require('../../utils/services/anilistService');
+        const focusedValue = interaction.options.getFocused();
+        const type = interaction.options.getString('type') || 'ANIME';
+
+        if (!focusedValue || focusedValue.length < 3) return await interaction.respond([]);
+
+        const results = await searchMediaAutocomplete(focusedValue, type);
+        await interaction.respond(results);
+    },
+
     async execute(interaction) {
         await interaction.deferReply();
 

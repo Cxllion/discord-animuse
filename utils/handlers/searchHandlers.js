@@ -55,42 +55,4 @@ const handleSearchInteraction = async (interaction) => {
     }
 };
 
-/**
- * Handles the "Track Anime" button from a search result.
- */
-const handleTrackInteraction = async (interaction) => {
-    // UX: Defer immediately
-    try {
-        if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
-    } catch (e) { return; }
-
-    const animeId = parseInt(interaction.customId.replace('track_anime_', ''));
-    if (isNaN(animeId)) return;
-
-    try {
-        const media = await getMediaById(animeId);
-        if (!media) {
-            return await interaction.followUp({ content: '❌ Misplaced Record: I could not retrieve details for this series.', flags: MessageFlags.Ephemeral });
-        }
-
-        const title = media.title.english || media.title.romaji;
-        const res = await addTracker(interaction.guildId, interaction.user.id, animeId, title);
-
-        if (res.error) {
-            return await interaction.followUp({ content: '❌ Ink Spill: I failed to inscribe this tracking request.', flags: MessageFlags.Ephemeral });
-        }
-
-        await interaction.followUp({ 
-            content: `📖 **Observation Logged**\n\nI shall now monitor the airwaves for **${title}** and notify you immediately upon any new transmissions.`, 
-            flags: MessageFlags.Ephemeral 
-        });
-
-    } catch (e) {
-        logger.error('Track Interaction Error:', e, 'SearchHandlers');
-        try {
-            await interaction.followUp({ content: '❌ A structural fault occurred while updating the archives.', flags: MessageFlags.Ephemeral });
-        } catch (err) {}
-    }
-};
-
-module.exports = { handleSearchInteraction, handleTrackInteraction };
+module.exports = { handleSearchInteraction };

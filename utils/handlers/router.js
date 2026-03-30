@@ -1,5 +1,8 @@
 const { handleProfileInteraction, handleProfileModals } = require('./profileHandlers');
-const { handleSearchInteraction, handleTrackInteraction } = require('./searchHandlers');
+const { handleSearchInteraction } = require('./searchHandlers');
+const { handleTrackInteraction } = require('./trackHandlers');
+const { handleBingoInteraction, handleBingoModals } = require('./bingoHandlers');
+const { handleHelpInteraction } = require('./helpHandlers');
 const { handleChannelDashboardInteraction } = require('./channelDashboard');
 const { handleMuseBureauInteraction } = require('./museBureau');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
@@ -24,14 +27,19 @@ const routeInteraction = async (interaction) => {
             return true;
         }
 
-        // 2. Search & Media
+        if (customId.startsWith('track_')) {
+            await handleTrackInteraction(interaction);
+            return true;
+        }
+
         if (customId === 'search_result_select') {
             await handleSearchInteraction(interaction);
             return true;
         }
 
-        if (customId.startsWith('track_anime_')) {
-            await handleTrackInteraction(interaction);
+        if (customId.startsWith('bingo_')) {
+            if (interaction.isModalSubmit()) await handleBingoModals(interaction);
+            else await handleBingoInteraction(interaction);
             return true;
         }
 
@@ -73,45 +81,8 @@ const routeInteraction = async (interaction) => {
         }
 
         // 9. Help Menu
-        if (customId === 'help_category_select') {
-            const choice = interaction.values[0];
-            const helpEmbed = new EmbedBuilder().setColor('#A78BFA');
-
-            if (choice === 'help_general') {
-                helpEmbed.setTitle('📚 General Wing')
-                    .setDescription(
-                        '◈ **/help**: View this archive.\n' +
-                        '◈ **/ping**: Check the library latency.\n' +
-                        '◈ **/info**: Detailed bot credentials.\n' +
-                        '◈ **/serverinfo**: Overview of this guild.\n' +
-                        '◈ **/userinfo**: Inspect a member\'s record.'
-                    );
-            } else if (choice === 'help_admin') {
-                helpEmbed.setTitle('🛡️ Council Wing')
-                    .setDescription(
-                        '◈ **/dashboard**: Primary management hub.\n' +
-                        '◈ **/role**: Specialized role operations.\n' +
-                        '◈ **/purge**: (In Dashboard) Cleanup ghost roles.\n' +
-                        '◈ **/ban / /kick / /mute**: Traditional enforcement.\n' +
-                        '◈ **/case**: View moderation history.'
-                    );
-            } else if (choice === 'help_social') {
-                helpEmbed.setTitle('🎨 Aesthetic Wing')
-                    .setDescription(
-                        '◈ **/profile**: View/Edit your Identity Card.\n' +
-                        '◈ **/selfrole**: Manage the role collections hub.\n' +
-                        '◈ **/leaderboard**: View the top Readers.'
-                    );
-            } else if (choice === 'help_media') {
-                helpEmbed.setTitle('🅰️ Media Wing')
-                    .setDescription(
-                        '◈ **/track**: Monitor anime airings.\n' +
-                        '◈ **/bingo**: Manage your anime bingo cards.\n' +
-                        '◈ **/search**: Query the AniList global database.'
-                    );
-            }
-
-            await interaction.update({ embeds: [helpEmbed] });
+        if (customId.startsWith('help_')) {
+            await handleHelpInteraction(interaction);
             return true;
         }
 

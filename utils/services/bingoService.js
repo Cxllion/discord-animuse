@@ -99,5 +99,11 @@ module.exports = {
     getBingoCardById,
     updateBingoEntries,
     updateBingoCard,
-    deleteBingoCard
+    deleteBingoCard,
+
+    getGlobalBingoCount: async () => {
+        if (!supabase) return 0;
+        const { count } = await supabase.from('bingo_cards').select('*', { count: 'exact', head: true });
+        return count || 0;
+    }
 };

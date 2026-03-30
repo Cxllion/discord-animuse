@@ -12,7 +12,9 @@ module.exports = {
 
         // Clear Caches to ensure V3 visuals are immediate
         const { flushAniListCache } = require('../utils/services/anilistService');
+        const { clearConfigCache } = require('../utils/services/guildConfigService');
         flushAniListCache();
+        clearConfigCache();
 
         // Set Presence
         client.user.setPresence({
@@ -34,10 +36,14 @@ module.exports = {
 
         client.isSystemsGo = true;
 
-        try {
-            require('../utils/archive/ArchiveManager').loadState(client);
-        } catch (e) {
-            logger.error('Failed to load archive state:', e);
+        if (!client.isTestBot) {
+            try {
+                require('../utils/archive/ArchiveManager').loadState(client);
+            } catch (e) {
+                logger.error('Failed to load archive state:', e);
+            }
+        } else {
+            logger.info('Test bot detected. Global game state restoration skipped.', 'System');
         }
 
         // ── Start Component Task Schedulers ─────────────────────────────────────────
@@ -76,6 +82,12 @@ module.exports = {
                         logger.error('Notification loop failure:', error, 'Scheduler');
                     }
                 }, 5 * 60 * 1000); 
+
+                // --- 2. Housekeeping & Cache Maintenance (1h) ---
+                setInterval(() => {
+                    flushAniListCache();
+                    clearConfigCache();
+                }, 60 * 60 * 1000);
             }, 10000);
         }
  else {

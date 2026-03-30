@@ -12,6 +12,9 @@ const logger = require('../core/logger');
  * @param {string} reason 
  */
 const logAction = async (guild, targetUser, moderator, actionType, reason) => {
+    // --- Test Bot Restriction ---
+    if (guild.client.isTestBot) return;
+
     // 1. Log to Database
     await logModerationAction(guild.id, targetUser.id, moderator.id, actionType, reason).catch(e => logger.error('DB Log Failed', e, 'ModerationLogger'));
 

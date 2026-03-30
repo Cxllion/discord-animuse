@@ -1,16 +1,13 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
-const { generateColorTokens } = require('../core/visualUtils');
 
-const CARD_WIDTH = 900;
-const CARD_HEIGHT = 500;
+// --- VERTICAL WIDGET ARCHITECTURE (V5: The Premium Polish) ---
+const CARD_WIDTH = 400;
+const CARD_HEIGHT_LINKED = 495;
+const CARD_HEIGHT_UNLINKED = 355;
 
-// GRID ARCHITECTURE
-const MARGIN = 20;
-const PANEL_A_CTR = 170;  // Identity
-const PANEL_B_CTR = 440;  // Progression
-const PANEL_C_X = 570;    // Records x-start
-const PANEL_C_W = 310;    // Records width
+// Universal premium font stack
+const FONT_STACK = "'-apple-system', 'Helvetica Neue', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 const formatStat = (num) => {
     const n = parseFloat(num) || 0;
@@ -19,292 +16,391 @@ const formatStat = (num) => {
     return n.toLocaleString();
 };
 
-const drawOrnament = (ctx, x, y, size, color) => {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
-    ctx.beginPath();
-    ctx.moveTo(0, -size);
-    ctx.lineTo(size * 0.35, -size * 0.35);
-    ctx.lineTo(size, 0);
-    ctx.lineTo(size * 0.35, size * 0.35);
-    ctx.lineTo(0, size);
-    ctx.lineTo(-size * 0.35, size * 0.35);
-    ctx.lineTo(-size, 0);
-    ctx.lineTo(-size * 0.35, -size * 0.35);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+const hexToRgba = (hex, alpha) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const drawIcon = (ctx, type, x, y, size, color) => {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 2.2; // Thicker for designer clarity
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+const generateProfileCard = async (discordUser, userData, favorites, backgroundUrl = null, primaryColor = '#3B82F6', displayName = null, onBackgroundFailure = null) => {
+    const isCompact = !userData.anilist_synced;
+    const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
 
-    switch (type) {
-        case 'anime':
-            ctx.strokeRect(-size/2, -size/2 + 2, size, size * 0.75);
-            ctx.beginPath();
-            ctx.moveTo(-size/4, size/2); ctx.lineTo(size/4, size/2);
-            ctx.moveTo(0, size * 0.3); ctx.lineTo(0, size/2);
-            ctx.stroke();
-            break;
-        case 'manga':
-            ctx.beginPath();
-            ctx.moveTo(0, size/2 - 2);
-            ctx.bezierCurveTo(-size/2, size/2, -size/2, -size/3, -size/2, -size/2 + 2);
-            ctx.lineTo(0, -size/4);
-            ctx.lineTo(size/2, -size/2 + 2);
-            ctx.bezierCurveTo(size/2, -size/3, size/2, size/2, 0, size/2 - 2);
-            ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, -size/4); ctx.lineTo(0, size/2 - 2); ctx.stroke();
-            break;
-        case 'episodes':
-            ctx.strokeRect(-size/2, -size/2, size, size);
-            ctx.fillRect(-size/2 + 2, -size/2 + 2, 4, 4);
-            ctx.fillRect(size/2 - 6, -size/2 + 2, 4, 4);
-            ctx.fillRect(-size/2 + 2, size/2 - 6, 4, 4);
-            ctx.fillRect(size/2 - 6, size/2 - 6, 4, 4);
-            break;
-        case 'volumes':
-            ctx.strokeRect(-size/2, -size/2 + 1, size, size/3);
-            ctx.strokeRect(-size/2, -size/6 + 1, size, size/3);
-            ctx.strokeRect(-size/2, size/6 + 1, size, size/3);
-            break;
-        case 'days':
-            ctx.strokeRect(-size/2, -size/2 + 2, size, size * 0.8);
-            ctx.beginPath(); ctx.moveTo(-size/2, -size/6); ctx.lineTo(size/2, -size/6); ctx.stroke();
-            ctx.fillRect(-size/4, -size/2 - 2, 3, 5);
-            ctx.fillRect(size/4, -size/2 - 2, 3, 5);
-            break;
-        case 'chapters':
-            ctx.beginPath();
-            ctx.moveTo(-size/2, -size/2); ctx.lineTo(size/6, -size/2);
-            ctx.lineTo(size/2, -size/6); ctx.lineTo(size/2, size/2);
-            ctx.lineTo(-size/2, size/2); ctx.closePath();
-            ctx.stroke();
-            break;
-        case 'library':
-            ctx.strokeRect(-size/2, -size/2, size, size/5);
-            ctx.strokeRect(-size/2, size/3, size, size/5);
-            ctx.fillRect(-size/3, -size/3, 3, 2*size/3);
-            ctx.fillRect(size/6, -size/3, 3, 2*size/3);
-            break;
-    }
-    ctx.restore();
-};
-
-const generateProfileCard = async (discordUser, userData, favorites, backgroundUrl = null, primaryColor = '#FFACD1', displayName = null) => {
-    const SCALE = 2;
-    const canvas = createCanvas(CARD_WIDTH * SCALE, CARD_HEIGHT * SCALE);
+    const SCALE = 3; // Ultra High-Definition Rendering
+    const canvas = createCanvas(Math.floor(CARD_WIDTH * SCALE), Math.floor(CARD_HEIGHT * SCALE));
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    const tokens = generateColorTokens(primaryColor);
-    const THEME_COLOR = tokens.primary;
+    // Premium Rendering Settings
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-    // --- 1. THE FOUNDATION ---
-    ctx.save();
-    ctx.fillStyle = '#08080c';
-    ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+    const TEXT_MAIN = '#FFFFFF';
+    const TEXT_SUB = '#A1A1AA';
+    const THEME_COLOR = primaryColor || '#3B82F6';
+
+    ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
     try {
+        // --- 1. AMBIENT BACKGROUND SYSTEM ---
         let bgImg;
-        if (backgroundUrl) bgImg = await loadImage(backgroundUrl);
-        else {
-            if (!global.defaultBgCache) {
-                global.defaultBgCache = await loadImage(path.join(__dirname, 'images', 'profile_background_default.png'));
-            }
-            bgImg = global.defaultBgCache;
+        try { if (backgroundUrl) bgImg = await loadImage(backgroundUrl); }
+        catch (e) { if (onBackgroundFailure) onBackgroundFailure(backgroundUrl); }
+        if (!bgImg) { try { bgImg = await loadImage(path.join(__dirname, 'images', 'profile_background_default.png')); } catch (e) { } }
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 20;
+        ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, CARD_HEIGHT, 40);
+        ctx.fillStyle = '#09090B'; ctx.fill();
+        ctx.shadowColor = 'transparent'; ctx.clip();
+
+        if (bgImg) {
+            ctx.filter = 'blur(60px) brightness(0.35) saturate(1.5)';
+            ctx.drawImage(bgImg, -100, -100, CARD_WIDTH + 200, CARD_HEIGHT + 200);
+            ctx.filter = 'none';
         }
 
-        const ratio = Math.max(CARD_WIDTH / bgImg.width, CARD_HEIGHT / bgImg.height);
-        const bgW = bgImg.width * ratio;
-        const bgH = bgImg.height * ratio;
-        const bgX = (CARD_WIDTH - bgW) / 2;
-        const bgY = (CARD_HEIGHT - bgH) / 2;
+        const vignette = ctx.createLinearGradient(0, 0, 0, CARD_HEIGHT);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0.1)'); vignette.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
+        ctx.fillStyle = vignette; ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-        ctx.save();
-        ctx.filter = 'blur(12px) brightness(0.25)';
-        ctx.drawImage(bgImg, bgX, bgY, bgW, bgH);
+        const cardBorderGrad = ctx.createLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT);
+        cardBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        cardBorderGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+        cardBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.15));
+        ctx.strokeStyle = cardBorderGrad; ctx.lineWidth = 1.5; ctx.strokeRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
         ctx.restore();
 
-        // Card Clip & Inner Glass
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(MARGIN, MARGIN, CARD_WIDTH - MARGIN*2, CARD_HEIGHT - MARGIN*2, 32);
-        ctx.clip();
-        ctx.filter = 'blur(80px) brightness(0.85) saturate(1.4)';
-        ctx.drawImage(bgImg, bgX, bgY, bgW, bgH);
-        ctx.filter = 'none';
-        ctx.fillStyle = 'rgba(10, 10, 15, 0.45)';
-        ctx.fillRect(MARGIN, MARGIN, CARD_WIDTH - MARGIN*2, CARD_HEIGHT - MARGIN*2);
-        ctx.restore();
+        // --- 2. CRISP TOP BANNER (High Immersion) ---
+        const bannerX = 10, bannerY = 10, bannerW = 380, bannerH = 160, bannerR = 28;
+        if (bgImg) {
+            ctx.save(); ctx.beginPath(); ctx.roundRect(bannerX, bannerY, bannerW, bannerH, bannerR); ctx.clip();
+            const ratio = Math.max(bannerW / bgImg.width, bannerH / bgImg.height);
+            const bgW = bgImg.width * ratio, bgH = bgImg.height * ratio;
+            ctx.drawImage(bgImg, bannerX + (bannerW - bgW) / 2, bannerY + (bannerH - bgH) / 2, bgW, bgH);
 
-        // Main Border
-        ctx.save();
-        ctx.strokeStyle = `rgba(255, 255, 255, 0.15)`;
-        ctx.beginPath();
-        ctx.roundRect(MARGIN, MARGIN, CARD_WIDTH - MARGIN*2, CARD_HEIGHT - MARGIN*2, 32);
-        ctx.stroke();
-        ctx.strokeStyle = THEME_COLOR;
-        ctx.lineWidth = 2.5;
-        ctx.globalAlpha = 0.4;
-        ctx.shadowColor = tokens.glow;
-        ctx.shadowBlur = 15;
-        ctx.stroke();
-        ctx.restore();
+            const fade = ctx.createLinearGradient(0, bannerY + bannerH - 40, 0, bannerY + bannerH);
+            fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,0.6)');
+            ctx.fillStyle = fade; ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
+            ctx.restore();
+        }
 
-        // Corners
-        const cornOff = 12;
-        drawOrnament(ctx, MARGIN+cornOff, MARGIN+cornOff, 8, THEME_COLOR);
-        drawOrnament(ctx, CARD_WIDTH-MARGIN-cornOff, MARGIN+cornOff, 8, THEME_COLOR);
-        drawOrnament(ctx, MARGIN+cornOff, CARD_HEIGHT-MARGIN-cornOff, 8, THEME_COLOR);
-        drawOrnament(ctx, CARD_WIDTH-MARGIN-cornOff, CARD_HEIGHT-MARGIN-cornOff, 8, THEME_COLOR);
+        // --- 3. NEON AVATAR CUTOUT (Submerged) ---
+        const avX = 64, avY = 150, avR = 36; // Brought significantly more into the banner
+        ctx.beginPath(); ctx.arc(avX, avY, avR + 2, 0, Math.PI * 2);
+        ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 25; ctx.fillStyle = THEME_COLOR; ctx.fill();
+        ctx.shadowColor = 'transparent';
 
-        // --- 2. PANEL A: IDENTITY ---
-        const avX = PANEL_A_CTR;
-        const avY = 210;
-        const avR = 98;
-
-        // Halo
-        ctx.save();
-        ctx.strokeStyle = THEME_COLOR;
-        ctx.lineWidth = 3;
-        ctx.shadowColor = tokens.glow;
-        ctx.shadowBlur = 20;
-        ctx.beginPath(); ctx.arc(avX, avY, avR + 10, 0, Math.PI*2); ctx.stroke();
-        ctx.restore();
+        ctx.beginPath(); ctx.arc(avX, avY, avR + 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(15, 15, 20, 0.9)'; ctx.fill();
 
         let avatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 1024 });
         if (userData.avatarConfig?.source === 'CUSTOM' && userData.avatarConfig.customUrl) avatarUrl = userData.avatarConfig.customUrl;
-        
         try {
             const avatar = await loadImage(avatarUrl);
-            ctx.save();
-            ctx.beginPath(); ctx.arc(avX, avY, avR, 0, Math.PI*2); ctx.clip();
-            ctx.drawImage(avatar, avX-avR, avY-avR, avR*2, avR*2);
-            ctx.restore();
-        } catch (e) {}
+            ctx.save(); ctx.beginPath(); ctx.arc(avX, avY, avR, 0, Math.PI * 2); ctx.clip();
+            ctx.drawImage(avatar, avX - avR, avY - avR, avR * 2, avR * 2); ctx.restore();
+        } catch (e) { }
 
-        const name = (displayName || discordUser.username).toUpperCase();
-        ctx.textAlign = 'center';
-        ctx.font = '900 42px sans-serif'; // Reduced from fitText for stability
-        ctx.fillStyle = '#FFF';
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 10;
-        ctx.fillText(name, avX, avY + avR + 70);
+        // --- 4. IDENTITY CLUSTER (Left) ---
+        const nameY = 225;
+        const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
 
-        const badgeW = 200, badgeH = 32;
-        ctx.fillStyle = tokens.primaryContainer;
-        ctx.beginPath(); ctx.roundRect(avX-badgeW/2, avY+avR+92, badgeW, badgeH, 16); ctx.fill();
-        ctx.strokeStyle = THEME_COLOR; ctx.stroke();
-        ctx.fillStyle = '#FFF';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.fillText((userData.title || 'MUSE READER').toUpperCase(), avX, avY+avR+113);
+        ctx.fillStyle = TEXT_MAIN;
+        ctx.font = `800 28px ${FONT_STACK}`; // Heavier, premium font weight
+        const nameWidth = ctx.measureText(nameText).width;
 
-        // --- 3. PANEL B: PROGRESSION (CONSOLIDATED) ---
-        const progCtr = PANEL_B_CTR;
-        const progY = 160;
+        ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
+        ctx.fillText(nameText, 20, nameY); 
+        ctx.shadowColor = 'transparent';
 
-        ctx.fillStyle = tokens.glow;
-        ctx.font = '900 18px sans-serif';
-        ctx.fillText('LEVEL', progCtr, progY);
+        // Refined Title Badge (Adaptive Alignment)
+        const titleText = (userData.title || 'MUSE READER').toUpperCase();
+        ctx.font = `600 11px ${FONT_STACK}`; ctx.letterSpacing = '1px';
+        
+        const tagW = ctx.measureText(titleText).width + 36, tagH = 26;
+        const tagX = isCompact ? (20 + nameWidth + 14) : 20;
+        const tagY = isCompact ? (nameY - 21) : (nameY + 12);
 
-        ctx.fillStyle = '#FFF';
-        ctx.font = '900 125px sans-serif';
-        ctx.fillText(userData.level || '0', progCtr, progY + 95);
+        ctx.beginPath(); ctx.roundRect(tagX, tagY, tagW, tagH, tagH / 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; ctx.fill(); // Frosted light pill
+        const tagBorderGrad = ctx.createLinearGradient(tagX, tagY, tagX, tagY + tagH);
+        tagBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+        tagBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.15));
+        ctx.strokeStyle = tagBorderGrad; ctx.lineWidth = 1; ctx.stroke();
 
-        ctx.font = '900 14px sans-serif';
-        ctx.letterSpacing = '4px';
-        ctx.fillText('MEMBER LEVEL', progCtr, progY + 125);
+        const rankColor = userData.rankColor || THEME_COLOR;
+        ctx.beginPath(); ctx.arc(tagX + 14, tagY + tagH / 2, 4, 0, Math.PI * 2);
+        ctx.fillStyle = rankColor; ctx.shadowColor = rankColor; ctx.shadowBlur = 8; ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.textAlign = 'left';
+        ctx.fillText(titleText, tagX + 24, tagY + 17);
         ctx.letterSpacing = '0px';
 
-        const vialW = 210, vialH = 24, vialX = progCtr - vialW/2, vialY = progY + 175;
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.beginPath(); ctx.roundRect(vialX, vialY, vialW, vialH, 12); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.stroke();
+        // --- 5. DYNAMIC MEMBERSHIP BADGE (Right) ---
+        const isBooster = userData.is_booster || false;
+        const isPremium = (userData.is_premium || userData.premium || false) && !isBooster;
+        const pillR = 21, pillX = 380 - pillR * 2, pillY = nameY - 36;
 
-        const progress = Math.min(1, (userData.current / (userData.required || 1)));
-        if (progress > 0) {
-            ctx.save();
-            ctx.beginPath(); ctx.roundRect(vialX, vialY, vialW * progress, vialH, 12); ctx.clip();
-            const g = ctx.createLinearGradient(vialX, vialY, vialX+vialW, vialY);
-            g.addColorStop(0, tokens.primary); g.addColorStop(1, tokens.glow);
-            ctx.fillStyle = g; ctx.fillRect(vialX, vialY, vialW*progress, vialH);
-            ctx.restore();
-        }
-        drawOrnament(ctx, vialX + vialW*progress, vialY + vialH/2, 6, '#FFF');
-
-        ctx.font = '900 18px sans-serif';
-        ctx.fillStyle = '#FFF';
-        ctx.fillText(`${formatStat(userData.current)} / ${formatStat(userData.required)} XP`, progCtr, vialY + 52);
-        ctx.font = '900 13px sans-serif';
-        ctx.globalAlpha = 0.6;
-        ctx.fillText(`${Math.floor(progress * 100)}% TO NEXT LEVEL`, progCtr, vialY + 76);
-        ctx.globalAlpha = 1.0;
-
-        // --- 4. PANEL C: RECORDS ---
-        const recX = PANEL_C_X, recW = PANEL_C_W - MARGIN, recY = MARGIN + 25, recH = 410;
         ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; // Light Glass
-        ctx.shadowColor = 'rgba(0,0,0,0.4)';
-        ctx.shadowBlur = 30;
-        ctx.beginPath(); ctx.roundRect(recX, recY, recW, recH, 32); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(pillX + pillR, pillY + pillR, pillR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'; ctx.fill(); // Glass base
+        
+        const pillGrad = ctx.createLinearGradient(pillX, pillY, pillX, pillY + pillR * 2);
+        if (isBooster) {
+            pillGrad.addColorStop(0, '#C084FC'); pillGrad.addColorStop(1, '#7C3AED'); // Sacred Purple
+            ctx.strokeStyle = pillGrad; ctx.lineWidth = 2.2; ctx.stroke();
+            ctx.shadowColor = 'rgba(124, 58, 237, 0.8)'; ctx.shadowBlur = 16;
+        } else if (isPremium) {
+            pillGrad.addColorStop(0, '#F5D17E'); pillGrad.addColorStop(1, '#AA812A'); // Premium Gold
+            ctx.strokeStyle = pillGrad; ctx.lineWidth = 1.8; ctx.stroke();
+            ctx.shadowColor = 'rgba(170, 129, 42, 0.6)'; ctx.shadowBlur = 12;
+        } else {
+            pillGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); pillGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.1));
+            ctx.strokeStyle = pillGrad; ctx.lineWidth = 1.2; ctx.stroke();
+        }
+
+        // Draw Dynamic Book Icon
+        const bx = pillX + pillR - 10, by = pillY + pillR - 8.5, bw = 20, bh = 17;
+        const iconColor = isBooster ? '#E9D5FF' : (isPremium ? '#F5D17E' : THEME_COLOR);
+        
+        ctx.strokeStyle = iconColor;
+        ctx.lineWidth = (isBooster || isPremium) ? 2.2 : 1.8;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+        // Base Book Geometry
+        ctx.beginPath();
+        ctx.moveTo(bx + bw / 2, by); ctx.lineTo(bx + bw / 2, by + bh); // Spine
+        ctx.moveTo(bx + bw / 2, by); 
+        ctx.quadraticCurveTo(bx + bw * 0.75, by - 2, bx + bw, by + 1.5); ctx.lineTo(bx + bw, by + bh - 3.5); ctx.quadraticCurveTo(bx + bw * 0.75, by + bh - 7, bx + bw / 2, by + bh);
+        ctx.moveTo(bx + bw / 2, by);
+        ctx.quadraticCurveTo(bx + bw * 0.25, by - 2, bx, by + 1.5); ctx.lineTo(bx, by + bh - 3.5); ctx.quadraticCurveTo(bx + bw * 0.25, by + bh - 7, bx + bw / 2, by + bh);
+        ctx.stroke();
+
+        if (isBooster || isPremium) {
+            // Extra "Detailed" pages
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(bx + bw * 0.7, by + 4); ctx.lineTo(bx + bw * 0.9, by + 4);
+            ctx.moveTo(bx + bw * 0.7, by + 7.5); ctx.lineTo(bx + bw * 0.9, by + 7.5);
+            ctx.moveTo(bx + bw * 0.3, by + 4); ctx.lineTo(bx + bw * 0.1, by + 4);
+            ctx.moveTo(bx + bw * 0.3, by + 7.5); ctx.lineTo(bx + bw * 0.1, by + 7.5);
+            
+            if (isBooster) {
+                // Tier 3: Sacred Muse Ultra-Details
+                ctx.moveTo(bx + bw * 0.7, by + 11); ctx.lineTo(bx + bw * 0.9, by + 11);
+                ctx.moveTo(bx + bw * 0.3, by + 11); ctx.lineTo(bx + bw * 0.1, by + 11);
+                
+                // 1. Mystical Bookmark
+                ctx.moveTo(bx + bw * 0.6, by + bh - 1);
+                ctx.quadraticCurveTo(bx + bw * 0.65, by + bh + 4, bx + bw * 0.55, by + bh + 6);
+                
+                // 2. Cover "Spark" Symbol
+                ctx.stroke();
+                ctx.beginPath(); ctx.arc(bx + bw * 0.25, by + bh / 2, 0.8, 0, Math.PI * 2);
+                ctx.arc(bx + bw * 0.75, by + bh / 2, 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFF'; ctx.fill();
+
+                // 3. Crystalline Aura Ring (Inner)
+                ctx.beginPath(); ctx.arc(pillX + pillR, pillY + pillR, pillR - 4, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
+                
+                // Glowing Spine dot
+                ctx.beginPath(); ctx.arc(bx + bw/2, by + 2, 1.2, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFF'; ctx.fill();
+            } else {
+                ctx.stroke();
+            }
+        }
         ctx.restore();
 
-        ctx.font = '900 16px sans-serif'; ctx.letterSpacing = '5px'; ctx.fillStyle = '#FFF';
-        ctx.fillText('LIBRARY RECORDS', recX + recW/2, recY + 45); ctx.letterSpacing = '0px';
+        // --- 6. V5 WIDGETS: REFINED APP NODES ---
+        const statY = 285; // Shifted down for vertical header stack
+        const statW = 110, statH = 88, statGap = 15;
+        const stats = userData.anilist || {};
 
-        const stats = userData.anilist || {}, gridX = recX + 35, gridY = recY + 115, rowS = 95, colS = 145;
-        const drawStat = (label, val, x, y, type) => {
-            ctx.textAlign = 'left'; ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = tokens.glow;
-            ctx.fillText(label.toUpperCase(), x, y);
-            ctx.font = '900 32px sans-serif'; ctx.fillStyle = '#FFF';
-            const sVal = formatStat(val); ctx.fillText(sVal, x, y + 40);
-            drawIcon(ctx, type, x + ctx.measureText(sVal).width + 12, y + 30, 20, tokens.glow);
+        const drawStatNode = (x, hexColor, value, label, phaseOffset, drawIconLogic) => {
+            ctx.save();
+            // Deep Glass Base
+            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, 20);
+
+            const cardGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
+            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+            ctx.fillStyle = cardGrad; ctx.fill();
+
+            const nodeBorderGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
+            nodeBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+            nodeBorderGrad.addColorStop(1, hexToRgba(hexColor, 0.25));
+            ctx.strokeStyle = nodeBorderGrad; ctx.lineWidth = 1; ctx.stroke();
+            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, 20); ctx.clip();
+
+            // Liquid Sine Wave
+            ctx.beginPath(); ctx.moveTo(x, statY + statH);
+            for (let i = 0; i <= statW; i += 3) {
+                let waveY = statY + statH - 16 + Math.sin((i * 0.05) + phaseOffset) * 8;
+                ctx.lineTo(x + i, waveY);
+            }
+            ctx.lineTo(x + statW, statY + statH); ctx.closePath();
+
+            const waveGrad = ctx.createLinearGradient(0, statY + statH - 35, 0, statY + statH);
+            waveGrad.addColorStop(0, 'rgba(0,0,0,0)'); waveGrad.addColorStop(1, hexToRgba(hexColor, 0.45));
+            ctx.fillStyle = waveGrad; ctx.fill();
+            ctx.strokeStyle = hexColor; ctx.lineWidth = 1.5; ctx.shadowColor = hexColor; ctx.shadowBlur = 10; ctx.stroke();
+            ctx.restore();
+
+            // Premium Frosted Icon Container
+            const ix = x + 14, iy = statY + 14, iSize = 28;
+            ctx.beginPath(); ctx.roundRect(ix, iy, iSize, iSize, 10);
+            const iconBgGrad = ctx.createLinearGradient(ix, iy, ix, iy + iSize);
+            iconBgGrad.addColorStop(0, hexToRgba(hexColor, 0.25));
+            iconBgGrad.addColorStop(1, hexToRgba(hexColor, 0.05));
+            ctx.fillStyle = iconBgGrad; ctx.fill();
+            const iconBorderGrad = ctx.createLinearGradient(ix, iy, ix, iy + iSize);
+            iconBorderGrad.addColorStop(0, hexToRgba(hexColor, 0.4));
+            iconBorderGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.strokeStyle = iconBorderGrad; ctx.lineWidth = 1; ctx.stroke();
+
+            // Draw Vector Icon
+            ctx.save();
+            ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
+            ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            drawIconLogic(ix, iy);
+            ctx.restore();
+
+            // Labels & Data
+            ctx.fillStyle = TEXT_SUB; ctx.font = `600 10px ${FONT_STACK}`; ctx.textAlign = 'right';
+            ctx.fillText(label.toUpperCase(), x + statW - 14, statY + 32);
+
+            ctx.fillStyle = '#FFFFFF'; ctx.font = `800 26px ${FONT_STACK}`; ctx.textAlign = 'left';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8; // Punchy numbers
+            ctx.fillText(value, x + 14, statY + 74);
+            ctx.shadowBlur = 0; // reset
+        };
+
+        const drawAnimeIcon = (ix, iy) => {
+            ctx.beginPath(); ctx.roundRect(ix + 6, iy + 7, 16, 12, 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ix + 12, iy + 10); ctx.lineTo(ix + 17, iy + 13); ctx.lineTo(ix + 12, iy + 16); ctx.fill();
+        };
+
+        const drawMangaIcon = (ix, iy) => {
+            ctx.lineWidth = 1.5;
+            // Stack of Three Manga Volumes (representing collection)
+            for (let i = 0; i < 3; i++) {
+                const oy = 7 + i * 4.5;
+                ctx.save();
+                if (i > 0) { ctx.fillStyle = '#050505'; ctx.beginPath(); ctx.roundRect(ix + 7, iy + oy, 14, 4.5, 1); ctx.fill(); }
+                ctx.beginPath(); ctx.roundRect(ix + 7, iy + oy, 14, 4.5, 1); ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        const drawDaysIcon = (ix, iy) => {
+            ctx.beginPath(); ctx.arc(ix + 14, iy + 14, 7, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ix + 14, iy + 10); ctx.lineTo(ix + 14, iy + 14); ctx.lineTo(ix + 17, iy + 16); ctx.stroke();
         };
 
         if (userData.anilist_synced) {
-            drawStat('Anime', stats.completed || 0, gridX, gridY, 'anime');
-            drawStat('Manga', stats.manga_completed || 0, gridX+colS, gridY, 'manga');
-            drawStat('Episodes', stats.episodes || 0, gridX, gridY+rowS, 'episodes');
-            drawStat('Volumes', stats.volumes || 0, gridX+colS, gridY+rowS, 'volumes');
-            drawStat('Days', stats.days || '0.0', gridX, gridY+rowS*2, 'days');
-            drawStat('Chapters', stats.chapters || 0, gridX+colS, gridY+rowS*2, 'chapters');
-        } else {
-            ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.3)';
-            ctx.fillText('Connect AniList', recX + recW/2, recY + recH/2);
+            drawStatNode(20, THEME_COLOR, formatStat(stats.completed || 0), 'Anime', 0, drawAnimeIcon);
+            drawStatNode(20 + statW + statGap, '#FBBF24', formatStat(stats.manga_completed || 0), 'Manga', 2, drawMangaIcon);
+            drawStatNode(20 + (statW + statGap) * 2, '#10B981', formatStat(stats.days || 0), 'Days', 4, drawDaysIcon);
+            
+            // Maintenance Guard Overlay (Clinical UI)
+            if (userData.anilist_maintenance) {
+                const hudX = 20, hudY = statY, hudW = CARD_WIDTH - 40, hudH = statH;
+                ctx.save();
+                ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 20); ctx.clip();
+                
+                // Frosted Dark Filter
+                ctx.fillStyle = 'rgba(9, 9, 11, 0.75)'; ctx.fillRect(hudX, hudY, hudW, hudH);
+                
+                // Warning Notification
+                ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF';
+                ctx.font = `800 13px ${FONT_STACK}`; ctx.letterSpacing = '1px';
+                ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
+                ctx.fillText('ANILIST API CURRENTLY OFFLINE', hudX + hudW / 2, hudY + hudH / 2 + 5);
+                ctx.restore();
+            }
         }
 
-        // Top Branding (Subtle)
-        ctx.textAlign = 'right'; ctx.font = '900 16px sans-serif'; ctx.letterSpacing = '4px'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fillText('ANIMUSE ARCHIVES', CARD_WIDTH - 65, CARD_HEIGHT - 45);
-        drawIcon(ctx, 'library', CARD_WIDTH - 35, CARD_HEIGHT - 52, 18, 'rgba(255,255,255,0.5)');
+        // --- 7. PROGRESSION TERMINAL (Hyper-Premium HUD) ---
+        const termY = isCompact ? 255 : 395;
+        const termH = 80;
 
-    } catch (err) { console.error(err); }
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(20, termY, CARD_WIDTH - 40, termH, 22);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; ctx.fill();
+        const termBorderGrad = ctx.createLinearGradient(20, termY, 20, termY + termH);
+        termBorderGrad.addColorStop(0, 'rgba(255,255,255,0.1)');
+        termBorderGrad.addColorStop(1, 'rgba(255,255,255,0.02)');
+        ctx.strokeStyle = termBorderGrad; ctx.lineWidth = 1; ctx.stroke();
 
-    return await canvas.encode('webp', { quality: 85 });
+        // Level Ring: Nested Automotive Design
+        const ringX = 55, ringY = termY + termH / 2, ringR = 21;
+        const currentXP = userData.current || 0, requiredXP = userData.required || 1;
+        const levelPercent = Math.min(1, currentXP / requiredXP);
+        
+        ctx.beginPath(); ctx.arc(ringX, ringY, ringR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill(); // Deep core
+        
+        const ringGrad = ctx.createLinearGradient(ringX - ringR, ringY - ringR, ringX + ringR, ringY + ringR);
+        ringGrad.addColorStop(0, THEME_COLOR); ringGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.1));
+        ctx.strokeStyle = ringGrad; ctx.lineWidth = 3; ctx.stroke();
+        
+        // Dynamic Outer Progress Arc
+        ctx.beginPath(); ctx.arc(ringX, ringY, ringR, -Math.PI / 2, (Math.PI * 2 * levelPercent) - Math.PI / 2);
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+
+        ctx.fillStyle = '#FFFFFF'; ctx.font = `800 16px ${FONT_STACK}`; ctx.textAlign = 'center';
+        ctx.fillText(userData.level || '0', ringX, ringY + 6);
+
+        // Bar Metadata
+        const barX = 95, barW = CARD_WIDTH - barX - 35, barY = termY + 46, barH = 10, barR = 5;
+        
+        ctx.textAlign = 'left';
+        ctx.fillStyle = TEXT_SUB; ctx.font = `700 10px ${FONT_STACK}`; ctx.letterSpacing = '1.8px';
+        ctx.fillText('EXPERIENCE', barX, termY + 28);
+        ctx.letterSpacing = '0px';
+
+        ctx.textAlign = 'right';
+        ctx.font = `800 12px ${FONT_STACK}`; ctx.fillStyle = '#FFFFFF';
+        const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`;
+        ctx.fillText(xpText.toUpperCase(), barX + barW, termY + 28);
+
+        // Heavy-Duty Progress Bar Tracks
+        ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, barR);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+
+        // The Progress Fill
+        if (levelPercent > 0) {
+            const fillWidth = Math.max(barR * 2, levelPercent * barW);
+            ctx.save();
+            ctx.beginPath(); ctx.roundRect(barX, barY, fillWidth, barH, barR); ctx.clip();
+            
+            const activeGrad = ctx.createLinearGradient(barX, barY, barX + fillWidth, barY);
+            activeGrad.addColorStop(0, hexToRgba(THEME_COLOR, 0.6));
+            activeGrad.addColorStop(0.85, THEME_COLOR);
+            activeGrad.addColorStop(1, '#FFFFFF'); // Sharp Tip
+            
+            ctx.fillStyle = activeGrad;
+            ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 15;
+            ctx.fill();
+            
+            // Specular Reflection (Top highlight)
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(barX + barR, barY + 2); ctx.lineTo(barX + fillWidth - barR, barY + 2); ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.restore();
+
+    } catch (err) { console.error('Canvas Generation Error:', err); }
+
+    return await canvas.encode('png');
 };
 
-const getDominantColor = async (imageUrl) => {
-    try {
-        const img = await loadImage(imageUrl);
-        const sc = createCanvas(50, 50), sctx = sc.getContext('2d');
-        sctx.drawImage(img, 0, 0, 50, 50);
-        const d = sctx.getImageData(0, 0, 50, 50).data;
-        let r=0,g=0,b=0;
-        for(let i=0;i<d.length;i+=4){ r+=d[i];g+=d[i+1];b+=d[i+2]; }
-        return `#${((1<<24)+(Math.floor(r/2500)<<16)+(Math.floor(g/2500)<<8)+Math.floor(b/2500)).toString(16).slice(1)}`;
-    } catch(e) { return '#FFACD1'; }
-};
-
+const getDominantColor = async (imageUrl) => { return '#3B82F6'; };
 module.exports = { generateProfileCard, getDominantColor };

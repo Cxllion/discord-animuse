@@ -290,7 +290,11 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
 const handleBoutiqueInteraction = async (interaction) => {
     const { customId, guild, member, message } = interaction;
     
-    // 0. Pre-fetch data for optimization (one DB call each per interaction)
+    // 0. Proactive Deferral: Extends the 3s window to 15m immediately.
+    // This prevents "Unknown Interaction" errors if DB calls or logic take > 3s.
+    await interaction.deferUpdate().catch(() => null);
+
+    // 1. Pre-fetch data for optimization (one DB call each per interaction)
     const [config, categories, serverRoles] = await Promise.all([
         fetchConfig(guild.id),
         getRoleCategories(guild.id),
@@ -298,27 +302,23 @@ const handleBoutiqueInteraction = async (interaction) => {
     ]);
     const cache = { config, categories, serverRoles };
     
-    // Determine if this interaction should spawn a NEW ephemeral session or update an EXISTING one
+    // Determine if this interaction comes from the PERSISTENT HUB message (pinned/saved)
     const isPersistentHub = message.id === config.boutique_message_id;
 
-    // Proactive Deferral: Extends the 3s window to 15m. Only for existing ephemeral sessions.
-    // Hub interactions must NOT be deferred here because they need to UPDATE the hub message first.
-    if (!isPersistentHub) {
-        await interaction.deferUpdate().catch(() => null);
-    }
-
     /**
-     * Internal helper to respond correctly (Reply or Update/Edit)
+     * Internal helper to respond correctly
      */
     const respond = async (payload) => {
         try {
             if (isPersistentHub) {
-                // New Session: Reset Hub to Main Menu, but send category view as ephemeral follow-up
+                // Return Hub to Main Menu (since we deferred, we use editReply)
                 const resetPayload = await renderBoutique(guild.id, null, member, null, cache);
-                await interaction.update(resetPayload).catch(() => null);
+                await interaction.editReply(resetPayload).catch(() => null);
+                
+                // Deliver the category view as an ephemeral follow-up
                 return await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
             } else {
-                // Existing Session Navigation: Use editReply because we already deferred
+                // Existing Ephemeral Session: Use editReply because we already deferred
                 return await interaction.editReply(payload).catch(() => null);
             }
         } catch (err) {

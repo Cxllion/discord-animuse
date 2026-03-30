@@ -339,35 +339,36 @@ const generateActivityCard = async (userMeta, activityData) => {
     let podX = cX;
 
     // Rating Pod (Stars + Score)
+    const drawStar = (ctx, x, y, size, fill) => {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * size, -Math.sin((18 + i * 72) / 180 * Math.PI) * size);
+            ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * (size * 0.5), -Math.sin((54 + i * 72) / 180 * Math.PI) * (size * 0.5));
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fill();
+        if (fill > 0) {
+            ctx.save();
+            ctx.clip();
+            ctx.fillStyle = '#FFF';
+            ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
+            ctx.restore();
+        }
+        ctx.restore();
+    };
+
     const sVal = media.meanScore || media.averageScore;
+    const starSize = 8;
+    const starGap = 6;
+    const starBlockW = 5 * starSize * 2 + 4 * starGap;
+    const podH = 38;
+
     if (sVal) {
         const score10 = (sVal / 10).toFixed(1);
         const stars = sVal / 20;
-
-        const drawStar = (x, y, size, fill) => {
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.beginPath();
-            for (let i = 0; i < 5; i++) {
-                ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * size, -Math.sin((18 + i * 72) / 180 * Math.PI) * size);
-                ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * (size * 0.5), -Math.sin((54 + i * 72) / 180 * Math.PI) * (size * 0.5));
-            }
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(255,255,255,0.15)';
-            ctx.fill();
-            if (fill > 0) {
-                ctx.save();
-                ctx.clip();
-                ctx.fillStyle = '#FFF';
-                ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
-                ctx.restore();
-            }
-            ctx.restore();
-        };
-
-        const starSize = 8;
-        const starGap = 6;
-        const starBlockW = 5 * starSize * 2 + 4 * starGap;
 
         ctx.font = '800 14px sans-serif';
         ctx.letterSpacing = '0px';
@@ -375,7 +376,6 @@ const generateActivityCard = async (userMeta, activityData) => {
         const innerPad = 18;
         const innerW = scoreW + innerPad * 2;
         const innerH = 28;
-        const podH = 38;
         const innerMargin = (podH - innerH) / 2;
         const leftPad = 16;
         const midGap = 10;
@@ -393,7 +393,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         let sx = podX + leftPad + starSize;
         const sy = curY + podH / 2 + 1;
         for (let i = 0; i < 5; i++) {
-            drawStar(sx, sy, starSize, Math.max(0, Math.min(1, stars - i)));
+            drawStar(ctx, sx, sy, starSize, Math.max(0, Math.min(1, stars - i)));
             sx += starSize * 2 + starGap;
         }
 
@@ -410,6 +410,54 @@ const generateActivityCard = async (userMeta, activityData) => {
         ctx.font = '800 14px sans-serif';
         ctx.letterSpacing = '0px';
         ctx.fillText(score10, iPx + innerW / 2, iPy + innerH / 2 + 0.5);
+        ctx.restore();
+
+        podX += podW + 10;
+    } else {
+        // Fallback for No Rating / Unreleased
+        const status = (media.status || '').toUpperCase();
+        const fallbackText = status === 'NOT_YET_RELEASED' ? 'UNRELEASED' : 'NO RATING';
+
+        ctx.font = '800 14px sans-serif';
+        const scoreW = ctx.measureText(fallbackText).width;
+        const innerPad = 18;
+        const innerW = scoreW + innerPad * 2;
+        const innerH = 28;
+        const innerMargin = (podH - innerH) / 2;
+        const leftPad = 16;
+        const midGap = 10;
+        const podW = leftPad + starBlockW + midGap + innerW + innerMargin;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(podX, curY, podW, podH, 19);
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Draw empty stars
+        let sx = podX + leftPad + starSize;
+        const sy = curY + podH / 2 + 1;
+        for (let i = 0; i < 5; i++) {
+            drawStar(ctx, sx, sy, starSize, 0);
+            sx += starSize * 2 + starGap;
+        }
+
+        const iPx = podX + podW - innerW - innerMargin;
+        const iPy = curY + innerMargin;
+        ctx.beginPath();
+        ctx.roundRect(iPx, iPy, innerW, innerH, 14);
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fill();
+
+        ctx.fillStyle = '#FFF';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '800 12px sans-serif'; // Slightly smaller for longer text
+        ctx.letterSpacing = '0px';
+        ctx.fillText(fallbackText, iPx + innerW / 2, iPy + innerH / 2 + 0.5);
         ctx.restore();
 
         podX += podW + 10;

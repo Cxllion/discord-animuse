@@ -60,7 +60,6 @@ server.on('error', (e) => {
 });
 
 server.listen(port);
-
 (async () => {
     try {
         logger.info(`Starting Test Environment (Port ${port})...`, 'System');
@@ -68,6 +67,29 @@ server.listen(port);
         await initializeBot(client);
         
         await client.login(process.env.DISCORD_TOKEN);
+
+        // --- Graceful Shutdown Sequence ---
+        const handleShutdown = async (signal) => {
+            logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
+            
+            // 1. Close Health Server
+            if (server.listening) {
+                server.close(() => logger.info('[ShutDown] HTTP archives locked and secured.', 'System'));
+            }
+
+            // 2. Destroy Discord Session (Logs out cleanly)
+            client.destroy();
+            logger.info('[ShutDown] Discord archivist connection terminated.', 'System');
+
+            // 3. Exit process (Wait briefly for logs)
+            setTimeout(() => {
+                process.exit(0);
+            }, 1000);
+        };
+
+        process.on('SIGINT', () => handleShutdown('SIGINT'));
+        process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
     } catch (error) {
         logger.error('Startup Critical Failure:', error, 'System');
         process.exit(1);

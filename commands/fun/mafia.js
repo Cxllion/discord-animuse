@@ -54,7 +54,7 @@ module.exports = {
             // Placeholder msg to get ID
             const msg = await interaction.editReply('Sealing the Final Library gates...');
             
-            const game = gameManager.createGame(msg.id, interaction.user);
+            const game = await gameManager.createGame(msg.id, interaction.user, interaction.channel);
             
             const payload = buildLobbyPayload(game);
             

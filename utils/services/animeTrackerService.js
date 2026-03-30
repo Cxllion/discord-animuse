@@ -60,5 +60,11 @@ module.exports = {
     getAnimeDueForUpdate,
     getTrackedAnimeState,
     updateTrackedAnimeState,
-    removeAllTrackersForAnime
+    removeAllTrackersForAnime,
+
+    getGlobalTrackCount: async () => {
+        if (!supabase) return 0;
+        const { count } = await supabase.from('subscriptions').select('*', { count: 'exact', head: true });
+        return count || 0;
+    }
 };

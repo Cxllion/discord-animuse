@@ -33,6 +33,11 @@ const updateUserBackground = async (userId, guildId, url) => {
     return await supabase.from('users').upsert({ user_id: userId, guild_id: guildId, background_url: url }, { onConflict: 'user_id, guild_id' }).select();
 };
 
+const clearUserBackgroundGlobally = async (userId) => {
+    if (!supabase) return;
+    await supabase.from('users').update({ background_url: null }).eq('user_id', userId);
+};
+
 const getUserBackground = async (userId, guildId) => {
     if (!supabase) return null;
     const { data, error } = await supabase.from('users').select('background_url').eq('user_id', userId).eq('guild_id', guildId).single();
@@ -299,5 +304,6 @@ module.exports = {
     wasPostedInDB,
     markPostedInDB,
     findRecentActivityPostInDB,
+    clearUserBackgroundGlobally,
     clearOldActivityPostsInDB,
 };

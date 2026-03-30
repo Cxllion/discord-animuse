@@ -307,6 +307,8 @@ const handleAutoRoles = async (i) => {
         getNavigationRow(i, 'opt_autoroles'),
         new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_member').setPlaceholder('Designate Member Role...')),
         new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_bot').setPlaceholder('Designate Bot Role...')),
+        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_premium').setPlaceholder('Designate Seraphic (Premium) Role...')),
+        new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('autorole_set_booster').setPlaceholder('Designate Sacred (Booster) Role...')),
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('autorole_sync').setLabel('Retroactive Sync').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
             new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)

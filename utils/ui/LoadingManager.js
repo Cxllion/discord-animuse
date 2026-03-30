@@ -28,6 +28,7 @@ class LoadingManager {
 
         // Engine State
         this.isStopping = false;
+        this.isRendering = false; // Prevents overlapping API calls
         this.lastContent = '';
         this.lastRenderTime = 0;
         this.renderInterval = 1500; // Minimum ms between edits to avoid rate limits
@@ -96,10 +97,10 @@ class LoadingManager {
     }
 
     /**
-     * Internal rendering logic with throttling
+     * Internal rendering logic with throttling and locking
      */
     async _render(force = false) {
-        if (!this.interaction || this.isStopping) return;
+        if (!this.interaction || this.isStopping || this.isRendering) return;
 
         const now = Date.now();
         if (!force && (now - this.lastRenderTime < this.renderInterval)) return;
@@ -107,6 +108,7 @@ class LoadingManager {
         const content = this._getContent();
         if (!force && content === this.lastContent) return;
 
+        this.isRendering = true;
         this.lastContent = content;
         this.lastRenderTime = now;
 
@@ -119,6 +121,8 @@ class LoadingManager {
         } catch (e) {
             this.isStopping = true;
             this._cleanup();
+        } finally {
+            this.isRendering = false;
         }
     }
 

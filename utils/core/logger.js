@@ -5,6 +5,16 @@ const { EmbedBuilder, WebhookClient } = require('discord.js');
  * Levels: INFO, WARN, ERROR, DEBUG
  */
 
+// Initialize Global Developer Webhook
+let globalWebhook = null;
+if (process.env.LOGS_WEBHOOK_URL) {
+    try {
+        globalWebhook = new WebhookClient({ url: process.env.LOGS_WEBHOOK_URL });
+    } catch (e) {
+        console.error('[Logger] Failed to initialize Global Webhook:', e.message);
+    }
+}
+
 const formatTime = () => new Date().toISOString().replace('T', ' ').split('.')[0];
 
 const info = (message, context = '') => {
@@ -16,10 +26,45 @@ const warn = (message, context = '') => {
 };
 
 const error = (message, err = null, context = '') => {
-    console.error(`[${formatTime()}] [ERROR] ${context ? `[${context}] ` : ''}${message}`);
+    const logPrefix = `[${formatTime()}] [ERROR] ${context ? `[${context}] ` : ''}`;
+    console.error(`${logPrefix}${message}`);
+    
     if (err) {
         if (err.stack) console.error(err.stack);
         else console.error(err);
+    }
+
+    // Report to Global Webhook (Developer Alert)
+    if (globalWebhook) {
+        const embed = new EmbedBuilder()
+            .setTitle('🚨 Critical System Alert')
+            .setDescription(`**${message}**\n\n\`\`\`js\n${err?.message || 'No additional error info'}\n\`\`\``)
+            .addFields(
+                { name: 'Context', value: context || 'None', inline: true },
+                { name: 'Timestamp', value: formatTime(), inline: true }
+            )
+            .setColor(0xFF0000) // Red
+            .setTimestamp();
+
+        globalWebhook.send({ embeds: [embed] }).catch(() => {});
+    }
+};
+
+/**
+ * Log a server-specific report directly to a Discord channel.
+ * @param {Guild} guild - Discord Guild object
+ * @param {string} channelId - The logs_channel_id from config
+ * @param {EmbedBuilder} embed - The report embed
+ */
+const reportToGuild = async (guild, channelId, embed) => {
+    if (!channelId) return;
+    try {
+        const channel = await guild.channels.fetch(channelId).catch(() => null);
+        if (channel && channel.isTextBased()) {
+            await channel.send({ embeds: [embed] });
+        }
+    } catch (e) {
+        // Silently fail to avoid recursion if logging itself errors
     }
 };
 
@@ -29,4 +74,4 @@ const debug = (message, context = '') => {
     }
 };
 
-module.exports = { info, warn, error, debug };
+module.exports = { info, warn, error, debug, reportToGuild };

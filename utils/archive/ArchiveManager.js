@@ -11,6 +11,8 @@ class ArchiveManager {
         this.lobbies = new Collection();
         this.hostPreferences = new Map();
         this.saveMutex = false;
+        // Global Waitlist: channelId -> Set of userIds who want to join the NEXT game
+        this.globalQueues = new Collection();
         this.cleanupInterval = setInterval(() => this.cleanupStagnantGames(), 3600000); // Every 1 hour
     }
 
@@ -46,7 +48,7 @@ class ArchiveManager {
         game.on('stateChanged', () => this.saveState());
     }
 
-    createGame(lobbyMessageId, hostUser) {
+    async createGame(lobbyMessageId, hostUser, channel) {
         const Game = require('./ArchiveGame');
         const game = new Game(lobbyMessageId, hostUser);
         
@@ -55,6 +57,44 @@ class ArchiveManager {
             game.settings = { ...this.hostPreferences.get(hostUser.id), gameMode: game.settings.gameMode };
         }
         
+        // --- QUEUE AUTO-IMPORT ---
+        if (channel && this.globalQueues.has(channel.id)) {
+            const queue = this.globalQueues.get(channel.id);
+            if (queue.size > 0) {
+                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                const queueUsers = Array.from(queue);
+                
+                for (const uid of queueUsers) {
+                    // Fetch user object to add to game
+                    try {
+                        const user = await channel.client.users.fetch(uid);
+                        if (user) {
+                            const p = game.addPlayer(user);
+                            if (p) {
+                                p.requiresConfirmation = true;
+                                p.isConfirmed = false;
+                                
+                                // Send individual confirmation ping
+                                const row = new ActionRowBuilder().addComponents(
+                                    new ButtonBuilder()
+                                        .setCustomId(`archive_here_${lobbyMessageId}_${uid}`)
+                                        .setLabel("🙋 I'm here!")
+                                        .setStyle(ButtonStyle.Success)
+                                );
+                                await channel.send({ 
+                                    content: `🛎️ **Waitlist Arrival:** <@${uid}>, a new session of the **Final Library** is starting! Press the button below to confirm your presence at the sanctuary gates.`, 
+                                    components: [row] 
+                                });
+                            }
+                        }
+                    } catch(e) {}
+                }
+                // Clear queue after import
+                this.globalQueues.delete(channel.id);
+            }
+        }
+        // -------------------------
+
         this.lobbies.set(lobbyMessageId, game);
         game.createdAt = Date.now();
         this.setupGameListeners(game);
@@ -79,11 +119,26 @@ class ArchiveManager {
         return game;
     }
 
-    endGame(threadId) {
+    async endGame(threadId) {
         const game = this.games.get(threadId);
         if (game) {
+            const channelId = game.thread?.parentId || game.thread?.id; // Parent channel or actual channel
+            const lobbyMsgId = game.lobbyMessageId;
+            
             this.games.delete(threadId);
-            this.lobbies.delete(game.lobbyMessageId);
+            this.lobbies.delete(lobbyMsgId);
+            
+            // Check for next game queue
+            if (channelId && this.globalQueues.has(channelId)) {
+                const queue = this.globalQueues.get(channelId);
+                if (queue.size > 0) {
+                    // Logic to automatically trigger next lobby would go here if desired, 
+                    // but usually we wait for user to /mafia host or we auto-redeploy?
+                    // User said: "they'll be automatically added to the party and pinged"
+                    // This implies the bot should wait for the host to start a NEW lobby or we just create it.
+                }
+            }
+            
             this.saveState();
         }
     }
@@ -99,7 +154,8 @@ class ArchiveManager {
 
             await fs.promises.writeFile(STATE_FILE, JSON.stringify({
                 games: gamesArray,
-                prefs: Array.from(this.hostPreferences.entries())
+                prefs: Array.from(this.hostPreferences.entries()),
+                queues: Array.from(this.globalQueues.entries()).map(([k, v]) => [k, Array.from(v)])
             }));
         } catch (e) {
             console.error('Archive State serialization failed:', e);
@@ -117,6 +173,9 @@ class ArchiveManager {
             
             if (payload.prefs) {
                 this.hostPreferences = new Map(payload.prefs);
+            }
+            if (payload.queues) {
+                this.globalQueues = new Collection(payload.queues.map(([k, v]) => [k, new Set(v)]));
             }
             
             const Game = require('./ArchiveGame');

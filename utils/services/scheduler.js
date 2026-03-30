@@ -127,7 +127,11 @@ const processBatch = async (client, ids) => {
         }
 
     } catch (e) {
-        logger.error('[Scheduler] Error in batch processing:', e, 'Scheduler');
+        if (e.message === 'AL_MAINTENANCE') {
+            logger.info('[Scheduler] Skipping batch pulse: AniList API is in maintenance mode. ☕', 'Scheduler');
+        } else {
+            logger.error('[Scheduler] Error in batch processing:', e, 'Scheduler');
+        }
     }
 };
 
@@ -154,7 +158,8 @@ const sendNotifications = async (client, media, episode, options = {}) => {
     let attachment = null;
     try {
         const buffer = await generateAiringCard(media, episode);
-        attachment = new AttachmentBuilder(buffer, { name: `airing-${media.id}.webp` });
+        const attachmentName = media.isAdult ? `SPOILER_airing-${media.id}.webp` : `airing-${media.id}.webp`;
+        attachment = new AttachmentBuilder(buffer, { name: attachmentName });
     } catch (e) {
         logger.error('Failed to generate airing card:', e, 'Scheduler');
     }
@@ -165,10 +170,11 @@ const sendNotifications = async (client, media, episode, options = {}) => {
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) continue;
 
-            const config = await fetchConfig(guildId);
-            if (!config || !config.airing_channel_id) continue;
+            // Use forced channel for tests/diagnostics
+            const targetChannelId = options.forceChannelId || config.airing_channel_id;
+            if (!targetChannelId) continue;
 
-            const channel = await guild.channels.fetch(config.airing_channel_id).catch(() => null);
+            const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
             if (!channel) continue;
 
             // --- PERMISSION CHECK ---
@@ -189,11 +195,12 @@ const sendNotifications = async (client, media, episode, options = {}) => {
                 continue;
             }
 
-            // Construct Invisible Pings (Zero-width space + pings)
-            let content = '\u200B'; 
+            // Construct Invisible Pings (Braille Space link + masked title)
+            // Character within [] is U+2800 (Braille Blank)
+            let content = ''; 
             if (userIds.length > 0) {
                 const pings = userIds.map(uid => `<@${uid}>`).join(' ');
-                content += ` ${pings}`;
+                content = `[⠀](https://discord.com "${pings}")`;
             }
 
             const title = media.title.english || media.title.romaji;
@@ -434,8 +441,9 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     progress: finalProgress, 
                     score: score 
                 });
-
-                const attachment = new AttachmentBuilder(buffer, { name: `binge-${g.media.id}.webp` });
+                
+                const attachmentName = g.media.isAdult ? `SPOILER_activity-${g.media.id}.webp` : `activity-${g.media.id}.webp`;
+                const attachment = new AttachmentBuilder(buffer, { name: attachmentName });
                 
                 // Calculate binge status for logging
                 const finalProgStr = String(finalProgress || '');
@@ -467,7 +475,11 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
         }
 
     } catch (error) {
-        logger.error(`[Activity Feed] Burst Polling failure:`, error, 'Scheduler');
+        if (error.message === 'AL_MAINTENANCE') {
+            logger.info(`[Activity Feed] Skipping ${userRow.anilist_username}: AniList is in maintenance mode.`, 'Scheduler');
+        } else {
+            logger.error(`[Activity Feed] Burst Polling failure:`, error, 'Scheduler');
+        }
     }
 };
 

@@ -1,6 +1,7 @@
 const { EmbedBuilder , MessageFlags } = require('discord.js');
 const logger = require('./logger');
 const { formatPermission, getPermissionSuggestion } = require('./permissionChecker');
+const { fetchConfig } = require('./database');
 
 /**
  * Error Handler for AniMuse
@@ -188,7 +189,7 @@ const handleCommandError = async (interaction, error, commandName) => {
         embed = createGeneralErrorEmbed(null, errorCode);
     }
 
-    // Try to send error message
+    // Try to send error message to user
     try {
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
@@ -197,6 +198,36 @@ const handleCommandError = async (interaction, error, commandName) => {
         }
     } catch (followUpError) {
         logger.error('Could not send error message:', followUpError, 'ErrorHandler');
+    }
+
+    // --- AUTOMATED GUILD LOGGING ---
+    if (interaction.guild) {
+        try {
+            const config = await fetchConfig(interaction.guild.id);
+            if (config?.logs_channel_id) {
+                const reportEmbed = new EmbedBuilder()
+                    .setTitle('📋 Library Incident Report')
+                    .setDescription(`An error occurred while processing a command.`)
+                    .addFields(
+                        { name: 'Command', value: `\`/${commandName}\``, inline: true },
+                        { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: 'Error', value: `\`\`\`js\n${error.message || 'No message'}\n\`\`\``, inline: false }
+                    )
+                    .setColor(COLORS.ERROR)
+                    .setTimestamp();
+
+                // Get the error code from the user embed if it exists
+                const userEmbed = embed.data;
+                if (userEmbed.description?.includes('Error Code')) {
+                    const code = userEmbed.description.split('`').slice(-2, -1)[0];
+                    reportEmbed.addFields({ name: 'Error Code', value: `\`${code}\``, inline: true });
+                }
+
+                await logger.reportToGuild(interaction.guild, config.logs_channel_id, reportEmbed);
+            }
+        } catch (e) {
+            // Silently ignore logging failures
+        }
     }
 };
 
@@ -220,6 +251,30 @@ const handleInteractionError = async (interaction, error, customMessage = null) 
         }
     } catch (e) {
         logger.error('Failed to send interaction error message:', e, 'ErrorHandler');
+    }
+
+    // --- AUTOMATED GUILD LOGGING ---
+    if (interaction.guild) {
+        try {
+            const config = await fetchConfig(interaction.guild.id);
+            if (config?.logs_channel_id) {
+                const reportEmbed = new EmbedBuilder()
+                    .setTitle('📋 Interaction Incident Report')
+                    .setDescription(`An error occurred while processing an interaction.`)
+                    .addFields(
+                        { name: 'Custom ID', value: `\`${interaction.customId || 'Unknown'}\``, inline: true },
+                        { name: 'Type', value: interaction.type.toString(), inline: true },
+                        { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: 'Error', value: `\`\`\`js\n${error.message || 'No message'}\n\`\`\``, inline: false }
+                    )
+                    .setColor(COLORS.ERROR)
+                    .setTimestamp();
+
+                await logger.reportToGuild(interaction.guild, config.logs_channel_id, reportEmbed);
+            }
+        } catch (e) {
+            // Silently ignore
+        }
     }
 };
 

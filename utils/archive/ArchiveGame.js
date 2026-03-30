@@ -63,10 +63,8 @@ class ArchiveGame extends EventEmitter {
         this.activeTimer = null;
         this.hubMessageId = null;
         this.visitHistory = []; // { night, sourceId, targetId }
-        this.archiveThreadId = null; 
         this.botTimers = []; // Track bot setTimeouts for cleanup
         this.isDestroyed = false;
-        this.waitlist = new Set(); // Users queued to join later or for next round
     }
 
     destroy() {
@@ -104,6 +102,19 @@ class ArchiveGame extends EventEmitter {
 
     async start(interaction) {
         if (this.state !== 'LOBBY') return false;
+        
+        // Remove unconfirmed queue players
+        for (const [id, p] of this.players) {
+            if (p.requiresConfirmation && !p.isConfirmed) {
+                this.players.delete(id);
+            }
+        }
+        
+        if (this.players.size < 4) {
+            await interaction.followUp({ content: '❌ **Simulation aborted.** Not enough confirmed survivors remained to hold the sanctuary.', flags: 64 });
+            return false;
+        }
+
         this.state = 'PROLOGUE';
         
         let thread;
@@ -688,11 +699,12 @@ class ArchiveGame extends EventEmitter {
                 guilt: p.guilt,
                 won: p.won,
                 factionOverride: p.role?.faction,
-                lastWill: p.lastWill
+                lastWill: p.lastWill,
+                requiresConfirmation: p.requiresConfirmation,
+                isConfirmed: p.isConfirmed
             })),
             visitHistory: this.visitHistory,
-            archiveThreadId: this.archiveThreadId,
-            waitlist: Array.from(this.waitlist)
+            archiveThreadId: this.archiveThreadId
         };
     }
 
@@ -720,6 +732,8 @@ class ArchiveGame extends EventEmitter {
             p.guilt = pData.guilt;
             p.won = pData.won;
             p.lastWill = pData.lastWill;
+            p.requiresConfirmation = pData.requiresConfirmation || false;
+            p.isConfirmed = pData.isConfirmed || false;
             
             if (pData.roleObject && rolesList[pData.roleObject]) {
                 const RoleClass = rolesList[pData.roleObject];
@@ -730,7 +744,6 @@ class ArchiveGame extends EventEmitter {
         }
         this.visitHistory = data.visitHistory || [];
         this.archiveThreadId = data.archiveThreadId || null;
-        this.waitlist = new Set(data.waitlist || []);
     }
     
     resumePhase() {

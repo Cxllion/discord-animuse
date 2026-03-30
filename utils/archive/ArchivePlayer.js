@@ -21,6 +21,8 @@ class ArchivePlayer {
         this.guilt = false;
         this.won = false;
         this.lastWill = ""; // Final message revealed on death
+        this.requiresConfirmation = false; // For waitlist auto-imports
+        this.isConfirmed = false; 
     }
 
     assignRole(roleObject) {
