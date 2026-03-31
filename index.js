@@ -19,6 +19,9 @@ validateEnv();
 // Create simple HTTP server for Render health checks
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
+    // Add logging to track Render health checks
+    logger.debug(`Incoming Health Check: ${req.method} ${req.url}`, 'System');
+    
     if (req.url === '/health' || req.url === '/') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -51,7 +54,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers, // Required for members.fetch() and member events
+        GatewayIntentBits.GuildMembers, 
     ],
     rest: {
         timeout: 60000,
@@ -60,12 +63,12 @@ const client = new Client({
 
 client.commands = new Collection();
 client.isSystemsGo = false;
-client.isTestBot = false; // Main instance
+client.isTestBot = false;
 
 // Setup Client Safety
 setupClientHandlers(client);
 
-// Graceful Shutdown Handler (for production platforms like Render)
+// Graceful Shutdown Handler
 process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, gracefully shutting down...', 'System');
     server.close();
@@ -73,10 +76,21 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-// Start Bot
-initializeBot(client).then(() => {
-    client.login(process.env.DISCORD_TOKEN);
-}).catch(err => {
-    logger.error('Critical Initialization Failure:', err, 'Startup');
-    process.exit(1);
-});
+// Start Bot with Enhanced Error Reporting
+(async () => {
+    try {
+        logger.info('--- Library Opening Sequence Started ---', 'Startup');
+        
+        // 1. Core Systems & Database
+        await initializeBot(client);
+        
+        // 2. Discord Connection
+        logger.info('Authenticating with the Grand Archivist (Discord)...', 'Startup');
+        await client.login(process.env.DISCORD_TOKEN);
+        
+    } catch (err) {
+        logger.error('Critical Initialization Failure:', err, 'Startup');
+        // Wait briefly for logs to flush before exiting
+        setTimeout(() => process.exit(1), 1000);
+    }
+})();

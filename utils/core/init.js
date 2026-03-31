@@ -12,25 +12,37 @@ const initializeBot = async (client) => {
     logger.info('Dusting off the archives...', 'Init');
     if (supabase) {
         try {
-            // Add a 10s timeout to prevent indefinite hanging if Supabase is paused/unreachable
-            const pingPromise = supabase.from('guild_configs').select('*').limit(1);
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Supabase connection timed out')), 10000)
-            );
+            // Guarantee startup by wrapping Supabase check in a 25s timeout
+            const checkConnection = () => {
+                return new Promise(async (resolve) => {
+                    const timer = setTimeout(() => resolve({ timeout: true }), 25000);
+                    try {
+                        const { error } = await supabase.from('guild_configs').select('*').limit(1);
+                        clearTimeout(timer);
+                        resolve({ error });
+                    } catch (e) {
+                        clearTimeout(timer);
+                        resolve({ error: e });
+                    }
+                });
+            };
 
-            const { error } = await Promise.race([pingPromise, timeoutPromise]);
+            const result = await checkConnection();
             
-            if (error && error.code !== 'PGRST116') {
+            if (result.timeout) {
+                client.isOfflineMode = true;
+                logger.warn('⚠️ Supabase wake-up timed out (25s). Starting in [OFFLINE MODE].', 'Init');
+            } else if (result.error && result.error.code !== 'PGRST116') {
                 client.isOfflineMode = true;
                 logger.warn('⚠️ Archives are inaccessible. Starting in [OFFLINE MODE].', 'Init');
-                logger.warn(`Reason: ${error.message}`, 'Init');
+                logger.warn(`Reason: ${result.error.message}`, 'Init');
             } else {
                 client.isOfflineMode = false;
                 logger.debug('The records for this wing of the library have been successfully updated, Manager. (DB Connected)', 'Database');
             }
         } catch (err) {
             client.isOfflineMode = true;
-            logger.warn('⚠️ Archives are inaccessible (Timeout/Error). Starting in [OFFLINE MODE].', 'Init');
+            logger.warn('⚠️ Critical initialization error. Starting in [OFFLINE MODE].', 'Init');
             logger.warn(`Reason: ${err.message}`, 'Init');
         }
     } else {

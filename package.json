@@ -22,7 +22,7 @@
     "zod": "^4.3.6"
   },
   "engines": {
-    "node": ">=16.9.0"
+    "node": "22.x"
   },
   "devDependencies": {
     "jest": "^30.3.0"
