@@ -22,7 +22,10 @@ const handleArchiveInteraction = async (interaction) => {
     const game = gameManager.getGameByLobby(lobbyId) || gameManager.getGameByThread(interaction.channelId);
 
     if (!game) {
-        return interaction.reply({ content: '❌ This game session no longer exists or has expired.', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ 
+            content: '❌ **Session Redacted.** This game session no longer exists or has expired. Please note that only one active Archive Session is supported at a time across the sanctuary. Use `/mafia host` to start a new one if the archives are clear.', 
+            flags: MessageFlags.Ephemeral 
+        });
     }
 
     // ═══════════════════════════════════════
@@ -34,6 +37,30 @@ const handleArchiveInteraction = async (interaction) => {
         if (interaction.customId.startsWith('archive_access_')) {
             const { buildActionHub } = require('../archive/ArchiveUI');
             return interaction.reply(buildActionHub(game, interaction.user));
+        }
+
+        // Join Button (from Action Hub)
+        if (interaction.customId.startsWith('archive_join_')) {
+            if (game.addPlayer(interaction.user)) {
+                const { buildActionHub, buildLobbyPayload } = require('../archive/ArchiveUI');
+                await interaction.update(buildActionHub(game, interaction.user));
+                await game.bumpLobby(interaction.channel);
+            } else {
+                await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
+            }
+            return;
+        }
+
+        // Leave Button (from Action Hub)
+        if (interaction.customId.startsWith('archive_leave_')) {
+            if (game.removePlayer(interaction.user.id)) {
+                const { buildActionHub, buildLobbyPayload } = require('../archive/ArchiveUI');
+                await interaction.update(buildActionHub(game, interaction.user));
+                await game.bumpLobby(interaction.channel);
+            } else {
+                await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
+            }
+            return;
         }
 
         // Survival Guide (lobby button)
@@ -181,6 +208,20 @@ const handleArchiveInteraction = async (interaction) => {
             const str = `💀 **Casualties & Roles (${dead.length} dead):**\n` + dead.map(p => `• ${p.name} - ${p.role ? p.role.name : 'Unknown'}`).join('\n');
             return interaction.reply({ content: str, flags: MessageFlags.Ephemeral });
         }
+
+        // --- STAGNATION WATCHDOG ---
+
+        if (interaction.customId.startsWith('archive_stagnation_keep_')) {
+            game.lastActivityAt = Date.now();
+            game.stagnationNoticeSent = false;
+            game.stagnationExpiresAt = null;
+            return interaction.update({ content: '✅ **Sanctuary Maintained.** Protocol will continue monitoring for activity.', embeds: [], components: [] });
+        }
+
+        if (interaction.customId.startsWith('archive_stagnation_disband_')) {
+            gameManager.endGame(game.hostId);
+            return interaction.update({ content: '🗑️ **Sanctuary Disbanded.** This session has been removed from the records.', embeds: [], components: [] });
+        }
     }
 
     // ═══════════════════════════════════════
@@ -284,10 +325,7 @@ const handleArchiveInteraction = async (interaction) => {
         if (action === 'join') {
             if (game.addPlayer(interaction.user)) {
                 await interaction.update(buildActionHub(game, interaction.user));
-                try {
-                    const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                    await lobbyMsg.edit(buildLobbyPayload(game));
-                } catch(e) {}
+                await game.bumpLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
@@ -295,10 +333,7 @@ const handleArchiveInteraction = async (interaction) => {
         else if (action === 'leave') {
             if (game.removePlayer(interaction.user.id)) {
                 await interaction.update(buildActionHub(game, interaction.user));
-                try {
-                    const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                    await lobbyMsg.edit(buildLobbyPayload(game));
-                } catch(e) {}
+                await game.bumpLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
@@ -346,10 +381,20 @@ const handleArchiveInteraction = async (interaction) => {
             }
             
             await interaction.update(buildActionHub(game, interaction.user));
+            await game.bumpLobby(interaction.channel);
+        }
+        else if (action === 'disband') {
+            if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can disband the sanctuary.', flags: MessageFlags.Ephemeral });
+            
             try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(buildLobbyPayload(game));
-            } catch(e) {}
+                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId).catch(() => null);
+                if (lobbyMsg) await lobbyMsg.delete().catch(() => null);
+            } catch (e) {}
+
+            gameManager.lobbies.delete(game.lobbyMessageId);
+            gameManager.saveState();
+            
+            return interaction.update({ content: '✅ **Sanctuary Disbanded.** This session has been removed from the records.', embeds: [], components: [] });
         }
         else if (action === 'settings') {
             if (interaction.user.id !== game.hostId) {

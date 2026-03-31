@@ -432,6 +432,7 @@ const getAniListProfile = async (username) => {
     query ($username: String) {
         User(name: $username) {
             avatar { large }
+            bannerImage
             statistics {
                 anime {
                     count
@@ -477,7 +478,8 @@ const getAniListProfile = async (username) => {
                 volumes: manga.volumesRead || 0
             },
             favorites: favs,
-            avatar: data.User.avatar?.large || null
+            avatar: data.User.avatar?.large || null,
+            banner: data.User.bannerImage || null
         };
     } catch (e) {
         return { 

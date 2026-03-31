@@ -53,10 +53,28 @@ module.exports = {
         if (subcommand === 'host') {
             await interaction.deferReply();
             
-            // Check if a game already exists in this channel
-            const existing = gameManager.getGameByThread(interaction.channelId);
-            if (existing && existing.state !== 'GAME_OVER') {
-                return interaction.editReply({ content: '❌ An Archive Session is already active in this thread.' });
+            // 1. Global Session Check: Only one session (Lobby or Game) bot-wide.
+            const totalLobbies = gameManager.lobbies.size;
+            const totalGames = gameManager.games.size;
+
+            if (totalLobbies > 0 || totalGames > 0) {
+                // If there's an ongoing session, verify if the current user is the host
+                const existingLobby = gameManager.getLobbyByHost(interaction.user.id);
+                const existingGame = Array.from(gameManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
+
+                if (existingLobby) {
+                    await existingLobby.bumpLobby(interaction.channel);
+                    return interaction.editReply({ content: '✅ **Sanctuary Relocated.** Your active lobby has been moved here for better visibility.' });
+                }
+
+                if (existingGame) {
+                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Archive Session in another thread. Finish that session first.' });
+                }
+
+                // If some OTHER user is hosting
+                return interaction.editReply({ 
+                    content: '❌ **Bot Capacity Reached.** Another Archive Session is currently underway in the archives. Only one session can be supported at a time to ensure community spirit.' 
+                });
             }
 
             // Placeholder msg to get ID

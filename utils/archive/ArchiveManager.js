@@ -13,17 +13,33 @@ class ArchiveManager {
         this.saveMutex = false;
         // Global Waitlist: channelId -> Set of userIds who want to join the NEXT game
         this.globalQueues = new Collection();
-        this.cleanupInterval = setInterval(() => this.cleanupStagnantGames(), 3600000); // Every 1 hour
+        this.client = null; // Set during loadState
+        this.pulseInterval = null; 
     }
 
-    cleanupStagnantGames() {
+    startPulse(client) {
+        if (this.pulseInterval) clearInterval(this.pulseInterval);
+        this.client = client;
+        this.pulseInterval = setInterval(() => this.pulse(client), 60000); // Pulse every 1 minute
+    }
+
+    pulse(client) {
         const now = Date.now();
-        for (const [id, game] of this.games) {
-            // If game is in a thread and hasn't been updated recently (if we had a lastUpdated)
-            // For now, simple cleanup for lobbies older than 24 hours
-            if (game.state === 'LOBBY' && game.createdAt && now - game.createdAt > 86400000) {
-                this.endGame(id);
+        const toDisband = [];
+
+        for (const [hostId, game] of this.lobbies) {
+            if (game.state === 'LOBBY') {
+                game.checkStagnation(client);
+
+                if (game.stagnationNoticeSent && game.stagnationExpiresAt && now > game.stagnationExpiresAt) {
+                    toDisband.push(game.threadId || hostId); 
+                }
             }
+        }
+
+        for (const id of toDisband) {
+            console.log(`[Archive] Auto-disbanding stagnant lobby (Key: ${id})`);
+            this.endGame(id);
         }
     }
 
@@ -51,9 +67,9 @@ class ArchiveManager {
     async createGame(lobbyMessageId, hostUser, channel) {
         const Game = require('./ArchiveGame');
         const game = new Game(lobbyMessageId, hostUser);
+        if (channel) game.channelId = channel.id;
         
         if (this.hostPreferences.has(hostUser.id)) {
-            // Soft-clone settings to avoid reference linkage
             game.settings = { ...this.hostPreferences.get(hostUser.id), gameMode: game.settings.gameMode };
         }
         
@@ -65,7 +81,6 @@ class ArchiveManager {
                 const queueUsers = Array.from(queue);
                 
                 for (const uid of queueUsers) {
-                    // Fetch user object to add to game
                     try {
                         const user = await channel.client.users.fetch(uid);
                         if (user) {
@@ -74,10 +89,9 @@ class ArchiveManager {
                                 p.requiresConfirmation = true;
                                 p.isConfirmed = false;
                                 
-                                // Send individual confirmation ping
                                 const row = new ActionRowBuilder().addComponents(
                                     new ButtonBuilder()
-                                        .setCustomId(`archive_here_${lobbyMessageId}_${uid}`)
+                                        .setCustomId(`archive_here_${hostUser.id}_${uid}`) // Use hostId!
                                         .setLabel("🙋 I'm here!")
                                         .setStyle(ButtonStyle.Success)
                                 );
@@ -89,29 +103,32 @@ class ArchiveManager {
                         }
                     } catch(e) {}
                 }
-                // Clear queue after import
                 this.globalQueues.delete(channel.id);
             }
         }
-        // -------------------------
 
-        this.lobbies.set(lobbyMessageId, game);
+        this.lobbies.set(hostUser.id, game); // Map by Host ID
         game.createdAt = Date.now();
         this.setupGameListeners(game);
         this.saveState();
         return game;
     }
     
-    getGameByLobby(messageId) {
-        return this.lobbies.get(messageId);
+    getGameByLobby(id) {
+        // Now 'id' in our customIds will be the hostId for lobbies
+        return this.lobbies.get(id);
     }
 
     getGameByThread(threadId) {
         return this.games.get(threadId);
     }
 
-    startGame(messageId, threadId) {
-        const game = this.lobbies.get(messageId);
+    getLobbyByHost(hostId) {
+        return this.lobbies.get(hostId);
+    }
+
+    startGame(hostId, threadId) {
+        const game = this.lobbies.get(hostId);
         if (game) {
             game.threadId = threadId;
             this.games.set(threadId, game);
@@ -123,10 +140,11 @@ class ArchiveManager {
         const game = this.games.get(threadId);
         if (game) {
             const channelId = game.thread?.parentId || game.thread?.id; // Parent channel or actual channel
+            const hostId = game.hostId;
             const lobbyMsgId = game.lobbyMessageId;
             
             this.games.delete(threadId);
-            this.lobbies.delete(lobbyMsgId);
+            this.lobbies.delete(hostId);
             
             // Check for next game queue
             if (channelId && this.globalQueues.has(channelId)) {
@@ -171,6 +189,7 @@ class ArchiveManager {
             const payload = JSON.parse(data);
             const gamesArray = payload.games || [];
             
+            this.startPulse(client);
             if (payload.prefs) {
                 this.hostPreferences = new Map(payload.prefs);
             }
@@ -184,7 +203,7 @@ class ArchiveManager {
                 game.fromJSON(gData);
                 
                 // Restore both collections
-                this.lobbies.set(game.lobbyMessageId, game);
+                this.lobbies.set(game.hostId, game);
                 if (game.threadId) {
                     this.games.set(game.threadId, game);
                 }

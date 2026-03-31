@@ -154,10 +154,45 @@ const parseMetadata = (fullTitle) => {
 
     return { title, tags };
 };
+/**
+ * Resolves a banner configuration into a usable URL string.
+ * Orchestrates Discord API fetching for Profile/Server banners.
+ */
+const resolveBannerUrl = async (user, member, bannerConfig) => {
+    if (!bannerConfig) return null;
+    const { source, customUrl } = bannerConfig;
+
+    if (source === 'CUSTOM' || source === 'PRESET') return customUrl;
+    
+    try {
+        if (source === 'ANILIST') {
+            const { getLinkedAnilist } = require('./database');
+            const { getAniListProfile } = require('../services/anilistService');
+            
+            const linked = await getLinkedAnilist(user.id, member?.guild?.id || null);
+            if (linked) {
+                const profile = await getAniListProfile(linked);
+                return profile.banner;
+            }
+        }
+        if (source === 'DISCORD_USER') {
+            const fetched = await user.fetch(true);
+            return fetched.bannerURL({ size: 1024, extension: 'png' });
+        }
+        if (source === 'DISCORD_GUILD' && member) {
+            const fetched = await member.fetch(true);
+            return fetched.bannerURL({ size: 1024, extension: 'png' });
+        }
+    } catch (e) {
+        // Fallback
+    }
+    return null;
+};
 
 module.exports = {
     normalizeColor,
     generateColorTokens,
     parseMetadata,
-    sanitizeTitle
+    sanitizeTitle,
+    resolveBannerUrl
 };

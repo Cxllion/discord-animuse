@@ -28,21 +28,28 @@ const getLinkedAnilist = async (userId, guildId) => {
     return data ? data.anilist_username : null;
 };
 
-const updateUserBackground = async (userId, guildId, url) => {
+const getUserBannerConfig = async (userId, guildId) => {
+    if (!supabase) return { source: 'PRESET', customUrl: null };
+    const { data, error } = await supabase.from('users').select('banner_source, background_url').eq('user_id', userId).eq('guild_id', guildId).single();
+    if (error && error.code !== 'PGRST116') logger.error('DB Error getUserBannerConfig: ' + error.message, null, 'Database');
+    
+    return {
+        source: data ? (data.banner_source || 'PRESET') : 'PRESET',
+        customUrl: data ? data.background_url : null
+    };
+};
+
+const updateUserBannerConfig = async (userId, guildId, source, url = undefined) => {
     if (!supabase) return { error: 'No DB' };
-    return await supabase.from('users').upsert({ user_id: userId, guild_id: guildId, background_url: url }, { onConflict: 'user_id, guild_id' }).select();
+    const updates = { banner_source: source };
+    if (url !== undefined) updates.background_url = url;
+    
+    return await supabase.from('users').upsert({ user_id: userId, guild_id: guildId, ...updates }, { onConflict: 'user_id, guild_id' }).select();
 };
 
-const clearUserBackgroundGlobally = async (userId) => {
+const clearUserBannerGlobally = async (userId) => {
     if (!supabase) return;
-    await supabase.from('users').update({ background_url: null }).eq('user_id', userId);
-};
-
-const getUserBackground = async (userId, guildId) => {
-    if (!supabase) return null;
-    const { data, error } = await supabase.from('users').select('background_url').eq('user_id', userId).eq('guild_id', guildId).single();
-    if (error && error.code !== 'PGRST116') logger.error('DB Error getUserBackground: ' + error.message, null, 'Database');
-    return data ? data.background_url : null;
+    await supabase.from('users').update({ background_url: null, banner_source: 'PRESET' }).eq('user_id', userId);
 };
 
 const getUserTitle = async (userId, guildId) => {
@@ -282,8 +289,9 @@ module.exports = {
     linkAnilistAccount,
     unlinkAnilistAccount,
     getLinkedAnilist,
-    updateUserBackground,
-    getUserBackground,
+    updateUserBannerConfig,
+    getUserBannerConfig,
+    clearUserBannerGlobally,
     getUserTitle,
     updateUserTitle,
     getUserColor,
@@ -304,6 +312,6 @@ module.exports = {
     wasPostedInDB,
     markPostedInDB,
     findRecentActivityPostInDB,
-    clearUserBackgroundGlobally,
+    clearUserBannerGlobally,
     clearOldActivityPostsInDB,
 };

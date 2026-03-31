@@ -1,5 +1,5 @@
 const { fetchConfig, upsertConfig, assignChannel, getArchiveSettings, registerParentServer, getParentSettings, isParentServer, pulseChannelActivity, pinChannelPosition, getGuildChannelData } = require('./guildConfigService');
-const { linkAnilistAccount, unlinkAnilistAccount, getLinkedAnilist, updateUserBackground, getUserBackground, getUserTitle, updateUserTitle, getUserColor, updateUserColor, getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal } = require('./userService');
+const { linkAnilistAccount, unlinkAnilistAccount, getLinkedAnilist, updateUserBannerConfig, getUserBannerConfig, getUserTitle, updateUserTitle, getUserColor, updateUserColor, getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal } = require('./userService');
 const { addTracker, removeTracker, getUserTrackedAnime, getAllTrackersForAnime, getAnimeDueForUpdate, getTrackedAnimeState, updateTrackedAnimeState } = require('./animeTrackerService');
 const { logModerationAction, getModerationLogs } = require('./moderationService');
 const { createBingoCard, getBingoCards, getBingoCardById, updateBingoEntries, updateBingoCard, deleteBingoCard } = require('./bingoService');
@@ -25,8 +25,8 @@ module.exports = {
     linkAnilistAccount,
     unlinkAnilistAccount,
     getLinkedAnilist,
-    updateUserBackground,
-    getUserBackground,
+    updateUserBannerConfig,
+    getUserBannerConfig,
     getUserTitle,
     updateUserTitle,
     getUserColor,

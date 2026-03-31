@@ -10,6 +10,7 @@ const { handleDashboardInteraction } = require('./roleDashboard');
 const { handleArchiveInteraction } = require('./archiveHandler');
 const logger = require('../core/logger');
 const { MessageFlags, EmbedBuilder } = require('discord.js');
+const { isUnknownInteraction } = require('../core/errorHandler');
 
 /**
  * Routes active components to their specific handlers.
@@ -88,6 +89,7 @@ const routeInteraction = async (interaction) => {
 
         return false;
     } catch (error) {
+        if (isUnknownInteraction(error)) return true;
         logger.error(`[Router] Error routing interaction ${customId}:`, error);
         
         // Final attempt at safety - Don't let a "reply to error" crash the process

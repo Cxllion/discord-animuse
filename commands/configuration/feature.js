@@ -5,10 +5,10 @@ const {
     getUserAvatarConfig, 
     getLinkedAnilist: retrieveLinkedUser, 
     getUserTitle, 
-    getUserBackground: retrieveBackground,
+    getUserBannerConfig: retrieveBannerConfig,
     getLevelRoles,
-    updateUserBackground,
-    clearUserBackgroundGlobally
+    updateUserBannerConfig,
+    clearUserBannerGlobally
 } = require('../../utils/core/database');
 const { generateWelcomeCard } = require('../../utils/generators/welcomeGenerator');
 const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
@@ -411,7 +411,7 @@ module.exports = {
                     for (const task of tasks) {
                         const buffer = await generateProfileCard(
                             targetUser, task.data, favorites, backgroundUrl, color || '#FFACD1', displayName,
-                            async () => await clearUserBackgroundGlobally(targetUser.id)
+                            async () => await clearUserBannerGlobally(targetUser.id)
                         );
                         attachments.push(new AttachmentBuilder(buffer, { name: `profile-${task.name}-${targetUser.id}.webp` }));
                     }

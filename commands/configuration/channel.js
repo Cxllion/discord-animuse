@@ -37,7 +37,8 @@ module.exports = {
             { name: '📸 Media Gallery', value: 'media' },
             { name: '🔔 Activity Feed', value: 'activity' },
             { name: '📢 Airing Tower', value: 'airing' },
-            { name: '📋 Security Logs', value: 'logs' }
+            { name: '📋 Security Logs', value: 'logs' },
+            { name: '🖼️ Identity Dump', value: 'dump' }
         ];
 
         const filtered = choices.filter(choice => choice.name.toLowerCase().includes(focusedValue));
@@ -127,6 +128,13 @@ module.exports = {
                         content: `✅ **Configuration Updated**\nThis channel (${channel}) will now receive institutional reports and library incident alerts.`
                     });
                 }
+                else if (type === 'dump') {
+                    await upsertConfig(guildId, { banner_dump_channel_id: channel.id });
+
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nThis channel (${channel}) is now the **Static Identity Archive**. All custom banners will be permanently stored here to prevent CDN invalidation.`
+                    });
+                }
 
             } catch (error) {
                 logger.error('Command Error: /channel assign', error, 'ChannelCommand');
@@ -154,6 +162,7 @@ module.exports = {
                         { name: '📢 Airing', value: fmt(config?.airing_channel_id), inline: true },
                         { name: '🔔 Activity', value: fmt(config?.activity_channel_id), inline: true },
                         { name: '📋 Logs', value: fmt(config?.logs_channel_id), inline: true },
+                        { name: '🖼️ Identity Dump', value: fmt(config?.banner_dump_channel_id), inline: true },
                         { name: '📸 Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
                     .setColor(0x3b82f6) // Blue

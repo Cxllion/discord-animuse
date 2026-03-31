@@ -1,5 +1,33 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
+const axios = require('axios');
+const logger = require('../core/logger');
+
+// --- TACTICAL ASSET ACQUISITION ---
+const secureLoadImage = async (url, fallbackPath = null) => {
+    if (!url) return fallbackPath ? await loadImage(fallbackPath) : null;
+    
+    // Local File Optimization
+    if (url.startsWith('/') || url.includes(':\\')) {
+        try { return await loadImage(url); } catch (e) { }
+    }
+
+    // Remote Uplink with Active Timeout (8s)
+    try {
+        const response = await axios.get(url, { 
+            responseType: 'arraybuffer', 
+            timeout: 8000,
+            headers: { 'User-Agent': 'AniMuse-Archivist/1.0' }
+        });
+        return await loadImage(Buffer.from(response.data));
+    } catch (err) {
+        logger.warn(`Asset Uplink Interrupted: ${url} (${err.message}). Falling back to archives.`, 'Generator');
+        if (fallbackPath) {
+            try { return await loadImage(fallbackPath); } catch (e) { }
+        }
+    }
+    return null;
+};
 
 // --- VERTICAL WIDGET ARCHITECTURE (V5: The Premium Polish) ---
 const CARD_WIDTH = 400;
@@ -47,7 +75,7 @@ const drawScanlines = (ctx, w, h) => {
     ctx.restore();
 };
 
-const generateProfileCard = async (discordUser, userData, favorites, backgroundUrl = null, primaryColor = '#3B82F6', displayName = null, onBackgroundFailure = null) => {
+const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = '#3B82F6', displayName = null, onBannerFailure = null) => {
     const isCompact = !userData.anilist_synced;
     const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
 
@@ -68,10 +96,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
     try {
         // --- 1. AMBIENT BACKGROUND SYSTEM ---
-        let bgImg;
-        try { if (backgroundUrl) bgImg = await loadImage(backgroundUrl); }
-        catch (e) { if (onBackgroundFailure) onBackgroundFailure(backgroundUrl); }
-        if (!bgImg) { try { bgImg = await loadImage(path.join(__dirname, 'images', 'profile_background_default.png')); } catch (e) { } }
+        const defaultBg = path.join(__dirname, 'images', 'profile_background_default.png');
+        const bgImg = await secureLoadImage(bannerUrl, defaultBg);
 
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 20;
@@ -139,13 +165,23 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         ctx.beginPath(); ctx.arc(avX, avY, avR + 4, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(15, 15, 20, 0.9)'; ctx.fill();
 
+        // V4.10: Precision Avatar Resolution
         let avatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 1024 });
-        if (userData.avatarConfig?.source === 'CUSTOM' && userData.avatarConfig.customUrl) avatarUrl = userData.avatarConfig.customUrl;
-        try {
-            const avatar = await loadImage(avatarUrl);
+        
+        const avConfig = userData.avatarConfig || { source: 'DISCORD_GLOBAL' };
+        if (avConfig.source === 'DISCORD_GUILD' && userData.guildAvatarUrl) {
+            avatarUrl = userData.guildAvatarUrl;
+        } else if (avConfig.source === 'ANILIST' && avConfig.anilistAvatar) {
+            avatarUrl = avConfig.anilistAvatar;
+        } else if (avConfig.source === 'CUSTOM' && avConfig.customUrl) {
+            avatarUrl = avConfig.customUrl;
+        }
+
+        const avatar = await secureLoadImage(avatarUrl);
+        if (avatar) {
             ctx.save(); ctx.beginPath(); ctx.arc(avX, avY, avR, 0, Math.PI * 2); ctx.clip();
             ctx.drawImage(avatar, avX - avR, avY - avR, avR * 2, avR * 2); ctx.restore();
-        } catch (e) { }
+        }
 
         // --- 4. IDENTITY CLUSTER (Left) ---
         const nameY = 225;

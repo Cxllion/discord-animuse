@@ -41,6 +41,8 @@ class ArchiveGame extends EventEmitter {
         super();
         this.lobbyMessageId = lobbyMessageId;
         this.hostId = hostUser.id;
+        this.channelId = null; // Set on creation or first bump
+        this.bumpTimer = null;
         this.threadId = null; 
         this.thread = null; // Direct reference to the Discord ThreadChannel
 
@@ -69,6 +71,8 @@ class ArchiveGame extends EventEmitter {
         this.botTimers = []; // Track bot setTimeouts for cleanup
         this.graveyardThreadId = null;
         this.isDestroyed = false;
+        this.lastActivityAt = Date.now();
+        this.stagnationNoticeSent = false;
     }
 
     destroy() {
@@ -85,6 +89,8 @@ class ArchiveGame extends EventEmitter {
         if (!this.players.has(user.id)) {
             const player = new Player(user, isBot);
             this.players.set(user.id, player);
+            this.lastActivityAt = Date.now();
+            this.stagnationNoticeSent = false;
             this.emit('saveState');
             return player;
         }
@@ -94,10 +100,75 @@ class ArchiveGame extends EventEmitter {
     removePlayer(userId) {
         if (this.players.has(userId)) {
             this.players.delete(userId);
+            this.lastActivityAt = Date.now();
+            this.stagnationNoticeSent = false;
             this.emit('saveState');
             return true;
         }
         return false;
+    }
+
+    async bumpLobby(channel) {
+        if (this.state !== 'LOBBY') return;
+        
+        const oldId = this.lobbyMessageId;
+        const { buildLobbyPayload } = require('./ArchiveUI');
+        const payload = buildLobbyPayload(this);
+        const manager = require('./ArchiveManager');
+
+        try {
+            const oldMsg = await channel.messages.fetch(oldId).catch(() => null);
+            if (oldMsg) await oldMsg.delete().catch(() => null);
+        } catch (e) {}
+
+        const newMsg = await channel.send(payload);
+        this.lobbyMessageId = newMsg.id;
+        
+        manager.saveState();
+        return newMsg;
+    }
+
+    scheduleBump(channel) {
+        if (this.state !== 'LOBBY' || this.isDestroyed) return;
+        
+        if (this.bumpTimer) clearTimeout(this.bumpTimer);
+        this.bumpTimer = setTimeout(async () => {
+            if (this.state !== 'LOBBY' || this.isDestroyed) return;
+            
+            try {
+                const messages = await channel.messages.fetch({ limit: 5 });
+                const lastMsg = messages.first();
+                if (lastMsg && lastMsg.id === this.lobbyMessageId) return; 
+                
+                await this.bumpLobby(channel);
+            } catch (e) {
+                console.error('[Archive Bump] Failed to auto-bump:', e);
+            }
+        }, 15000);
+    }
+
+    async checkStagnation(client) {
+        if (this.state !== 'LOBBY' || this.isDestroyed || this.stagnationNoticeSent) return;
+        
+        const now = Date.now();
+        const idleTime = now - this.lastActivityAt;
+        
+        // 10 minutes of inactivity
+        if (idleTime > 600000) {
+            this.stagnationNoticeSent = true;
+            this.stagnationExpiresAt = Date.now() + 120000; // 2 minutes to respond
+            try {
+                const host = await client.users.fetch(this.hostId);
+                if (host) {
+                    const { buildStagnationPayload } = require('./ArchiveUI');
+                    await host.send(buildStagnationPayload(this));
+                    console.log(`[Archive] Stagnation notice sent to host ${this.hostId}. Expiry at ${new Date(this.stagnationExpiresAt).toLocaleTimeString()}`);
+                }
+            } catch (e) {
+                console.error(`[Archive] Failed to send stagnation notice to ${this.hostId}:`, e);
+                // If we can't DM them, we'll still auto-disband after the expiry to keep the archives clean
+            }
+        }
     }
 
     getAlivePlayers() {
@@ -145,7 +216,7 @@ class ArchiveGame extends EventEmitter {
         
         this.threadId = thread.id;
         this.thread = thread;
-        this.emit('gameStarted', { lobbyId: this.lobbyMessageId, threadId: thread.id });
+        this.emit('gameStarted', { lobbyId: this.hostId, threadId: thread.id }); // Pass hostId as the look-up key
 
         // Add real players to the thread
         for (const [userId, player] of this.players.entries()) {
@@ -428,7 +499,7 @@ class ArchiveGame extends EventEmitter {
 
                 if (optionsData.length > 0) {
                     const dropdown = new StringSelectMenuBuilder()
-                        .setCustomId(`archive_night_target_${this.lobbyMessageId}`)
+                        .setCustomId(`archive_night_target_${this.hostId}`) // Use stable hostId
                         .setPlaceholder(`${p.role.emoji} Select a target for: ${p.role.name}`)
                         .addOptions(optionsData.slice(0, 25));
                     components.push(new ActionRowBuilder().addComponents(dropdown));
@@ -439,7 +510,7 @@ class ArchiveGame extends EventEmitter {
             const willLabel = p.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
             const willRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`archive_will_${this.lobbyMessageId}`)
+                    .setCustomId(`archive_will_${this.hostId}`) // Use stable hostId
                     .setLabel(willLabel)
                     .setStyle(ButtonStyle.Secondary)
             );
@@ -564,7 +635,7 @@ class ArchiveGame extends EventEmitter {
                     currentRow = new ActionRowBuilder();
                 }
                 currentRow.addComponents(
-                    new ButtonBuilder().setCustomId(`archive_vote_${this.lobbyMessageId}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary)
+                    new ButtonBuilder().setCustomId(`archive_vote_${this.hostId}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary)
                 );
             }
             if (currentRow.components.length === 5) {
@@ -572,7 +643,7 @@ class ArchiveGame extends EventEmitter {
                 currentRow = new ActionRowBuilder();
             }
             currentRow.addComponents(
-                new ButtonBuilder().setCustomId(`archive_vote_${this.lobbyMessageId}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger)
+                new ButtonBuilder().setCustomId(`archive_vote_${this.hostId}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger)
             );
             rows.push(currentRow);
             
@@ -806,8 +877,8 @@ class ArchiveGame extends EventEmitter {
                     
                     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
                     const row = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`archive_graveL_${this.lobbyMessageId}`).setLabel('🧍 View Living Roster').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId(`archive_graveD_${this.lobbyMessageId}`).setLabel('💀 View Casualties & Roles').setStyle(ButtonStyle.Secondary)
+                        new ButtonBuilder().setCustomId(`archive_graveL_${this.hostId}`).setLabel('🧍 View Living Roster').setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder().setCustomId(`archive_graveD_${this.hostId}`).setLabel('💀 View Casualties & Roles').setStyle(ButtonStyle.Secondary)
                     );
 
                     await graveyard.send({ content: `👻 <@${p.id}> has joined the Deleted Records.`, components: [row] });
@@ -822,6 +893,7 @@ class ArchiveGame extends EventEmitter {
         return {
             lobbyMessageId: this.lobbyMessageId,
             hostId: this.hostId,
+            channelId: this.channelId,
             threadId: this.threadId,
             settings: this.settings,
             state: this.state,
@@ -851,6 +923,7 @@ class ArchiveGame extends EventEmitter {
     }
 
     fromJSON(data) {
+        this.channelId = data.channelId || null;
         this.threadId = data.threadId;
         this.settings = data.settings;
         this.state = data.state;

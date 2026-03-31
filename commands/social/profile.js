@@ -3,17 +3,18 @@ const { getUserRank, getLevelProgress } = require('../../utils/services/leveling
 const { extractAnilistId, getLinkedAnilist, getAniListProfile } = require('../../utils/services/anilistService');
 const {
     getLinkedAnilist: retrieveLinkedUser,
-    getUserBackground: retrieveBackground,
+    getUserBannerConfig: retrieveBannerConfig,
+    updateUserBannerConfig: retrieveUpdateBanner,
     getUserTitle: retrieveTitle,
     getUserColor: retrieveColor,
     getUserAvatarConfig: retrieveAvatarConfig,
     updateUserColor,
-    updateUserBackground: retrieveUpdateBackground,
-    clearUserBackgroundGlobally
+    clearUserBannerGlobally
 } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 const { generateProfileCard } = require('../../utils/generators/profileGenerator');
 const { getDynamicUserTitle } = require('../../utils/core/userMeta');
+const { resolveBannerUrl } = require('../../utils/core/visualUtils');
 
 module.exports = {
     cooldown: 10, // Canvas generation
@@ -43,10 +44,10 @@ module.exports = {
             member = null;
         }
 
-        const [rankData, linkedUsername, backgroundUrl, title, color, avatarConfig] = await Promise.all([
+        const [rankData, linkedUsername, bannerConfig, title, color, avatarConfig] = await Promise.all([
             getUserRank(targetUser.id, guildId),
             retrieveLinkedUser(targetUser.id, guildId),
-            retrieveBackground(targetUser.id, guildId),
+            retrieveBannerConfig(targetUser.id, guildId),
             retrieveTitle(targetUser.id, guildId),
             retrieveColor(targetUser.id, guildId),
             retrieveAvatarConfig(targetUser.id, guildId)
@@ -125,16 +126,17 @@ module.exports = {
         const loader = new LoadingManager(interaction);
         loader.startProgress('Materializing Profile...', 6); // No await: allow Canvas to start immediately
 
+        const bannerUrl = await resolveBannerUrl(targetUser, member, bannerConfig);
         const buffer = await generateProfileCard(
             targetUser, 
             userData, 
             favorites, 
-            backgroundUrl, 
+            bannerUrl, 
             color, 
             displayName,
             async (failedUrl) => {
-                logger.warn(`Archival Cleanup: Global neutralization of dead background ${failedUrl} for user ${targetUser.id}.`, 'Profile');
-                await clearUserBackgroundGlobally(targetUser.id);
+                logger.warn(`Archival Cleanup: Global neutralization of dead banner ${failedUrl} for user ${targetUser.id}.`, 'Profile');
+                await clearUserBannerGlobally(targetUser.id);
             }
         );
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.webp' });

@@ -22,8 +22,8 @@ function buildLobbyPayload(game) {
     );
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_access_${game.lobbyMessageId}`).setLabel('📖 Access Terminal').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`archive_help_general_${game.lobbyMessageId}`).setLabel('❓ Survival Guide').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`archive_access_${game.hostId}`).setLabel('📋 Access').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`archive_help_general_${game.hostId}`).setLabel('❓ Guide').setStyle(ButtonStyle.Secondary)
     );
 
     return { embeds: [embed], components: [row] };
@@ -44,6 +44,7 @@ function buildActionHub(game, user) {
         options.push({ label: 'Seal the Gates', value: 'start', description: 'Close the library and begin the survival simulation.', emoji: '▶️' });
         options.push({ label: 'Sanctuary Settings', value: 'settings', description: 'Adjust protocol timers and modes.', emoji: '⚙️' });
         options.push({ label: 'Inject Test Bots', value: 'inject_bots', description: 'Add virtual test survivors for simulation.', emoji: '🧪' });
+        options.push({ label: 'Disband Sanctuary', value: 'disband', description: 'Permanently close this lobby and delete the record.', emoji: '🗑️' });
     }
 
     if (isPlayer) {
@@ -52,12 +53,27 @@ function buildActionHub(game, user) {
         options.push({ label: 'Personal Records', value: 'personal_stats', description: 'View your survival statistics.', emoji: '🏅' });
     }
 
+    const rows = [];
     const dropdown = new StringSelectMenuBuilder()
-        .setCustomId(`archive_lobby_${game.lobbyMessageId}`)
+        .setCustomId(`archive_lobby_${game.hostId}`)
         .setPlaceholder('📜 Select a Command...')
         .addOptions(options);
 
-    const row = new ActionRowBuilder().addComponents(dropdown);
+    rows.push(new ActionRowBuilder().addComponents(dropdown));
+
+    if (!isHost) {
+        const button = new ButtonBuilder();
+        if (!isPlayer) {
+            button.setCustomId(`archive_join_${game.hostId}`)
+                .setLabel('📥 Join Sanctuary')
+                .setStyle(ButtonStyle.Primary);
+        } else {
+            button.setCustomId(`archive_leave_${game.hostId}`)
+                .setLabel('📤 Leave Sanctuary')
+                .setStyle(ButtonStyle.Danger);
+        }
+        rows.push(new ActionRowBuilder().addComponents(button));
+    }
     
     const embed = new EmbedBuilder()
         .setTitle('🎧 Sanctuary Terminal')
@@ -67,7 +83,7 @@ function buildActionHub(game, user) {
 
     return { 
         embeds: [embed],
-        components: [row], 
+        components: rows, 
         flags: 64 
     };
 }
@@ -146,7 +162,7 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const modeRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setmode_${game.lobbyMessageId}`)
+            .setCustomId(`archive_setmode_${game.hostId}`)
             .setPlaceholder('Select Game Mode')
             .addOptions([
                 { label: 'First Edition', description: 'Classic balanced gameplay.', value: 'First Edition' },
@@ -157,7 +173,7 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const categoryRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setphase_cat_${game.lobbyMessageId}`)
+            .setCustomId(`archive_setphase_cat_${game.hostId}`)
             .setPlaceholder('🕑 Step 1: Select Phase to Configure')
             .addOptions([
                 { label: 'Discussion Phase', value: 'discussion', emoji: '🗣️', default: category === 'discussion' },
@@ -198,14 +214,14 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const durationRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setphase_val_${game.lobbyMessageId}_${category}`)
+            .setCustomId(`archive_setphase_val_${game.hostId}_${category}`)
             .setPlaceholder(`⏳ Step 2: Set ${category.charAt(0).toUpperCase() + category.slice(1)} Duration`)
             .addOptions(durationOptions[category] || durationOptions.discussion)
     );
 
     const backRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_togglereveal_${game.lobbyMessageId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed on Death' : '🔒 Roles: Hidden Until Game Over').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`archive_lobby_back_${game.lobbyMessageId}`).setLabel('⬅️ Back to Lobby').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`archive_togglereveal_${game.hostId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed on Death' : '🔒 Roles: Hidden Until Game Over').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`archive_lobby_back_${game.hostId}`).setLabel('⬅️ Back to Lobby').setStyle(ButtonStyle.Danger)
     );
 
     return { embeds: [embed], components: [modeRow, categoryRow, durationRow, backRow], flags: 64 };
@@ -228,8 +244,8 @@ function buildStartedLobbyPayload(game) {
     }
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_queuenext_${game.lobbyMessageId}`).setLabel('⏳ Join Next Game').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`archive_help_general_${game.lobbyMessageId}`).setLabel('📖 Survival Guide').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`archive_queuenext_${game.hostId}`).setLabel('⏳ Join Next Game').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`archive_help_general_${game.hostId}`).setLabel('📖 Survival Guide').setStyle(ButtonStyle.Secondary)
     );
 
     return { embeds: [embed], components: [row] };
@@ -385,6 +401,30 @@ function buildArchiveProfile(user, stats) {
     return { embeds: [embed], flags: 64 };
 }
 
+function buildStagnationPayload(game) {
+    const embed = new EmbedBuilder()
+        .setTitle('⚠️ Sanctuary Protocol Warning')
+        .setColor('#e67e22')
+        .setDescription(`Your lobby in <#${game.channelId}> has been inactive for over 10 minutes.\n\nTo preserve archives and maintain focus, inactive lobbies must be confirmed. Please select an action below. If no action is taken within 2 minutes, the sanctuary will be automatically disbanded.`)
+        .addFields(
+            { name: 'Current Status', value: `Players: **${game.players.size}**\nMode: **${game.settings.gameMode}**` }
+        )
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`archive_stagnation_keep_${game.hostId}`)
+            .setLabel('⏳ Keep Waiting')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`archive_stagnation_disband_${game.hostId}`)
+            .setLabel('🗑️ Disband Now')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
 module.exports = { 
     buildLobbyPayload, 
     buildSettingsPayload, 
@@ -395,5 +435,6 @@ module.exports = {
     buildGameOverPayload,
     buildRoleCard,
     buildArchiveProfile,
-    buildEndedLobbyPayload
+    buildEndedLobbyPayload,
+    buildStagnationPayload
 };

@@ -139,5 +139,12 @@ module.exports = {
                 }
             }
         }
+
+        // --- Archive Lobby Bumping ---
+        const gameManager = require('../utils/archive/ArchiveManager');
+        const lobby = gameManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
+        if (lobby) {
+            lobby.scheduleBump(message.channel);
+        }
     },
 };

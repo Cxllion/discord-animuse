@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const { getTopUsers, getUserRank, getLevelProgress } = require('../../utils/services/leveling');
 const { generateLeaderboard } = require('../../utils/generators/leaderboardGenerator');
-const { getUserBackground, getUserColor, getBulkUserAvatarConfig } = require('../../utils/core/database');
+const { getUserBannerConfig, getUserColor, getBulkUserAvatarConfig } = require('../../utils/core/database');
 const { getAnilistUser } = require('../../utils/services/anilistService');
 
 module.exports = {
@@ -89,7 +89,7 @@ module.exports = {
         // 3. Executing User Data
         const [rankData, bgUrl, color, challengerConfig] = await Promise.all([
             getUserRank(interaction.user.id, guildId),
-            getUserBackground(interaction.user.id, guildId),
+            getUserBannerConfig(interaction.user.id, guildId),
             getUserColor(interaction.user.id, guildId),
             require('../../utils/core/database').getUserAvatarConfig(interaction.user.id, guildId) // Fetch config
         ]);

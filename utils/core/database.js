@@ -14,7 +14,7 @@ const {
 
 const { 
     linkAnilistAccount, unlinkAnilistAccount, getLinkedAnilist, 
-    updateUserBackground, getUserBackground, clearUserBackgroundGlobally, getUserTitle, 
+    updateUserBannerConfig, getUserBannerConfig, clearUserBannerGlobally, getUserTitle, 
     updateUserTitle, getUserColor, updateUserColor, 
     getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, 
     getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal,
@@ -61,9 +61,9 @@ module.exports = {
     linkAnilistAccount,
     unlinkAnilistAccount,
     getLinkedAnilist,
-    updateUserBackground,
-    getUserBackground,
-    clearUserBackgroundGlobally,
+    updateUserBannerConfig,
+    getUserBannerConfig,
+    clearUserBannerGlobally,
     getUserTitle,
     updateUserTitle,
     getUserColor,
