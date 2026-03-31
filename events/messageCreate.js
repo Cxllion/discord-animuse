@@ -4,19 +4,6 @@ const baseEmbed = require('../utils/generators/baseEmbed');
 const logger = require('../utils/core/logger');
 const { getDynamicUserTitle } = require('../utils/core/userMeta');
 
-const getSourceTag = (url) => {
-    if (!url) return '';
-    const u = url.toLowerCase();
-    if (u.includes('twitter.com') || u.includes('x.com')) return '[Twitter] ';
-    if (u.includes('pixiv.net')) return '[Pixiv] ';
-    if (u.includes('artstation.com')) return '[ArtStation] ';
-    if (u.includes('instagram.com')) return '[Instagram] ';
-    if (u.includes('deviantart.com')) return '[DeviantArt] ';
-    if (u.includes('reddit.com')) return '[Reddit] ';
-    if (u.includes('pinterest.com')) return '[Pinterest] ';
-    return '';
-};
-
 module.exports = {
     name: Events.MessageCreate,
     async execute(message) {
@@ -75,39 +62,21 @@ module.exports = {
         // --- Gallery Mode ---
         if (!isSelfTest && config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
             const urlRegex = /https?:\/\/[^\s]+/;
-            const match = message.content.match(urlRegex);
-            const hasLink = !!match;
-            const link = match ? match[0] : '';
+            const hasLink = urlRegex.test(message.content);
 
             if (message.attachments.size > 0 || hasLink) {
                 // Valid post: Create thread
                 try {
-                    const sourceTag = getSourceTag(link);
                     const displayName = message.member?.displayName || message.author.displayName || message.author.username;
-                    const userTitle = await getDynamicUserTitle(message.member);
-                    
-                    // Extract content snippet for the thread name
-                    let contentSnippet = message.content.replace(urlRegex, '').trim();
-                    if (contentSnippet.length > 30) contentSnippet = contentSnippet.substring(0, 27) + '...';
-                    
-                    const threadName = contentSnippet 
-                        ? `${sourceTag}Discussion: "${contentSnippet}" (by ${displayName})`
-                        : `${sourceTag}Discussion: ${displayName}’s Post`;
+                    const threadName = `${displayName}'s Post`;
 
-                    const thread = await message.startThread({
+                    await message.startThread({
                         name: threadName,
                         autoArchiveDuration: 1440, // 24 hours
                     });
 
-                    // Option 1: Auto-reactions
-                    await Promise.all([
-                        message.react('❤️').catch(() => {}),
-                        message.react('🔥').catch(() => {}),
-                        message.react('🌟').catch(() => {})
-                    ]);
-
-                    // Option 3: Welcome message
-                    await thread.send(`Welcome, **${userTitle}**. These discussions are for our **Readers** to reflect upon this visual archive. Please share your thoughts! ♡`);
+                    // Auto-reaction: Just one heart ❤️
+                    await message.react('❤️').catch(() => {});
 
                 } catch (error) {
                     if (error.code === 160004) return; // Thread already exists, ignore.

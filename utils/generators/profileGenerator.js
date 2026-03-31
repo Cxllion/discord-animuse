@@ -34,6 +34,19 @@ const fitText = (ctx, text, fontFamilies, baseSize, baseWeight, maxWidth) => {
     return ctx.font;
 };
 
+const drawScanlines = (ctx, w, h) => {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 0.5;
+    for (let y = 0; y < h; y += 4) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+    }
+    ctx.restore();
+};
+
 const generateProfileCard = async (discordUser, userData, favorites, backgroundUrl = null, primaryColor = '#3B82F6', displayName = null, onBackgroundFailure = null) => {
     const isCompact = !userData.anilist_synced;
     const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
@@ -81,6 +94,10 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         cardBorderGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
         cardBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.15));
         ctx.strokeStyle = cardBorderGrad; ctx.lineWidth = 1.5; ctx.strokeRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+        
+        // V4: GROUNDING GRID (Scanlines)
+        drawScanlines(ctx, CARD_WIDTH, CARD_HEIGHT);
+        
         ctx.restore();
 
         // --- 2. CRISP TOP BANNER (High Immersion) ---
@@ -97,12 +114,28 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
             ctx.restore();
         }
 
-        // --- 3. NEON AVATAR CUTOUT (Submerged) ---
-        const avX = 64, avY = 150, avR = 36; // Brought significantly more into the banner
+        // --- 3. NEON AVATAR CLUSTER (V4: IDENTITY SHELF) ---
+        const avX = 64, avY = 150, avR = 36; 
+        
+        // V4: Identity Shelf (Glass Platform) - Grounded to the left edge
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(10, avY - 20, 260, 110, 24);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.025)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'; ctx.lineWidth = 1; ctx.stroke();
+        
+        // Technical Corner Accent (Cyber Detail)
+        ctx.strokeStyle = hexToRgba(THEME_COLOR, 0.4); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(20, avY - 20); ctx.lineTo(10, avY - 20); ctx.lineTo(10, avY - 10); ctx.stroke();
+        
+        // V4.2: Technical HEX Meta-Tag (Microscopic)
+        ctx.fillStyle = hexToRgba(TEXT_SUB, 0.4); ctx.font = `700 6.5px 'exton'`; ctx.textAlign = 'right';
+        ctx.fillText(`UID_NODE [0x${discordUser.id.slice(-4).toUpperCase()}]`, 260, avY + 84);
+        ctx.restore();
+        ctx.textAlign = 'left'; // Reset
+
         ctx.beginPath(); ctx.arc(avX, avY, avR + 2, 0, Math.PI * 2);
         ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 25; ctx.fillStyle = THEME_COLOR; ctx.fill();
         ctx.shadowColor = 'transparent';
-
         ctx.beginPath(); ctx.arc(avX, avY, avR + 4, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(15, 15, 20, 0.9)'; ctx.fill();
 
@@ -133,8 +166,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         ctx.letterSpacing = '1px';
         
         const tagW = ctx.measureText(titleText).width + 24, tagH = 24;
-        const tagX = isCompact ? (20 + nameWidth + 14) : 20;
-        const tagY = isCompact ? (nameY - 21) : (nameY + 12);
+        const tagX = 20;
+        const tagY = nameY + 12;
 
         ctx.beginPath(); ctx.roundRect(tagX, tagY, tagW, tagH, tagH / 2);
         // Deep Theme-Tinted Glass
@@ -158,9 +191,9 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         ctx.letterSpacing = '0px';
 
         // --- 5. DYNAMIC MEMBERSHIP BADGE (Right) ---
+        const pillR = 21, pillX = 380 - pillR * 2, pillY = nameY - 36;
         const isBooster = userData.is_booster || false;
         const isPremium = (userData.is_premium || userData.premium || false) && !isBooster;
-        const pillR = 21, pillX = 380 - pillR * 2, pillY = nameY - 36;
 
         ctx.save();
         ctx.beginPath(); ctx.arc(pillX + pillR, pillY + pillR, pillR, 0, Math.PI * 2);
@@ -383,18 +416,22 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
         // 1. DATA CORE: BOLD LEVEL INDICATOR
         const levelText = (userData.level || '0').toString();
-        const levelBaseX = 55, levelY = termY + termH / 2 + 15;
+        const levelBaseX = 64, levelY = termY + termH / 2 + 15;
         
         ctx.fillStyle = '#FFFFFF';
-        // Massive Level Signature (Priority: Neo-Externo) - 52px base
-        ctx.font = fitText(ctx, levelText, `'neo', 'boldnine', ${FONT_STACK}`, 52, '900', 70); 
+        // Massive Level Signature (Standardized Data Font: Neo)
+        ctx.font = fitText(ctx, levelText, `'neo', ${FONT_STACK}`, 52, '900', 70); 
         ctx.textAlign = 'center';
         ctx.shadowColor = hexToRgba(THEME_COLOR, 0.4); ctx.shadowBlur = 15;
         ctx.fillText(levelText, levelBaseX, levelY + 5);
         ctx.shadowBlur = 0;
 
+        // V4.2: Level Label (Micro-Exton) - Tightened
+        ctx.font = `700 8.5px 'exton'`; ctx.fillStyle = TEXT_SUB;
+        ctx.fillText('LVL', levelBaseX, levelY - 33);
+
         // 2. METADATA: HUD LABELS (Exton Signature)
-        const barX = 95, barW = CARD_WIDTH - barX - 35, barY = termY + 46, barH = 10, barR = 5;
+        const barX = 115, barW = CARD_WIDTH - barX - 25, barY = termY + 48, barH = 5, barR = 2.5; 
         
         ctx.textAlign = 'left';
         ctx.fillStyle = TEXT_SUB; 
@@ -405,11 +442,12 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
         ctx.textAlign = 'right';
         const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`.toUpperCase();
-        ctx.font = fitText(ctx, xpText, `'exton', ${FONT_STACK}`, 11, '700', 150);
+        // V4: Data Stats (Exomoon)
+        ctx.font = fitText(ctx, xpText, `'exomoon', ${FONT_STACK}`, 11, '700', 150);
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(xpText, barX + barW, termY + 28);
 
-        // Heavy-Duty Progress Bar Tracks
+        // Heavy-Duty Progress Bar Tracks (V4: Precision Meter)
         ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, barR);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
@@ -423,15 +461,23 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
             const activeGrad = ctx.createLinearGradient(barX, barY, barX + fillWidth, barY);
             activeGrad.addColorStop(0, hexToRgba(THEME_COLOR, 0.6));
             activeGrad.addColorStop(0.85, THEME_COLOR);
-            activeGrad.addColorStop(1, '#FFFFFF'); // Sharp Tip
+            activeGrad.addColorStop(1, '#FFFFFF'); 
             
             ctx.fillStyle = activeGrad;
-            ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 15;
+            ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 10;
             ctx.fill();
             
-            // Specular Reflection (Top highlight)
-            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(barX + barR, barY + 2); ctx.lineTo(barX + fillWidth - barR, barY + 2); ctx.stroke();
+            // Pulse Point (Precision Lead)
+            ctx.beginPath(); ctx.arc(barX + fillWidth, barY + barH / 2, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF'; ctx.fill();
+            
+            // V4.2: Instrumentation Precision Ticks
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 0.5;
+            for (let i = 0; i <= 5; i++) {
+                const tx = barX + (barW * (i / 5));
+                ctx.beginPath(); ctx.moveTo(tx, barY + barH + 2); ctx.lineTo(tx, barY + barH + 5); ctx.stroke();
+            }
+            
             ctx.restore();
         }
 
