@@ -22,7 +22,7 @@ const {
 } = require('../services/userService');
 
 const { 
-    addTracker, removeTracker, getUserTrackedAnime, 
+    addTracker, removeTracker, getUserTrackedAnime, getGuildTrackers,
     getAllTrackersForAnime, getAnimeDueForUpdate, 
     getTrackedAnimeState, updateTrackedAnimeState, removeAllTrackersForAnime
 } = require('../services/animeTrackerService');
@@ -86,6 +86,7 @@ module.exports = {
     addTracker,
     removeTracker,
     getUserTrackedAnime,
+    getGuildTrackers,
     getAllTrackersForAnime,
     getAnimeDueForUpdate,
     getTrackedAnimeState,

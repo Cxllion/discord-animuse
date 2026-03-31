@@ -36,7 +36,11 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('schedule')
-                .setDescription('View an upcoming airing schedule for your tracked anime.')),
+                .setDescription('View an upcoming airing schedule for your tracked anime.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('view')
+                .setDescription('Moderator only: View all tracking users in the server.')),
 
     async autocomplete(interaction) {
         const focusedOption = interaction.options.getFocused(true);
@@ -193,6 +197,19 @@ module.exports = {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const { renderTrackList } = require('../../utils/handlers/trackHandlers');
             const payload = await renderTrackList(guildId, userId, 0);
+            await interaction.editReply(payload);
+        } else if (subcommand === 'view') {
+            const { PermissionFlagsBits } = require('discord.js');
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+                return await interaction.reply({ 
+                    content: '❌ **Access Denied**: You lack the clearance to peer into others\' archives. This wing is reserved for server administrators.', 
+                    flags: MessageFlags.Ephemeral 
+                });
+            }
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const { renderGuildTrackView } = require('../../utils/handlers/trackHandlers');
+            const payload = await renderGuildTrackView(interaction.guild, userId, 0);
             await interaction.editReply(payload);
         }
     },

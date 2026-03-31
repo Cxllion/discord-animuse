@@ -23,21 +23,18 @@ validateEnv();
 // Create simple HTTP server for Render health checks
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
-    // Upgraded to INFO log level so it's visible in Render's standard dashboard
-    logger.info(`Health check received: ${req.method} ${req.url}`, 'System');
-    
+    // Zero-latency response for Render's internal proxy
     if (req.url === '/health' || req.url === '/') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-            status: 'online',
-            bot: 'AniMuse',
-            uptime: Math.floor(process.uptime()),
-            timestamp: new Date().toISOString()
-        }));
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
+        res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Connection': 'close' // Prevent socket lingering
+        });
+        res.end(JSON.stringify({ status: 'online', uptime: Math.floor(process.uptime()) }));
+        return;
     }
+    
+    res.writeHead(404);
+    res.end();
 });
 
 server.on('error', (e) => {

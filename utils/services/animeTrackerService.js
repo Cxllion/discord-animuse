@@ -25,6 +25,25 @@ const getAllTrackersForAnime = async (anilistId) => {
     return data || [];
 };
 
+const getGuildTrackers = async (guildId) => {
+    if (!supabase) return [];
+    const { data, error } = await supabase.from('subscriptions').select('user_id, anime_title').eq('guild_id', guildId);
+    if (error) return [];
+    
+    // Group by user_id and count anime
+    const trackers = data.reduce((acc, current) => {
+        if (!acc[current.user_id]) {
+            acc[current.user_id] = { user_id: current.user_id, count: 0, shows: [] };
+        }
+        acc[current.user_id].count++;
+        acc[current.user_id].shows.push(current.anime_title);
+        return acc;
+    }, {});
+    
+    // Sort by count (descending)
+    return Object.values(trackers).sort((a, b) => b.count - a.count);
+};
+
 const getAnimeDueForUpdate = async () => {
     if (!supabase) return [];
     const futureWindow = new Date(Date.now() + 20 * 60 * 1000).toISOString();
