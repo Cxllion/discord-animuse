@@ -4,35 +4,20 @@ const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/proc
 const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
 const http = require('http');
-const dns = require('dns');
 
-// 🛡️ [DNS] Re-enable IPv4 preference (Matches earlier Render fix)
-if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
-
-// 1. Core Safety Setup
+// 1. Core Setup
 setupProcessHandlers();
+const { loadCustomFonts } = require('./utils/core/fonts');
+loadCustomFonts();
 
-// 2. Health Check Server (Immediate Priority)
-const PORT = process.env.PORT || 10000;
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain', 'Connection': 'close' });
-    res.write('AniMuse Library: ONLINE');
-    res.end();
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-    logger.info(`HTTP server listening on port ${PORT} (Render Health Check)`, 'System');
-});
-
-// 3. Client Instance
+// 2. Client Instance (STRICT BASE INTENTS ONLY)
+// Removing GuildMembers and GuildPresences to ensure login works even without Portal approval.
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildPresences
+        GatewayIntentBits.GuildVoiceStates
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     rest: { timeout: 60000 }
@@ -42,55 +27,45 @@ client.commands = new Collection();
 client.isSystemsGo = false;
 client.isTestBot = false;
 
-// 4. Client Handlers
+// 3. Client Handlers
 setupClientHandlers(client);
-
-// ── 5. LAZY BOOT SEQUENCE ──────────────────────────────────────────────────
-// This strategy fires login IMMEDIATELY to satisfy Render and Discord queues.
-// Resources (DB, Fonts, Commands) are loaded AFTER the handshake completes.
-
-client.once('ready', async () => {
-    try {
-        logger.info(`Ready! Logged in as ${client.user.tag}`, 'Startup');
-        
-        // Load Core Resources (Commands, Events)
-        loadCoreResources(client);
-        
-        // Load Custom Fonts
-        const { loadCustomFonts } = require('./utils/core/fonts');
-        loadCustomFonts();
-
-        // Initialize Database (Asynchronous/Slow)
-        await initializeDatabase(client);
-        
-        client.isSystemsGo = true;
-        logger.info('--- Library Opening Sequence Completed! ---', 'Startup');
-    } catch (err) {
-        logger.error('Lazy-Boot Initialization Failed:', err, 'Startup');
+client.on('debug', info => {
+    if (info.includes('WebSocket') || info.includes('IDENTIFY')) {
+        logger.debug(info, 'Handshake');
     }
 });
 
-// Watchdog: Log Handshake progress every 15s until Ready
-const watchdog = setInterval(() => {
-    if (client.isReady()) {
-        clearInterval(watchdog);
-    } else {
-        logger.info('Handshake with Discord Gateway in progress...', 'Handshake');
-    }
-}, 15000);
+// 4. Health Check Server (Immediate)
+const port = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Connection': 'close' });
+    res.write('AniMuse Library: ONLINE');
+    res.end();
+});
 
-// Fire LOGIN Immediately
+server.listen(port, '0.0.0.0', () => {
+    logger.info(`HTTP server listening on port ${port} (Render Health Check)`, 'System');
+});
+
+// 5. Direct Sequential Boot
 (async () => {
     try {
-        logger.info('Initiating Handshake with Discord Gateway (Lazy-Boot Mode)...', 'Startup');
+        logger.info('--- Library Opening Sequence Started ---', 'System');
+        
+        loadCoreResources(client);
+        await initializeDatabase(client);
+        
+        const tokenPrefix = (process.env.DISCORD_TOKEN || "").substring(0, 4);
+        logger.info(`Initiating Handshake with Discord Gateway (Token: ${tokenPrefix}***)...`, 'System');
         await client.login(process.env.DISCORD_TOKEN);
-    } catch (err) {
-        logger.error('Discord Login Rejected:', err, 'Startup');
+
+    } catch (error) {
+        logger.error('Startup Critical Failure:', error, 'System');
         process.exit(1);
     }
 })();
 
-// ── 6. GRACEFUL SHUTDOWN ───────────────────────────────────────────────────
+// 6. Clean Shutdown Sequence
 const handleShutdown = async (signal) => {
     logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
     if (server.listening) server.close();
@@ -101,9 +76,13 @@ const handleShutdown = async (signal) => {
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
-// Internal Pulse (Heap Monitoring)
+// Pulse Monitor
 setInterval(() => {
-    const memory = process.memoryUsage();
-    const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
-    logger.info(`Pulse: OK (Heap: ${heapUsed}MB)`, 'System');
-}, 60000);
+    if (client.isReady()) {
+        const memory = process.memoryUsage();
+        const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
+        logger.info(`Pulse: OK (Heap: ${heapUsed}MB)`, 'System');
+    } else {
+        logger.info('Handshake still in progress...', 'System');
+    }
+}, 30000);
