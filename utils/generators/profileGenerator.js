@@ -23,6 +23,17 @@ const hexToRgba = (hex, alpha) => {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+// --- TECHNICAL UTILITY: AUTO-FIT PRECISION SCALING ---
+const fitText = (ctx, text, fontFamilies, baseSize, baseWeight, maxWidth) => {
+    let size = baseSize;
+    ctx.font = `${baseWeight} ${size}px ${fontFamilies}`;
+    while (ctx.measureText(text).width > maxWidth && size > 1) {
+        size -= 0.5;
+        ctx.font = `${baseWeight} ${size}px ${fontFamilies}`;
+    }
+    return ctx.font;
+};
+
 const generateProfileCard = async (discordUser, userData, favorites, backgroundUrl = null, primaryColor = '#3B82F6', displayName = null, onBackgroundFailure = null) => {
     const isCompact = !userData.anilist_synced;
     const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
@@ -108,16 +119,18 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
 
         ctx.fillStyle = TEXT_MAIN;
-        ctx.font = `800 28px ${FONT_STACK}`; // Heavier, premium font weight
+        // Dynamic Username Scaling
+        ctx.font = fitText(ctx, nameText, `'Exton', ${FONT_STACK}`, 32, '900', 250); 
         const nameWidth = ctx.measureText(nameText).width;
-
         ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
         ctx.fillText(nameText, 20, nameY); 
         ctx.shadowColor = 'transparent';
 
         // Refined Title Badge (Adaptive Alignment)
         const titleText = (userData.title || 'MUSE READER').toUpperCase();
-        ctx.font = `600 11px ${FONT_STACK}`; ctx.letterSpacing = '1px';
+        // Dynamic Title Scaling
+        ctx.font = fitText(ctx, titleText, `'Exton', ${FONT_STACK}`, 11, '700', 120); 
+        ctx.letterSpacing = '1px';
         
         const tagW = ctx.measureText(titleText).width + 36, tagH = 26;
         const tagX = isCompact ? (20 + nameWidth + 14) : 20;
@@ -275,16 +288,17 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
             // Command Label (Integrated Metadata)
             ctx.fillStyle = TEXT_SUB;
-            ctx.font = `700 8.5px 'Exton', ${FONT_STACK}`;
+            // Dynamic Scaling for Tactical Headers
+            ctx.font = fitText(ctx, label.toUpperCase(), `'Exton', ${FONT_STACK}`, 8.5, '700', hW - 32); 
             ctx.textAlign = 'right';
             ctx.letterSpacing = '1.5px';
             ctx.fillText(label.toUpperCase(), hX + hW - 10, hY + 14);
             ctx.letterSpacing = '0px';
 
-            // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY
+            // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY (Dynamic Scaling)
             ctx.fillStyle = '#FFFFFF';
-            // Use Exomoon for a unique HUD signature, Orbitron as technical fallback
-            ctx.font = `900 32px 'Exomoon', 'Orbitron', ${FONT_STACK}`; 
+            // Scale dynamically to fit within pod width (110px minus safety margins)
+            ctx.font = fitText(ctx, value, `'Exomoon', 'Orbitron', ${FONT_STACK}`, 32, '900', statW - 24);
             ctx.textAlign = 'center';
             ctx.shadowColor = hexToRgba(hexColor, 0.4); ctx.shadowBlur = 12;
             ctx.fillText(value, x + statW / 2, statY + statH - 18);
