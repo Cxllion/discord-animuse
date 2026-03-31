@@ -132,24 +132,29 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         ctx.font = fitText(ctx, titleText, `'Exton', ${FONT_STACK}`, 11, '700', 120); 
         ctx.letterSpacing = '1px';
         
-        const tagW = ctx.measureText(titleText).width + 36, tagH = 26;
+        const tagW = ctx.measureText(titleText).width + 24, tagH = 24;
         const tagX = isCompact ? (20 + nameWidth + 14) : 20;
         const tagY = isCompact ? (nameY - 21) : (nameY + 12);
 
         ctx.beginPath(); ctx.roundRect(tagX, tagY, tagW, tagH, tagH / 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; ctx.fill(); // Frosted light pill
-        const tagBorderGrad = ctx.createLinearGradient(tagX, tagY, tagX, tagY + tagH);
-        tagBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-        tagBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.15));
-        ctx.strokeStyle = tagBorderGrad; ctx.lineWidth = 1; ctx.stroke();
+        // Deep Theme-Tinted Glass
+        ctx.fillStyle = hexToRgba(THEME_COLOR, 0.1); ctx.fill(); 
+        
+        const tagBorderGrad = ctx.createLinearGradient(tagX, tagY, tagX + tagW, tagY);
+        tagBorderGrad.addColorStop(0, hexToRgba(THEME_COLOR, 0.4));
+        tagBorderGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
+        tagBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.4));
+        
+        ctx.strokeStyle = tagBorderGrad; ctx.lineWidth = 1.2; ctx.stroke();
+        
+        // Subtle Inner Glow
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.roundRect(tagX + 1, tagY + 1, tagW - 2, tagH - 2, (tagH - 2) / 2); ctx.stroke();
 
-        const rankColor = userData.rankColor || THEME_COLOR;
-        ctx.beginPath(); ctx.arc(tagX + 14, tagY + tagH / 2, 4, 0, Math.PI * 2);
-        ctx.fillStyle = rankColor; ctx.shadowColor = rankColor; ctx.shadowBlur = 8; ctx.fill();
+        ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center';
+        ctx.shadowColor = hexToRgba(THEME_COLOR, 0.3); ctx.shadowBlur = 4;
+        ctx.fillText(titleText, tagX + tagW / 2, tagY + 16.5);
         ctx.shadowBlur = 0;
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.textAlign = 'left';
-        ctx.fillText(titleText, tagX + 24, tagY + 17);
         ctx.letterSpacing = '0px';
 
         // --- 5. DYNAMIC MEMBERSHIP BADGE (Right) ---
@@ -372,38 +377,37 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         termBorderGrad.addColorStop(1, 'rgba(255,255,255,0.02)');
         ctx.strokeStyle = termBorderGrad; ctx.lineWidth = 1; ctx.stroke();
 
-        // Level Ring: Nested Automotive Design
-        const ringX = 55, ringY = termY + termH / 2, ringR = 21;
-        const currentXP = userData.current || 0, requiredXP = userData.required || 1;
-        const levelPercent = Math.min(1, currentXP / requiredXP);
-        
-        ctx.beginPath(); ctx.arc(ringX, ringY, ringR, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill(); // Deep core
-        
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.lineWidth = 3; ctx.stroke(); // Subtle Track
-        
-        // Dynamic Outer Progress Arc (Theme Color)
-        const ringGrad = ctx.createLinearGradient(ringX - ringR, ringY - ringR, ringX + ringR, ringY + ringR);
-        ringGrad.addColorStop(0, THEME_COLOR); ringGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.4));
+        const currentXP = userData.current || 0;
+        const requiredXP = userData.required || 1;
+        const levelPercent = Math.min(1, currentXP / requiredXP) || 0;
 
-        ctx.beginPath(); ctx.arc(ringX, ringY, ringR, -Math.PI / 2, (Math.PI * 2 * levelPercent) - Math.PI / 2);
-        ctx.strokeStyle = ringGrad; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.stroke();
+        // 1. DATA CORE: BOLD LEVEL INDICATOR
+        const levelText = (userData.level || '0').toString();
+        const levelBaseX = 55, levelY = termY + termH / 2 + 15;
+        
+        ctx.fillStyle = '#FFFFFF';
+        // Use 'boldnine' for the massive level signature
+        ctx.font = fitText(ctx, levelText, `'boldnine', ${FONT_STACK}`, 44, '900', 70); 
+        ctx.textAlign = 'center';
+        ctx.shadowColor = hexToRgba(THEME_COLOR, 0.4); ctx.shadowBlur = 15;
+        ctx.fillText(levelText, levelBaseX, levelY);
+        ctx.shadowBlur = 0;
 
-        ctx.fillStyle = '#FFFFFF'; ctx.font = `800 16px ${FONT_STACK}`; ctx.textAlign = 'center';
-        ctx.fillText(userData.level || '0', ringX, ringY + 6);
-
-        // Bar Metadata
+        // 2. METADATA: HUD LABELS (Exton Signature)
         const barX = 95, barW = CARD_WIDTH - barX - 35, barY = termY + 46, barH = 10, barR = 5;
         
         ctx.textAlign = 'left';
-        ctx.fillStyle = TEXT_SUB; ctx.font = `700 10px ${FONT_STACK}`; ctx.letterSpacing = '1.8px';
+        ctx.fillStyle = TEXT_SUB; 
+        ctx.font = fitText(ctx, 'EXPERIENCE', `'Exton', ${FONT_STACK}`, 10, '700', 100);
+        ctx.letterSpacing = '1.8px';
         ctx.fillText('EXPERIENCE', barX, termY + 28);
         ctx.letterSpacing = '0px';
 
         ctx.textAlign = 'right';
-        ctx.font = `800 12px ${FONT_STACK}`; ctx.fillStyle = '#FFFFFF';
-        const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`;
-        ctx.fillText(xpText.toUpperCase(), barX + barW, termY + 28);
+        const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`.toUpperCase();
+        ctx.font = fitText(ctx, xpText, `'Exton', ${FONT_STACK}`, 11, '700', 150);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(xpText, barX + barW, termY + 28);
 
         // Heavy-Duty Progress Bar Tracks
         ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, barR);
