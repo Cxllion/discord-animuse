@@ -4,7 +4,7 @@ const logger = require('./logger');
 const envSchema = z.object({
     DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
     CLIENT_ID: z.string().min(1, "CLIENT_ID is required"),
-    DATABASE_URL: z.string().url().regex(/^postgres(ql)?:\/\//, "DATABASE_URL must be a valid PostgreSQL connection string"),
+    DATABASE_URL: z.string().url().regex(/^postgres(ql)?:\/\//, "DATABASE_URL must be a valid PostgreSQL connection string").optional(),
     SUPABASE_URL: z.string().url().startsWith('https://', "SUPABASE_URL must start with https://"),
     SUPABASE_KEY: z.string().min(1, "SUPABASE_KEY is required"),
     ANILIST_CLIENT_ID: z.string().optional(),
@@ -20,6 +20,10 @@ const validateEnv = () => {
             logger.error(`- ${err.path.join('.')}: ${err.message}`, null, 'Startup');
         });
         process.exit(1);
+    }
+    
+    if (!process.env.DATABASE_URL) {
+        logger.warn('DATABASE_URL not set. Manual migrations will not work, but the bot will run using Supabase.', 'Startup');
     }
     
     if (!process.env.ANILIST_CLIENT_ID) {
