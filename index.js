@@ -44,7 +44,7 @@ server.on('error', (e) => {
     }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     logger.info(`HTTP server listening on port ${PORT} (for Render health checks)`, 'System');
 });
 

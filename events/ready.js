@@ -51,14 +51,33 @@ module.exports = {
         // ── Dedup Table Probe (Render-safe check) ───────────────────────────
         try {
             const supabase = require('../utils/core/supabaseClient');
-            const { error } = await supabase.from('activity_posted').select('activity_id').limit(1);
-            if (!error) {
+            
+            // Safety: Wrap the probe in a 15s timeout so the Ready event finishes even if DB is slow
+            const probeDatabase = () => {
+                return new Promise(async (resolve) => {
+                    const timer = setTimeout(() => resolve({ timeout: true }), 15000);
+                    try {
+                        const { error } = await supabase.from('activity_posted').select('activity_id').limit(1);
+                        clearTimeout(timer);
+                        resolve({ error });
+                    } catch (e) {
+                        clearTimeout(timer);
+                        resolve({ error: e });
+                    }
+                });
+            };
+
+            const result = await probeDatabase();
+
+            if (result.timeout) {
+                logger.warn('⚠️ [Activity Dedup] Supabase probe timed out (15s). Ready event finishing without confirmation.', 'System');
+            } else if (!result.error) {
                 logger.info('✅ [Activity Dedup] Supabase `activity_posted` table FOUND — persistent dedup is ACTIVE. Render-safe! ♡', 'System');
             } else {
                 logger.warn('⚠️ [Activity Dedup] Supabase `activity_posted` table NOT FOUND — falling back to local file cache. Run the migration script to activate persistent dedup.', 'System');
             }
         } catch (e) {
-            logger.warn('⚠️ [Activity Dedup] Could not reach Supabase for migration probe.', 'System');
+            logger.warn('⚠️ [Activity Dedup] Could not reach Supabase for migration probe (Internal Error).', 'System');
         }
 
         if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
