@@ -4,6 +4,10 @@ const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/proc
 const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
 const http = require('http');
+const dns = require('dns');
+
+// Force IPv4 as preferred result for connection handshakes (solves Gateway hangs on Render)
+if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 
 // 1. Core Setup
 setupProcessHandlers();
