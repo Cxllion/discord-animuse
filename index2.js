@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 require('dotenv').config();
 const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/processHandlers');
-const { initializeBot } = require('./utils/core/init');
+const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
 const http = require('http');
 
@@ -64,7 +64,8 @@ server.listen(port);
     try {
         logger.info(`Starting Test Environment (Port ${port})...`, 'System');
         
-        await initializeBot(client);
+        loadCoreResources(client);
+        await initializeDatabase(client);
         
         await client.login(process.env.DISCORD_TOKEN);
 
