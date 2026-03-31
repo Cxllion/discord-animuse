@@ -283,7 +283,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
             // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = `900 32px ${FONT_STACK}`;
+            // Use Orbitron for a high-end HUD feel if loaded, otherwise fallback to heavy stack
+            ctx.font = `900 30px 'Orbitron', ${FONT_STACK}`; 
             ctx.textAlign = 'center';
             ctx.shadowColor = hexToRgba(hexColor, 0.4); ctx.shadowBlur = 12;
             ctx.fillText(value, x + statW / 2, statY + statH - 18);

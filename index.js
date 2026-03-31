@@ -6,14 +6,25 @@ const logger = require('./utils/core/logger');
 const http = require('http');
 const dns = require('dns');
 
-// Force IPv4 as preferred result for connection handshakes (solves Gateway hangs on Render)
+// 🛡️ [DNS] Re-enable IPv4 preference (Matches earlier Render fix)
 if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 
-// 1. Core Setup
+// 1. Core Safety Setup
 setupProcessHandlers();
-const { loadCustomFonts } = require('./utils/core/fonts');
-loadCustomFonts();
 
+// 2. Health Check Server (Immediate Priority)
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Connection': 'close' });
+    res.write('AniMuse Library: ONLINE');
+    res.end();
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+    logger.info(`HTTP server listening on port ${PORT} (Render Health Check)`, 'System');
+});
+
+// 3. Client Instance
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -24,45 +35,62 @@ const client = new Client({
         GatewayIntentBits.GuildPresences
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-    rest: {
-        timeout: 60000,
-    }
+    rest: { timeout: 60000 }
 });
 
 client.commands = new Collection();
 client.isSystemsGo = false;
 client.isTestBot = false;
 
-// 2. Health Check Server (Immediate)
-const port = process.env.PORT || 10000;
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.write('AniMuse Library: ONLINE');
-    res.end();
-});
+// 4. Client Handlers
+setupClientHandlers(client);
 
-server.listen(port, '0.0.0.0', () => {
-    logger.info(`HTTP server listening on port ${port} (Render Health Check)`, 'System');
-});
+// ── 5. LAZY BOOT SEQUENCE ──────────────────────────────────────────────────
+// This strategy fires login IMMEDIATELY to satisfy Render and Discord queues.
+// Resources (DB, Fonts, Commands) are loaded AFTER the handshake completes.
 
-// 3. Sequential Boot Sequence (Matches working index2.js)
-(async () => {
+client.once('ready', async () => {
     try {
-        logger.info('--- Library Opening Sequence Started ---', 'System');
+        logger.info(`Ready! Logged in as ${client.user.tag}`, 'Startup');
         
+        // Load Core Resources (Commands, Events)
         loadCoreResources(client);
+        
+        // Load Custom Fonts
+        const { loadCustomFonts } = require('./utils/core/fonts');
+        loadCustomFonts();
+
+        // Initialize Database (Asynchronous/Slow)
         await initializeDatabase(client);
         
-        logger.info('Initiating Handshake with Discord Gateway...', 'System');
-        await client.login(process.env.DISCORD_TOKEN);
+        client.isSystemsGo = true;
+        logger.info('--- Library Opening Sequence Completed! ---', 'Startup');
+    } catch (err) {
+        logger.error('Lazy-Boot Initialization Failed:', err, 'Startup');
+    }
+});
 
-    } catch (error) {
-        logger.error('Startup Critical Failure:', error, 'System');
+// Watchdog: Log Handshake progress every 15s until Ready
+const watchdog = setInterval(() => {
+    if (client.isReady()) {
+        clearInterval(watchdog);
+    } else {
+        logger.info('Handshake with Discord Gateway in progress...', 'Handshake');
+    }
+}, 15000);
+
+// Fire LOGIN Immediately
+(async () => {
+    try {
+        logger.info('Initiating Handshake with Discord Gateway (Lazy-Boot Mode)...', 'Startup');
+        await client.login(process.env.DISCORD_TOKEN);
+    } catch (err) {
+        logger.error('Discord Login Rejected:', err, 'Startup');
         process.exit(1);
     }
 })();
 
-// 4. Clean Shutdown Sequence
+// ── 6. GRACEFUL SHUTDOWN ───────────────────────────────────────────────────
 const handleShutdown = async (signal) => {
     logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
     if (server.listening) server.close();
@@ -73,7 +101,7 @@ const handleShutdown = async (signal) => {
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
-// Simple Keep-Alive (matches index2.js)
+// Internal Pulse (Heap Monitoring)
 setInterval(() => {
     const memory = process.memoryUsage();
     const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
