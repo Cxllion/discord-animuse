@@ -202,6 +202,12 @@ const handleArchiveInteraction = async (interaction) => {
     // ═══════════════════════════════════════
     if (interaction.isStringSelectMenu()) {
 
+        // Survival Guide Pagination
+        if (interaction.customId === 'archive_help_menu') {
+            const page = interaction.values[0];
+            return interaction.update(require('../archive/ArchiveUI').buildSurvivalGuide(page));
+        }
+
         // Game Mode selector (settings)
         if (interaction.customId.startsWith('archive_setmode_')) {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });

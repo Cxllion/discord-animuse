@@ -51,7 +51,24 @@ module.exports = {
         await loader.startProgress('Searching the Archives...', 3); // 3s for snappier feel
 
         try {
-            const results = await searchMedia(query, type);
+            let results = [];
+            
+            // --- Intelligent ID / URL Resolution ---
+            const idMatch = query.match(/anilist\.co\/anime\/(\d+)/i) || query.match(/anilist\.co\/manga\/(\d+)/i) || [null, query];
+            const potentialId = parseInt(idMatch[1]);
+            
+            if (!isNaN(potentialId) && potentialId > 0) {
+                // If it's a number, it's likely an ID
+                const media = await getMediaById(potentialId);
+                if (media) {
+                    const response = await createMediaResponse(media, interaction.user.id, interaction.guildId);
+                    return await loader.stop(response);
+                }
+            }
+
+            // Standard Search if not a direct ID match
+            results = await searchMedia(query, type);
+
 
             if (!results || results.length === 0) {
                 const embed = baseEmbed()

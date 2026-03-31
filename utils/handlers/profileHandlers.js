@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, AttachmentBuilder, ComponentType, MessageFlags } = require('discord.js');
-const { updateUserColor, updateUserTitle, updateUserBackground, clearUserBackgroundGlobally, getOwnedTitles, getUserColor, getUserTitle, getUserBackground, getUserAvatarConfig, updateUserAvatarConfig, getLinkedAnilist } = require('../core/database');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, AttachmentBuilder, ComponentType, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { updateUserColor, updateUserTitle, updateUserBackground, clearUserBackgroundGlobally, getOwnedTitles, getUserColor, getUserTitle, getUserBackground, getUserAvatarConfig, updateUserAvatarConfig, getLinkedAnilist, fetchConfig } = require('../core/database');
 const { generateProfileCard, getDominantColor } = require('../generators/profileGenerator');
 const { getUserRank, getLevelProgress } = require('../services/leveling');
 const { getAniListProfile } = require('../services/anilistService');
@@ -19,9 +19,16 @@ const BASIC_COLORS = {
     'Orange': '#f97316'
 };
 
-const hasPremium = (member) => {
-    // Premium check logic
-    return member.roles.cache.some(r => r.name.includes('Benefactor') || r.name.includes('Patron')) || member.permissions.has('Administrator');
+const hasPremium = (member, config = null) => {
+    // 1. Administrative Override
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+    
+    // 2. Official Archival Config Check (ID-based)
+    if (config && config.premium_role_id && member.roles.cache.has(config.premium_role_id)) return true;
+    
+    // 3. Nomenclature Fallback (Name-based)
+    const premiumIdentifiers = ['Benefactor', 'Patron', 'Seraphic Muse'];
+    return member.roles.cache.some(r => premiumIdentifiers.some(id => r.name.includes(id)));
 };
 
 // --- SAFE INTERACTION HELPERS ---
@@ -175,11 +182,12 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
     const guildId = interaction.guild.id;
     const member = interaction.member;
 
-    const [color, title, bg, ownedTitlesRaw] = await Promise.all([
+    const [color, title, bg, ownedTitlesRaw, config] = await Promise.all([
         getUserColor(userId, guildId),
         getUserTitle(userId, guildId),
         getUserBackground(userId, guildId),
-        getOwnedTitles(userId)
+        getOwnedTitles(userId),
+        fetchConfig(guildId)
     ]);
 
     const ownedTitles = [...ownedTitlesRaw]; // Copy to avoid mutation issues if cached
@@ -230,7 +238,7 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('👤');
 
-    if (!hasPremium(member)) {
+    if (!hasPremium(member, config)) {
         btnBg.setEmoji('🔒');
     }
 
@@ -247,14 +255,156 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
     await safeReply(interaction, payload);
 };
 
+// --- V4.3: ENHANCED PROFILE HUD MENU (EPHEMERAL) ---
+const showProfileHUDMenu = async (interaction, targetId) => {
+    try {
+        // 1. Production-Grade Ephemeral Deferral
+        // We acknowledge IMMEDIATELY. If this fails (10062), the interaction is dead or already handled.
+        try {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            }
+        } catch (acknowledgmentError) {
+            if (acknowledgmentError.code === 10062) return; // Silent discard for expired/already-handled pulses
+            throw acknowledgmentError;
+        }
+
+        const userId = interaction.user.id;
+        const guildId = interaction.guild.id;
+        const isOwner = userId === targetId;
+        
+        // 2. Fetch Target Data (Parallel Archives)
+        let targetUser;
+        try { 
+            targetUser = await interaction.client.users.fetch(targetId); 
+        } catch (e) { 
+            if (interaction.isRepliable()) {
+                await interaction.editReply({ content: '❌ **Archival Error**: Could not retrieve digital signature for this patron.' }).catch(() => {});
+            }
+            return;
+        }
+        
+        const [dbColor, dbTitle, dbBg, dbAvatarConfig, rankData, linkedUsername] = await Promise.all([
+            getUserColor(targetId, guildId).catch(() => null),
+            getUserTitle(targetId, guildId).catch(() => null),
+            getUserBackground(targetId, guildId).catch(() => null),
+            getUserAvatarConfig(targetId, guildId).catch(() => ({ source: 'DISCORD_GLOBAL' })),
+            getUserRank(targetId, guildId).catch(() => null),
+            getLinkedAnilist(targetId, guildId).catch(() => null)
+        ]);
+
+        let member;
+        try { member = await interaction.guild.members.fetch(targetId); } catch (e) { member = null; }
+
+        const color = dbColor || '#3B82F6';
+        const title = dbTitle || 'Patron';
+        let avatarConfig = dbAvatarConfig || { source: 'DISCORD_GLOBAL' };
+
+        // 3. Stats & Progress Calculation
+        const xp = rankData ? parseInt(rankData.xp) : 0;
+        const level = rankData ? parseInt(rankData.level) : 0;
+        const progress = getLevelProgress(xp, level);
+
+        // 4. AniList Telemetry (Optional)
+        let anilistStats = { completed: 0, days: 0, meanScore: 0 };
+        let anilistAvatar = null;
+        let favorites = [];
+        if (linkedUsername) {
+            try {
+                const alRes = await getAniListProfile(linkedUsername);
+                if (alRes.stats) anilistStats = alRes.stats;
+                if (alRes.avatar) anilistAvatar = alRes.avatar;
+                if (alRes.favorites) favorites = alRes.favorites;
+            } catch (alErr) {
+                logger.warn(`AniList Sync Interrupted for ${linkedUsername}. Using baseline telemetry.`, 'Profile');
+            }
+        }
+
+        const userData = {
+            xp, level, rank: rankData ? rankData.rank : '?',
+            current: progress.current, required: progress.required, percent: progress.percent,
+            title, joinedDate: member ? member.joinedAt.toLocaleDateString() : 'Unknown',
+            messages: Math.floor(xp / 20),
+            anilist_synced: !!linkedUsername,
+            anilist: anilistStats,
+            avatarConfig: { ...avatarConfig, anilistAvatar },
+            guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : targetUser.displayAvatarURL({ extension: 'png' })
+        };
+
+        // 5. Canvas Generation (Heavy Operation)
+        const buffer = await generateProfileCard(
+            targetUser, 
+            userData, 
+            favorites, 
+            dbBg, 
+            color, 
+            member ? member.displayName : targetUser.username
+        );
+        const attachment = new AttachmentBuilder(buffer, { name: 'profile-hud.webp' });
+
+        const embed = new EmbedBuilder()
+            .setColor(color)
+            .setTitle(`Identity HUD: ${targetUser.username}`)
+            .setImage('attachment://profile-hud.webp')
+            .setFooter({ text: 'AniMuse Identity Systems | Ephemeral Access' });
+
+        // 6. Component Architecture
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(`profile_hud_nav_${targetId}`)
+            .setPlaceholder('Select Telemetry Stream')
+            .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel('Anime Statistics').setValue('anime').setEmoji('📺').setDescription('Detailed watch-time breakdown'),
+                new StringSelectMenuOptionBuilder().setLabel('Manga Archives').setValue('manga').setEmoji('📚').setDescription('Chapter and volume telemetry'),
+                new StringSelectMenuOptionBuilder().setLabel('Social History').setValue('social').setEmoji('💬').setDescription('Communication and activity logs')
+            );
+
+        const btnMoreInfo = new ButtonBuilder()
+            .setCustomId(`profile_more_info_${targetId}`)
+            .setLabel('More Info')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🗃️');
+
+        const row1 = new ActionRowBuilder().addComponents(select);
+        const row2 = new ActionRowBuilder().addComponents(btnMoreInfo);
+
+        if (isOwner) {
+            const btnDashboard = new ButtonBuilder()
+                .setCustomId(`profile_custom_dashboard_${targetId}`)
+                .setLabel('Customization Dashboard')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🎨');
+            row2.addComponents(btnDashboard);
+        }
+
+        // 7. Final Safe Reply
+        if (interaction.isRepliable()) {
+            await interaction.editReply({
+                embeds: [embed],
+                files: [attachment],
+                components: [row1, row2]
+            }).catch(e => {
+                if (e.code === 10062) logger.error('HUD Menu Error: Interaction expired during generation.', null, 'ProfileHandlers');
+                else throw e;
+            });
+        }
+
+    } catch (err) {
+        if (err.code === 10062) return; // Silent discard for known race conditions
+        logger.error('HUD Menu Final Failure:', err, 'ProfileHandlers');
+    }
+};
+
+
 // --- BACKGROUND MENU ---
 const showBackgroundMenu = async (interaction) => {
-    if (!hasPremium(interaction.member)) {
+    const guildId = interaction.guild.id;
+    const config = await fetchConfig(guildId);
+    
+    if (!hasPremium(interaction.member, config)) {
         return interaction.reply({ content: '🔒 **Premium Feature**\nCustom backgrounds are available to "Library Benefactors".', flags: MessageFlags.Ephemeral });
     }
 
     const userId = interaction.user.id;
-    const guildId = interaction.guild.id;
     const bgUrl = await getUserBackground(userId, guildId);
 
     const embed = new EmbedBuilder()
@@ -316,7 +466,10 @@ const showBackgroundMenu = async (interaction) => {
 const showColorMenu = async (interaction) => {
     const userId = interaction.user.id;
     const guildId = interaction.guild.id;
-    const bgUrl = await getUserBackground(userId, guildId);
+    const [bgUrl, config] = await Promise.all([
+        getUserBackground(userId, guildId),
+        fetchConfig(guildId)
+    ]);
 
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
@@ -341,14 +494,14 @@ const showColorMenu = async (interaction) => {
         .setStyle(ButtonStyle.Danger)
         .setEmoji('✨');
 
-    if (!hasPremium(interaction.member)) {
+    if (!hasPremium(interaction.member, config)) {
         btnHex.setLabel('Custom Hex (Premium)').setDisabled(true);
     }
 
     const components = [btnBasic, btnSync, btnHex];
 
     // AUTO COLOR BUTTON
-    if (bgUrl && hasPremium(interaction.member)) {
+    if (bgUrl && hasPremium(interaction.member, config)) {
         const btnAuto = new ButtonBuilder()
             .setCustomId('profile_color_auto')
             .setLabel('Auto (From BG)')
@@ -399,7 +552,10 @@ const showBasicColorSelect = async (interaction) => {
 const showAvatarMenu = async (interaction) => {
     const userId = interaction.user.id;
     const guildId = interaction.guild.id;
-    const config = await getUserAvatarConfig(userId, guildId);
+    const [config, guildConfig] = await Promise.all([
+        getUserAvatarConfig(userId, guildId),
+        fetchConfig(guildId)
+    ]);
 
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
@@ -428,7 +584,7 @@ const showAvatarMenu = async (interaction) => {
         .setCustomId('profile_pfp_custom')
         .setLabel('Custom Upload')
         .setStyle(config.source === 'CUSTOM' ? ButtonStyle.Success : ButtonStyle.Primary)
-        .setEmoji(hasPremium(interaction.member) ? '📤' : '🔒');
+        .setEmoji(hasPremium(interaction.member, guildConfig) ? '📤' : '🔒');
 
     const btnBack = new ButtonBuilder()
         .setCustomId('profile_home')
@@ -449,21 +605,36 @@ const handleProfileInteraction = async (interaction) => {
 
     if (id === 'profile_home') return showProfileDashboard(interaction, true);
 
-    // Profile Dashboard Open (from /profile command)
+    // Profile Dashboard Open (from /profile command) - V4.3: Now opens the HUD Menu
     if (id.startsWith('profile_dashboard_open_')) {
         const ownerId = id.split('_').pop();
-        if (userId === ownerId) {
-            return showProfileDashboard(interaction);
-        } else {
-            // Fetch owner name for the restricted message if possible
-            const owner = interaction.guild.members.cache.get(ownerId);
-            const ownerName = owner ? owner.user.username : 'that Patron';
-            return interaction.reply({
-                content: `**${ownerName}'s Identity File**\nLibrary records indicate this patron is currently registered in the archives.\n*Detailed usage stats are currently classified.*`,
-                flags: MessageFlags.Ephemeral
-            });
-        }
+        return showProfileHUDMenu(interaction, ownerId);
     }
+
+    // V4.3: Custom Dashboard from HUD
+    if (id.startsWith('profile_custom_dashboard_')) {
+        return showProfileDashboard(interaction);
+    }
+
+    // V4.3: More Info Placeholder
+    // V4.4: HUD Navigation (Telemetry Streams) Placeholder
+    if (id.startsWith('profile_hud_nav_')) {
+        const type = interaction.values[0];
+        const typeNames = { anime: 'Anime Statistics', manga: 'Manga Archives', social: 'Social History' };
+        return interaction.reply({ 
+            content: `📡 **Telemetry Stream: ${typeNames[type] || 'Data'}**\nOur scribes are currently calibrating this data-view in the Great Library archives. Detailed insights will be accessible soon! ♡`, 
+            flags: MessageFlags.Ephemeral 
+        });
+    }
+
+    // V4.3: More Info Placeholder
+    if (id.startsWith('profile_more_info_')) {
+        return interaction.reply({ 
+            content: '📑 **Archival Record Expansion Underway**\nDetailed telemetry for this patron is currently being decrypted. Our librarians are working hard to finalize these records. Check back soon! ♡', 
+            flags: MessageFlags.Ephemeral 
+        });
+    }
+    
 
     // AVATAR MENU
     if (id === 'profile_opt_avatar') return showAvatarMenu(interaction);
@@ -488,7 +659,8 @@ const handleProfileInteraction = async (interaction) => {
     }
 
     if (id === 'profile_pfp_custom') {
-        if (!hasPremium(interaction.member)) {
+        const guildConfig = await fetchConfig(guildId);
+        if (!hasPremium(interaction.member, guildConfig)) {
             return interaction.reply({ content: '🔒 Custom Avatars are a premium feature.', flags: MessageFlags.Ephemeral });
         }
 

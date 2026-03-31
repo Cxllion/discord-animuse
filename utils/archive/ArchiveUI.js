@@ -72,25 +72,64 @@ function buildActionHub(game, user) {
     };
 }
 
-function buildSurvivalGuide() {
-    const embed = new EmbedBuilder()
-        .setTitle('📖 The Archivist\'s Guide to Survival')
-        .setColor('#F59E0B')
-        .setDescription('The world outside has fallen to the Virus. The Final Library is humanity\'s last hope. Here is everything you need to know.')
-        .addFields(
-            { name: '🎯 The Core Objective', value: '**Archivists** (Town) must identify and exile all infected **Revisions** (Mafia). **Revisions** must outnumber the Archivists. **Unbound** (Neutral) roles each have unique win conditions.' },
-            { name: '🌑 Night Phase', value: 'The thread locks. Every player with an ability receives a **DM with a target dropdown**. Choose your target and submit before the timer expires. The Revisions coordinate their kill in a secret thread.' },
-            { name: '🌅 Day Phase (Discussion)', value: 'A **Morning Report** reveals who was erased overnight, their role, and their Last Will. The thread unlocks for open discussion. Build your case, share evidence, and identify suspects.' },
-            { name: '⚖️ Voting Phase', value: 'Vote buttons appear for each living player. Click a name to cast your ballot, or choose **Skip Vote**. **Votes can be changed** — only the final vote at timer expiry counts. Ties or Skip majorities cancel the exile.' },
-            { name: '🌆 Twilight Phase', value: 'After an exile, there is a brief 10-second reaction window before night falls again.' },
-            { name: '✍️ Last Will', value: 'Write a final message via the Night DM or the Lobby Terminal. If you die, your Last Will is **publicly revealed** in the Morning Report. Use it to share clues or deceive.' },
-            { name: '🛡️ Key Archivist Roles', value: '• **The Indexer** — Scans a player to learn their faction.\n• **The Conservator** — Protects a player from being killed.\n• **The Ghostwriter** — Kills a player, but dies of guilt if the target was an Archivist.\n• **The Scribe** — Checks a dead body for visitors (becomes Ink-Bound).\n• **The Plurality** — Vote counts as two.' },
-            { name: '🔪 Key Revision Roles', value: '• **The Shredder** — The designated killer.\n• **The Censor** — Blocks a player\'s ability for the night.\n• **The Plagiarist** — Reads as innocent to the Indexer.' },
-            { name: '🃏 Unbound Roles', value: '• **The Anomaly** — Wins if exiled by the town.\n• **The Critic** — Wins if their assigned target is exiled.\n• **The Bookburner** — Douses players with toxins, then ignites them all at once.' }
-        )
-        .setFooter({ text: 'Protocol 1: Trust no one but the archives.' });
+function buildSurvivalGuide(page = 'intro') {
+    const embed = new EmbedBuilder().setColor('#F59E0B');
 
-    return { embeds: [embed], flags: 64 };
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId('archive_help_menu')
+        .setPlaceholder('Navigate Survival Guide...')
+        .addOptions([
+            { label: 'Rules & Phases', value: 'intro', emoji: '📖' },
+            { label: 'Archivists (Town)', value: 'archivist', emoji: '🛡️' },
+            { label: 'Revisions (Mafia)', value: 'revision', emoji: '🔪' },
+            { label: 'Unbound (Neutral)', value: 'unbound', emoji: '🃏' }
+        ]);
+    
+    // Default setting for current page
+    menu.options.find(o => o.data.value === page).data.default = true;
+
+    if (page === 'intro') {
+        embed.setTitle('📖 The Archivist\'s Guide: Rules & Phases')
+            .setDescription('The Final Library is humanity\'s last hope. You must use deduction to survive.')
+            .addFields(
+                { name: '🎯 The Core Objective', value: '**Archivists** (Town) must identify and exile all infected **Revisions** (Mafia).\n**Revisions** win when they equal or outnumber the Archivists.' },
+                { name: '🌑 Night Phase', value: 'The thread locks. If you have an ability, you will receive a **DM with a dropdown**. Choose your target. Revisions secretly coordinate their kill in their private thread.' },
+                { name: '🌅 Day Phase', value: 'The **Morning Report** reveals who died and their Last Will. Open discussion begins to find suspects.' },
+                { name: '⚖️ Voting Phase', value: 'Vote buttons appear below the chat. You can change your vote, but only your final choice counts. A **Skip Vote** majority or a tie results in no exile.' },
+                { name: '✍️ Last Will', value: 'Write a message via the Night DM or `/mafia will`. If you die, it is publicly revealed in the morning.' }
+            );
+    } else if (page === 'archivist') {
+        embed.setTitle('🛡️ The Archivists (Town)')
+            .setDescription('The innocent defenders of the library. Their goal is to exile all Revisions.')
+            .addFields(
+                { name: 'The Indexer [Cop]', value: 'Scans one player each night to learn if their faction is Archivist or Revision.' },
+                { name: 'The Conservator [Doctor]', value: 'Selects one player each night to protect them from being killed.' },
+                { name: 'The Ghostwriter [Vigilante]', value: 'Can kill a player at night. However, if they kill an innocent Archivist, they will die of guilt the next night.' },
+                { name: 'The Scribe [Tracker/Investigator]', value: 'Checks a dead body to see who visited them the previous night. Becomes "Ink-Bound" and cannot vote against the suspect the following day.' },
+                { name: 'The Plurality [Mayor]', value: 'Their vote counts as two during the daytime Voting Phase.' }
+            );
+    } else if (page === 'revision') {
+        embed.setTitle('🔪 The Revisions (Mafia)')
+            .setDescription('The corrupted invaders. They know each other and secretly coordinate to take over.')
+            .addFields(
+                { name: 'The Shredder [Mafia Goon/Killer]', value: 'The designated killer of the faction. Wakes up to eliminate one Archivist each night.' },
+                { name: 'The Censor [Roleblocker]', value: 'Selects one player each night. That player is blocked from using their ability for the night.' },
+                { name: 'The Plagiarist [Godfather]', value: 'Appears as an innocent Archivist if scanned by The Indexer [Cop].' }
+            );
+    } else if (page === 'unbound') {
+        embed.setTitle('🃏 The Unbound (Neutral)')
+            .setDescription('Wildcards with their own solo win conditions. They win independently.')
+            .addFields(
+                { name: 'The Anomaly [Jester]', value: 'Wins the game immediately if they can trick the Town into voting them out during the day.' },
+                { name: 'The Critic [Executioner]', value: 'Assigned a random Archivist as their target at the start. Wins if they can get that specific target voted out during the day.' },
+                { name: 'The Bookburner [Arsonist]', value: 'Secretly douses one player each night. Can choose to ignite all doused players at once on a later night.' }
+            );
+    }
+
+    embed.setFooter({ text: 'Protocol 1: Trust no one but the archives.' });
+
+    const row = new ActionRowBuilder().addComponents(menu);
+    return { embeds: [embed], components: [row], flags: 64 };
 }
 
 function buildSettingsPayload(game, category = 'discussion') {

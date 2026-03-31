@@ -695,11 +695,24 @@ class ArchiveGame extends EventEmitter {
             }
         }
         
+        const alivePlayers = this.getAlivePlayers().length;
+        const minVotesRequired = alivePlayers <= 4 ? 2 : 3;
+
         if (this.thread) {
             await this.thread.setLocked(true, 'Voting ended');
             
             if (tied.length === 0) {
-                await this.thread.send('⚖️ **The town could not reach a consensus.** No one is exiled today.');
+                await this.thread.send('⚖️ **The town was completely silent.** No votes were cast today.');
+                this.activeTimer = setTimeout(() => {
+                    if (this.state !== 'GAME_OVER') this.startNight();
+                }, 10000);
+            } else if (tied.length > 1) {
+                await this.thread.send('⚖️ **The town could not reach a consensus.** The execution vote ended in a tie. No one is exiled today.');
+                this.activeTimer = setTimeout(() => {
+                    if (this.state !== 'GAME_OVER') this.startNight();
+                }, 10000);
+            } else if (maxVotes < minVotesRequired) {
+                await this.thread.send(`⚖️ **Insufficient Support.** Only ${maxVotes} ${maxVotes === 1 ? 'vote was' : 'votes were'} cast for the leading decision. A minimum of ${minVotesRequired} is required to exile someone. No one is exiled today.`);
                 this.activeTimer = setTimeout(() => {
                     if (this.state !== 'GAME_OVER') this.startNight();
                 }, 10000);

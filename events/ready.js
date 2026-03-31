@@ -16,11 +16,28 @@ module.exports = {
         flushAniListCache();
         clearConfigCache();
 
-        // Set Presence
-        client.user.setPresence({
-            activities: [{ name: 'Watching the Library...', type: 3 }], // Type 3 is WATCHING
-            status: 'online'
-        });
+        // ── Dynamic Presence Rotation ─────────────────────────────────────────
+        const activities = [
+            { name: 'the Library Archives...', type: 3 }, // WATCHING
+            { name: 'AniList Airing Ticker...', type: 3 },
+            { name: 'the rustle of digital pages...', type: 2 }, // LISTENING
+            { name: 'Categorizing new memories...', type: 0 }, // PLAYING
+            { name: 'vibrant HUD statistics...', type: 3 }
+        ];
+
+        let activityIndex = 0;
+        const updatePresence = () => {
+            const act = activities[activityIndex];
+            client.user.setPresence({
+                activities: [{ name: act.name, type: act.type }],
+                status: 'online'
+            });
+            activityIndex = (activityIndex + 1) % activities.length;
+        };
+
+        updatePresence(); // Set initial
+        setInterval(updatePresence, 60 * 1000); // Rotate every minute
+
 
         // Deploy Commands (Conditional)
         const shouldDeploy = process.env.DEPLOY_ON_START === 'true';

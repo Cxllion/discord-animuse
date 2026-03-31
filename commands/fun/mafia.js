@@ -41,6 +41,10 @@ module.exports = {
         .addSubcommand(sub =>
             sub.setName('stats')
                 .setDescription('View your historical survival records and biometrics.')
+        )
+        .addSubcommand(sub =>
+            sub.setName('help')
+                .setDescription('Open the Survival Guide to learn the rules and roles.')
         ),
 
     async execute(interaction) {
@@ -66,7 +70,14 @@ module.exports = {
             return;
         }
 
-        // --- IN-GAME COMMANDS ---
+        // --- OUT-OF-GAME COMMANDS ---
+
+        if (subcommand === 'help') {
+            const { buildSurvivalGuide } = require('../../utils/archive/ArchiveUI');
+            const payload = buildSurvivalGuide();
+            // Help requires ephemeral response if we want it private, but let's just make it ephemeral
+            return interaction.reply(payload);
+        }
 
         const game = gameManager.getGameByThread(interaction.channelId) || gameManager.getGameByLobby(interaction.channelId);
         
