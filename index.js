@@ -12,27 +12,18 @@ if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 // Setup Process Safety
 setupProcessHandlers();
 
-// Load Custom Custom Fonts (for Render consistency)
-const { loadCustomFonts } = require('./utils/core/fonts');
-loadCustomFonts();
-
-// Validate Environment Variables
-const { validateEnv } = require('./utils/core/envManager');
-validateEnv();
-
-// Create simple HTTP server for Render health checks
-const PORT = process.env.PORT || 3000;
+// ── 1. IMMEDIATE HEALTH SERVER ──────────────────────────────────────────────
+// This starts RIGHT AWAY to satisfy Render's health-check window (within 100ms)
+const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
-    // Zero-latency response for Render's internal proxy
     if (req.url === '/health' || req.url === '/') {
         res.writeHead(200, { 
             'Content-Type': 'application/json',
-            'Connection': 'close' // Prevent socket lingering
+            'Connection': 'close' 
         });
         res.end(JSON.stringify({ status: 'online', uptime: Math.floor(process.uptime()) }));
         return;
     }
-    
     res.writeHead(404);
     res.end();
 });
@@ -49,7 +40,7 @@ server.listen(PORT, '0.0.0.0', () => {
     logger.info(`HTTP server listening on port ${PORT} (for Render health checks)`, 'System');
 });
 
-// Initialize Client (Matched with index2.js for stability)
+// ── 2. BOT INITIALIZATION ───────────────────────────────────────────────────
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -76,43 +67,59 @@ setupClientHandlers(client);
 client.on('error', err => logger.error('Discord Shard Error:', err, 'Handshake'));
 client.on('shardError', error => logger.error('A websocket connection encountered an error:', error, 'Handshake'));
 
-// Graceful Shutdown Handler
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM received, gracefully shutting down...', 'System');
-    server.close();
-    client.destroy();
-    process.exit(0);
-});
+// Load Custom Constants & Fonts
+const { loadCustomFonts } = require('./utils/core/fonts');
+loadCustomFonts();
 
-// Internal Pulse: Heartbeat log every 30 seconds to prove the process is healthy
-setInterval(() => {
-    const memory = process.memoryUsage();
-    const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
-    logger.info(`Internal Pulse: Event Loop is ALIVE (Heap: ${heapUsed}MB)`, 'System');
-}, 30000);
+const { validateEnv } = require('./utils/core/envManager');
+validateEnv();
 
-// Start Bot with "Bulletproof" Instant-Up Strategy
+// --- 3. ROBUST SEQUENTIAL BOOT SEQUENCE (Matches index2.js) ---
 (async () => {
     try {
         logger.info('--- Library Opening Sequence Started ---', 'Startup');
         
-        // Step 1: Load Core Resources (Commands, Events) - Must happen before login
+        // Step 1: Load Core Resources (Sync)
         loadCoreResources(client);
 
-        // Step 2: Non-Blocking Discord Login
-        // We REMOVE the 'await' here. This allows the script to reach its idle state instantly,
-        // which satisfies Render's health checks even if Discord's gateway is hanging.
-        logger.info('Initiating Handshake with Discord Gateway (Non-Blocking)...', 'Startup');
-        client.login(process.env.DISCORD_TOKEN).catch(err => {
-            logger.error('Discord Login Rejected:', err, 'Handshake');
-        });
-        
-        // Step 3: Background Initialization (Database, Schedulers)
-        // This continues in parallel to the Discord handshake.
-        initializeDatabase(client);
+        // Step 2: Initialize Database (Awaited - Prevents network race)
+        await initializeDatabase(client);
 
+        // Step 3: Discord Login (Awaited - Ensures events are fully bound)
+        logger.info('Initiating Handshake with Discord Gateway...', 'Startup');
+        await client.login(process.env.DISCORD_TOKEN);
+        
     } catch (err) {
         logger.error('Critical Startup Failure:', err, 'Startup');
         setTimeout(() => process.exit(1), 1000);
     }
 })();
+
+// --- 4. GRACEFUL SHUTDOWN & CLEANUP (Matches index2.js) ---
+const handleShutdown = async (signal) => {
+    logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
+    
+    // 1. Close Health Server
+    if (server.listening) {
+        server.close(() => logger.info('[ShutDown] HTTP archives locked and secured.', 'System'));
+    }
+
+    // 2. Destroy Discord Session (Logs out cleanly)
+    client.destroy();
+    logger.info('[ShutDown] Discord archivist connection terminated.', 'System');
+
+    // 3. Exit process (Wait briefly for logs to flush)
+    setTimeout(() => {
+        process.exit(0);
+    }, 1000);
+};
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
+// Internal Pulse: Heartbeat log every 60 seconds (reduced churn)
+setInterval(() => {
+    const memory = process.memoryUsage();
+    const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
+    logger.info(`Internal Pulse: Event Loop is ALIVE (Heap: ${heapUsed}MB)`, 'System');
+}, 60000);

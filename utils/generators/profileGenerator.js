@@ -221,91 +221,81 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         const statW = 110, statH = 88, statGap = 15;
         const stats = userData.anilist || {};
 
-        const drawStatNode = (x, hexColor, value, label, phaseOffset, drawIconLogic) => {
+        const drawStatNode = (x, hexColor, value, label, drawIconLogic) => {
+            const r = 24; // Softer, more refined radius
             ctx.save();
-            // Deep Glass Base
-            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, 20);
-
+            
+            // 1. BASE: DEEP NEON-GLASS
+            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, r);
             const cardGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
-            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
-            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
+            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
             ctx.fillStyle = cardGrad; ctx.fill();
 
-            const nodeBorderGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
-            nodeBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-            nodeBorderGrad.addColorStop(1, hexToRgba(hexColor, 0.25));
-            ctx.strokeStyle = nodeBorderGrad; ctx.lineWidth = 1; ctx.stroke();
-            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, 20); ctx.clip();
+            // 2. FINISHING: LIGHT-LEAK & INNER GLOW
+            const borderGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
+            borderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)'); // Top glow highlight
+            borderGrad.addColorStop(0.12, 'rgba(255, 255, 255, 0.03)');
+            borderGrad.addColorStop(1, hexToRgba(hexColor, 0.12)); // Subtle bottom theme glow
+            ctx.strokeStyle = borderGrad; ctx.lineWidth = 1.2; ctx.stroke();
 
-            // Liquid Sine Wave
-            ctx.beginPath(); ctx.moveTo(x, statY + statH);
-            for (let i = 0; i <= statW; i += 3) {
-                let waveY = statY + statH - 16 + Math.sin((i * 0.05) + phaseOffset) * 8;
-                ctx.lineTo(x + i, waveY);
-            }
-            ctx.lineTo(x + statW, statY + statH); ctx.closePath();
+            // 3. HEADER CLUSTER: FROSTED ICON HUB
+            const ix = x + 16, iy = statY + 16, iSize = 22;
+            ctx.beginPath(); ctx.roundRect(ix - 3, iy - 3, iSize, iSize, 8);
+            ctx.fillStyle = hexToRgba(hexColor, 0.15); ctx.fill();
+            ctx.strokeStyle = hexToRgba(hexColor, 0.35); ctx.lineWidth = 1; ctx.stroke();
 
-            const waveGrad = ctx.createLinearGradient(0, statY + statH - 35, 0, statY + statH);
-            waveGrad.addColorStop(0, 'rgba(0,0,0,0)'); waveGrad.addColorStop(1, hexToRgba(hexColor, 0.45));
-            ctx.fillStyle = waveGrad; ctx.fill();
-            ctx.strokeStyle = hexColor; ctx.lineWidth = 1.5; ctx.shadowColor = hexColor; ctx.shadowBlur = 10; ctx.stroke();
-            ctx.restore();
-
-            // Premium Frosted Icon Container
-            const ix = x + 14, iy = statY + 14, iSize = 28;
-            ctx.beginPath(); ctx.roundRect(ix, iy, iSize, iSize, 10);
-            const iconBgGrad = ctx.createLinearGradient(ix, iy, ix, iy + iSize);
-            iconBgGrad.addColorStop(0, hexToRgba(hexColor, 0.25));
-            iconBgGrad.addColorStop(1, hexToRgba(hexColor, 0.05));
-            ctx.fillStyle = iconBgGrad; ctx.fill();
-            const iconBorderGrad = ctx.createLinearGradient(ix, iy, ix, iy + iSize);
-            iconBorderGrad.addColorStop(0, hexToRgba(hexColor, 0.4));
-            iconBorderGrad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.strokeStyle = iconBorderGrad; ctx.lineWidth = 1; ctx.stroke();
-
-            // Draw Vector Icon
+            // Draw Icon (Center-aligned in Hub)
             ctx.save();
             ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
-            ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            drawIconLogic(ix, iy);
+            ctx.lineWidth = 2.0; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            drawIconLogic(ix - 3, iy - 3, iSize); // Pass hub context to logic
             ctx.restore();
 
-            // Labels & Data
-            ctx.fillStyle = TEXT_SUB; ctx.font = `600 10px ${FONT_STACK}`; ctx.textAlign = 'right';
-            ctx.fillText(label.toUpperCase(), x + statW - 14, statY + 32);
+            // 4. HUD TYPOGRAPHY: REFINED ALIGNMENT
+            // Label (Aligned to Top-Right)
+            ctx.fillStyle = TEXT_SUB;
+            ctx.font = `700 9px ${FONT_STACK}`;
+            ctx.textAlign = 'right';
+            ctx.letterSpacing = '1.8px';
+            ctx.fillText(label.toUpperCase(), x + statW - 16, statY + 28);
+            ctx.letterSpacing = '0px';
 
-            ctx.fillStyle = '#FFFFFF'; ctx.font = `800 26px ${FONT_STACK}`; ctx.textAlign = 'left';
-            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8; // Punchy numbers
-            ctx.fillText(value, x + 14, statY + 74);
-            ctx.shadowBlur = 0; // reset
+            // Value (Bottom-Left Impact)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `900 29px ${FONT_STACK}`;
+            ctx.textAlign = 'left';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
+            ctx.fillText(value, x + 16, statY + statH - 18);
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
         };
 
-        const drawAnimeIcon = (ix, iy) => {
-            ctx.beginPath(); ctx.roundRect(ix + 6, iy + 7, 16, 12, 3); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ix + 12, iy + 10); ctx.lineTo(ix + 17, iy + 13); ctx.lineTo(ix + 12, iy + 16); ctx.fill();
+        const drawAnimeIcon = (ix, iy, size) => {
+            const ox = ix + size / 2 - 8, oy = iy + size / 2 - 6;
+            ctx.beginPath(); ctx.roundRect(ox, oy, 16, 12, 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ox + 6, oy + 3); ctx.lineTo(ox + 11, oy + 6); ctx.lineTo(ox + 6, oy + 9); ctx.fill();
         };
 
-        const drawMangaIcon = (ix, iy) => {
-            ctx.lineWidth = 1.5;
-            // Stack of Three Manga Volumes (representing collection)
+        const drawMangaIcon = (ix, iy, size) => {
+            const ox = ix + size / 2 - 7, oy = iy + size / 2 - 7;
             for (let i = 0; i < 3; i++) {
-                const oy = 7 + i * 4.5;
-                ctx.save();
-                if (i > 0) { ctx.fillStyle = '#050505'; ctx.beginPath(); ctx.roundRect(ix + 7, iy + oy, 14, 4.5, 1); ctx.fill(); }
-                ctx.beginPath(); ctx.roundRect(ix + 7, iy + oy, 14, 4.5, 1); ctx.stroke();
-                ctx.restore();
+                const offY = oy + i * 4.5;
+                ctx.beginPath(); ctx.roundRect(ox, offY, 14, 4, 1); ctx.stroke();
             }
         };
 
-        const drawDaysIcon = (ix, iy) => {
-            ctx.beginPath(); ctx.arc(ix + 14, iy + 14, 7, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ix + 14, iy + 10); ctx.lineTo(ix + 14, iy + 14); ctx.lineTo(ix + 17, iy + 16); ctx.stroke();
+        const drawDaysIcon = (ix, iy, size) => {
+            const ox = ix + size / 2, oy = iy + size / 2;
+            ctx.beginPath(); ctx.arc(ox, oy, 7, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ox, oy - 4); ctx.lineTo(ox, oy); ctx.lineTo(ox + 3, oy + 2); ctx.stroke();
         };
 
         if (userData.anilist_synced) {
-            drawStatNode(20, THEME_COLOR, formatStat(stats.completed || 0), 'Anime', 0, drawAnimeIcon);
-            drawStatNode(20 + statW + statGap, '#FBBF24', formatStat(stats.manga_completed || 0), 'Manga', 2, drawMangaIcon);
-            drawStatNode(20 + (statW + statGap) * 2, '#10B981', formatStat(stats.days || 0), 'Days', 4, drawDaysIcon);
+            drawStatNode(20, THEME_COLOR, formatStat(stats.completed || 0), 'Anime', drawAnimeIcon);
+            drawStatNode(20 + statW + statGap, THEME_COLOR, formatStat(stats.manga_completed || 0), 'Manga', drawMangaIcon);
+            drawStatNode(20 + (statW + statGap) * 2, THEME_COLOR, formatStat(stats.days || 0), 'Days', drawDaysIcon);
             
             // Maintenance Guard Overlay (Clinical UI)
             if (userData.anilist_maintenance) {
