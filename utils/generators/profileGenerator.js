@@ -222,52 +222,82 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         const stats = userData.anilist || {};
 
         const drawStatNode = (x, hexColor, value, label, drawIconLogic) => {
-            const r = 24; // Softer, more refined radius
+            const r = 24; // Precision-cut corners
             ctx.save();
             
-            // 1. BASE: DEEP NEON-GLASS
+            // 1. BASE: DEEP CYBER-GLASS (Tactical Contrast)
             ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, r);
             const cardGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
-            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
-            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
+            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.02)');
+            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
             ctx.fillStyle = cardGrad; ctx.fill();
 
-            // 2. FINISHING: LIGHT-LEAK & INNER GLOW
-            const borderGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
-            borderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)'); // Top glow highlight
-            borderGrad.addColorStop(0.12, 'rgba(255, 255, 255, 0.03)');
-            borderGrad.addColorStop(1, hexToRgba(hexColor, 0.12)); // Subtle bottom theme glow
-            ctx.strokeStyle = borderGrad; ctx.lineWidth = 1.2; ctx.stroke();
+            // Surgical Shell Outlining
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; ctx.lineWidth = 1; ctx.stroke();
 
-            // 3. HEADER CLUSTER: FROSTED ICON HUB
-            const ix = x + 16, iy = statY + 16, iSize = 22;
-            ctx.beginPath(); ctx.roundRect(ix - 3, iy - 3, iSize, iSize, 8);
-            ctx.fillStyle = hexToRgba(hexColor, 0.15); ctx.fill();
-            ctx.strokeStyle = hexToRgba(hexColor, 0.35); ctx.lineWidth = 1; ctx.stroke();
-
-            // Draw Icon (Center-aligned in Hub)
+            // 2. TEXTURE: TECHNICAL GRID SUB-DECK
             ctx.save();
-            ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
-            ctx.lineWidth = 2.0; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            drawIconLogic(ix - 3, iy - 3, iSize); // Pass hub context to logic
+            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, r); ctx.clip();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)'; ctx.lineWidth = 0.5;
+            const gridSize = 14;
+            for (let gl = x; gl <= x + statW; gl += gridSize) {
+                ctx.beginPath(); ctx.moveTo(gl, statY); ctx.lineTo(gl, statY + statH); ctx.stroke();
+            }
+            for (let gh = statY; gh <= statY + statH; gh += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, gh); ctx.lineTo(x + statW, gh); ctx.stroke();
+            }
             ctx.restore();
 
-            // 4. HUD TYPOGRAPHY: REFINED ALIGNMENT
-            // Label (Aligned to Top-Right)
+            // 3. ACCENTS: ILLUMINATED TACTICAL BRACKETS
+            const bS = 8, bL = 1.8; ctx.strokeStyle = hexToRgba(hexColor, 0.45); ctx.lineWidth = bL;
+            ctx.lineCap = 'butt';
+            // Top-Left Frame
+            ctx.beginPath(); ctx.moveTo(x + bS, statY + 2.5); ctx.lineTo(x + 2.5, statY + 2.5); ctx.lineTo(x + 2.5, statY + bS); ctx.stroke();
+            // Bottom-Right Frame
+            ctx.beginPath(); ctx.moveTo(x + statW - bS, statY + statH - 2.5); ctx.lineTo(x + statW - 2.5, statY + statH - 2.5); ctx.lineTo(x + statW - 2.5, statY + statH - bS); ctx.stroke();
+
+            // 4. HEADER: UNIFIED COMMAND POD (Integrated [Icon | Label])
+            const hW = statW - 24, hH = 22, hX = x + 12, hY = statY + 12;
+            ctx.beginPath(); ctx.roundRect(hX, hY, hW, hH, hH / 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.fill();
+            const hubBorder = ctx.createLinearGradient(hX, hY, hX + hW, hY);
+            hubBorder.addColorStop(0, hexToRgba(hexColor, 0.4));
+            hubBorder.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+            ctx.strokeStyle = hubBorder; ctx.lineWidth = 1; ctx.stroke();
+
+            // Dynamic Icon Hub
+            const iSize = 14, iX = hX + 8, iY = hY + (hH - iSize) / 2;
+            ctx.save();
+            ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
+            ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            drawIconLogic(iX, iY, iSize);
+            ctx.restore();
+
+            // Command Label (Integrated Metadata)
             ctx.fillStyle = TEXT_SUB;
-            ctx.font = `700 9px ${FONT_STACK}`;
+            ctx.font = `700 8px ${FONT_STACK}`;
             ctx.textAlign = 'right';
-            ctx.letterSpacing = '1.8px';
-            ctx.fillText(label.toUpperCase(), x + statW - 16, statY + 28);
+            ctx.letterSpacing = '1.5px';
+            ctx.fillText(label.toUpperCase(), hX + hW - 10, hY + 14);
             ctx.letterSpacing = '0px';
 
-            // Value (Bottom-Left Impact)
+            // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = `900 29px ${FONT_STACK}`;
-            ctx.textAlign = 'left';
-            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
-            ctx.fillText(value, x + 16, statY + statH - 18);
+            ctx.font = `900 32px ${FONT_STACK}`;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = hexToRgba(hexColor, 0.4); ctx.shadowBlur = 12;
+            ctx.fillText(value, x + statW / 2, statY + statH - 18);
             ctx.shadowBlur = 0;
+
+            // 6. ENERGY FOOTER: LINEAR DATA PULSE
+            const pulseY = statY + statH - 10, pulseW = statW - 32;
+            ctx.beginPath(); ctx.moveTo(x + 16, pulseY); ctx.lineTo(x + 16 + pulseW, pulseY);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'; ctx.lineWidth = 1; ctx.stroke();
+            
+            // Real-time Pulse Point (Surgical Detail)
+            const pPos = x + 16 + (pulseW * 0.75);
+            ctx.beginPath(); ctx.arc(pPos, pulseY, 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = hexColor; ctx.shadowColor = hexColor; ctx.shadowBlur = 8; ctx.fill();
             
             ctx.restore();
         };
@@ -279,16 +309,16 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         };
 
         const drawMangaIcon = (ix, iy, size) => {
-            const ox = ix + size / 2 - 7, oy = iy + size / 2 - 7;
+            const ox = ix + size / 2 - 7, oy = iy + size / 2 - 6.5;
             for (let i = 0; i < 3; i++) {
-                const offY = oy + i * 4.5;
-                ctx.beginPath(); ctx.roundRect(ox, offY, 14, 4, 1); ctx.stroke();
+                const offY = oy + i * 4.2;
+                ctx.beginPath(); ctx.roundRect(ox, offY, 14, 3.8, 0.5); ctx.stroke();
             }
         };
 
         const drawDaysIcon = (ix, iy, size) => {
             const ox = ix + size / 2, oy = iy + size / 2;
-            ctx.beginPath(); ctx.arc(ox, oy, 7, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(ox, oy, 6.5, 0, Math.PI * 2); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(ox, oy - 4); ctx.lineTo(ox, oy); ctx.lineTo(ox + 3, oy + 2); ctx.stroke();
         };
 
