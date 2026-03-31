@@ -4,6 +4,10 @@ const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/proc
 const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
 const http = require('http');
+const dns = require('dns');
+
+// Force IPv4 as preferred result for connection handshakes (solves Gateway hangs on some cloud providers)
+if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 
 // Setup Process Safety
 setupProcessHandlers();
@@ -19,8 +23,8 @@ validateEnv();
 // Create simple HTTP server for Render health checks
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
-    // Detailed logging for health checks
-    logger.debug(`Incoming Health Check: ${req.method} ${req.url}`, 'System');
+    // Upgraded to INFO log level so it's visible in Render's standard dashboard
+    logger.info(`Health check received: ${req.method} ${req.url}`, 'System');
     
     if (req.url === '/health' || req.url === '/') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -83,7 +87,14 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-// Start Bot with Fast-Login Strategy
+// Internal Pulse: Heartbeat log every 30 seconds to prove the process is healthy
+setInterval(() => {
+    const memory = process.memoryUsage();
+    const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
+    logger.info(`Internal Pulse: Event Loop is ALIVE (Heap: ${heapUsed}MB)`, 'System');
+}, 30000);
+
+// Start Bot with "Bulletproof" Instant-Up Strategy
 (async () => {
     try {
         logger.info('--- Library Opening Sequence Started ---', 'Startup');
@@ -91,12 +102,16 @@ process.on('SIGTERM', async () => {
         // Step 1: Load Core Resources (Commands, Events) - Must happen before login
         loadCoreResources(client);
 
-        // Step 2: Immediate Discord Login (Appears online FAST)
-        logger.info('Connecting to the Grand Archivist (Discord Gateway)...', 'Startup');
-        await client.login(process.env.DISCORD_TOKEN);
+        // Step 2: Non-Blocking Discord Login
+        // We REMOVE the 'await' here. This allows the script to reach its idle state instantly,
+        // which satisfies Render's health checks even if Discord's gateway is hanging.
+        logger.info('Initiating Handshake with Discord Gateway (Non-Blocking)...', 'Startup');
+        client.login(process.env.DISCORD_TOKEN).catch(err => {
+            logger.error('Discord Login Rejected:', err, 'Handshake');
+        });
         
         // Step 3: Background Initialization (Database, Schedulers)
-        // We do NOT await this to prevent it from blocking the health check window
+        // This continues in parallel to the Discord handshake.
         initializeDatabase(client);
 
     } catch (err) {
