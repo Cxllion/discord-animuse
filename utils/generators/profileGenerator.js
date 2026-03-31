@@ -119,8 +119,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
 
         ctx.fillStyle = TEXT_MAIN;
-        // Dynamic Username Scaling
-        ctx.font = fitText(ctx, nameText, `'Exton', ${FONT_STACK}`, 32, '900', 250); 
+        // Dynamic Username Scaling (Priority: Digital Galaxy)
+        ctx.font = fitText(ctx, nameText, `'digitalgalaxy', 'exton', ${FONT_STACK}`, 34, '900', 250); 
         const nameWidth = ctx.measureText(nameText).width;
         ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
         ctx.fillText(nameText, 20, nameY); 
@@ -128,8 +128,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
         // Refined Title Badge (Adaptive Alignment)
         const titleText = (userData.title || 'MUSE READER').toUpperCase();
-        // Dynamic Title Scaling
-        ctx.font = fitText(ctx, titleText, `'Exton', ${FONT_STACK}`, 11, '700', 120); 
+        // Dynamic Title Scaling (Priority: Exton)
+        ctx.font = fitText(ctx, titleText, `'exton', ${FONT_STACK}`, 11, '700', 120); 
         ctx.letterSpacing = '1px';
         
         const tagW = ctx.measureText(titleText).width + 24, tagH = 24;
@@ -293,8 +293,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
             // Command Label (Integrated Metadata)
             ctx.fillStyle = TEXT_SUB;
-            // Dynamic Scaling for Tactical Headers
-            ctx.font = fitText(ctx, label.toUpperCase(), `'Exton', ${FONT_STACK}`, 8.5, '700', hW - 32); 
+            // Dynamic Scaling for Tactical Headers (Priority: Exton)
+            ctx.font = fitText(ctx, label.toUpperCase(), `'exton', ${FONT_STACK}`, 8.5, '700', hW - 32); 
             ctx.textAlign = 'right';
             ctx.letterSpacing = '1.5px';
             ctx.fillText(label.toUpperCase(), hX + hW - 10, hY + 14);
@@ -302,8 +302,8 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
             // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY (Dynamic Scaling)
             ctx.fillStyle = '#FFFFFF';
-            // Scale dynamically to fit within pod width (110px minus safety margins)
-            ctx.font = fitText(ctx, value, `'Exomoon', 'Orbitron', ${FONT_STACK}`, 32, '900', statW - 24);
+            // Scale dynamically (Priority: Neo-Externo)
+            ctx.font = fitText(ctx, value, `'neo', 'exomoon', 'orbitron', ${FONT_STACK}`, 32, '900', statW - 24);
             ctx.textAlign = 'center';
             ctx.shadowColor = hexToRgba(hexColor, 0.4); ctx.shadowBlur = 12;
             ctx.fillText(value, x + statW / 2, statY + statH - 18);
@@ -386,11 +386,11 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         const levelBaseX = 55, levelY = termY + termH / 2 + 15;
         
         ctx.fillStyle = '#FFFFFF';
-        // Use 'boldnine' for the massive level signature
-        ctx.font = fitText(ctx, levelText, `'boldnine', ${FONT_STACK}`, 44, '900', 70); 
+        // Massive Level Signature (Priority: Neo-Externo) - 52px base
+        ctx.font = fitText(ctx, levelText, `'neo', 'boldnine', ${FONT_STACK}`, 52, '900', 70); 
         ctx.textAlign = 'center';
         ctx.shadowColor = hexToRgba(THEME_COLOR, 0.4); ctx.shadowBlur = 15;
-        ctx.fillText(levelText, levelBaseX, levelY);
+        ctx.fillText(levelText, levelBaseX, levelY + 5);
         ctx.shadowBlur = 0;
 
         // 2. METADATA: HUD LABELS (Exton Signature)
@@ -398,14 +398,14 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         
         ctx.textAlign = 'left';
         ctx.fillStyle = TEXT_SUB; 
-        ctx.font = fitText(ctx, 'EXPERIENCE', `'Exton', ${FONT_STACK}`, 10, '700', 100);
+        ctx.font = fitText(ctx, 'EXPERIENCE', `'exton', ${FONT_STACK}`, 10, '700', 100);
         ctx.letterSpacing = '1.8px';
         ctx.fillText('EXPERIENCE', barX, termY + 28);
         ctx.letterSpacing = '0px';
 
         ctx.textAlign = 'right';
         const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`.toUpperCase();
-        ctx.font = fitText(ctx, xpText, `'Exton', ${FONT_STACK}`, 11, '700', 150);
+        ctx.font = fitText(ctx, xpText, `'exton', ${FONT_STACK}`, 11, '700', 150);
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(xpText, barX + barW, termY + 28);
 

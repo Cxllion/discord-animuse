@@ -4,7 +4,7 @@ const logger = require('./logger');
 const fs = require('fs');
 
 /**
- * Loads custom fonts to ensure consistency across environments (e.g., Windows vs Render).
+ * Loads custom fonts to ensure consistency across environments.
  */
 function loadCustomFonts() {
     try {
@@ -19,18 +19,18 @@ function loadCustomFonts() {
         let loadedCount = 0;
 
         for (const file of fontFiles) {
-            if (file.endsWith('.ttf') || file.endsWith('.otf') || file.endsWith('.woff') || file.endsWith('.woff2')) {
+            const ext = path.extname(file).toLowerCase();
+            if (ext === '.ttf' || ext === '.otf') {
                 const fontPath = path.join(fontsDir, file);
                 
-                // Register normally so it's available by its true name
-                const success = GlobalFonts.registerFromPath(fontPath);
+                // Get the 'Core' name by splitting by spaces, hyphens, and underscores
+                // This converts 'Neo-Externo Demo' -> 'neo' and 'DigitalGalaxy-Regular...' -> 'digitalgalaxy'
+                const familyName = path.basename(file, ext).toLowerCase().split(/[ \-_]/)[0];
+                const success = GlobalFonts.registerFromPath(fontPath, familyName);
                 
-                // Also register as 'sans-serif' alias so that any ctx.font = '... sans-serif'
-                // exactly uses these bundled fonts instead of falling back to Render's defaults.
-                GlobalFonts.registerFromPath(fontPath, 'sans-serif');
-
                 if (success) {
                     loadedCount++;
+                    logger.debug(`Registered font family: '${familyName}' (from ${file})`, 'Fonts');
                 } else {
                     logger.warn(`Failed to register font: ${file}`, 'Fonts');
                 }
@@ -38,9 +38,9 @@ function loadCustomFonts() {
         }
 
         if (loadedCount > 0) {
-            logger.info(`Successfully loaded ${loadedCount} custom font(s).`, 'System', 'Fonts');
+            logger.info(`Successfully curated ${loadedCount} typography assets for the visual archives. ♡`, 'System', 'Fonts');
         } else {
-            logger.info('No valid font files (.ttf, .otf, .woff, .woff2) found in assets/fonts.', 'Fonts');
+            logger.info('No valid font files (.ttf, .otf) found in the archives.', 'Fonts');
         }
 
     } catch (error) {

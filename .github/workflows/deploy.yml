@@ -1,0 +1,23 @@
+name: Deploy Animuse to Oracle VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploying via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/discord-animuse
+            git fetch --all
+            git reset --hard origin/main
+            npm install --omit=dev
+            pm2 restart Animuse || pm2 start index.js --name Animuse
+            pm2 save
