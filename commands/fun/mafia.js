@@ -37,6 +37,10 @@ module.exports = {
         .addSubcommand(sub =>
             sub.setName('skip')
                 .setDescription('ADMIN: Instantly skip the current phase timeout.')
+        )
+        .addSubcommand(sub =>
+            sub.setName('stats')
+                .setDescription('View your historical survival records and biometrics.')
         ),
 
     async execute(interaction) {
@@ -169,6 +173,14 @@ module.exports = {
                 default: 
                     await interaction.followUp({ content: `Cannot skip phase: ${game.state}`, flags: MessageFlags.Ephemeral });
             }
+        } else if (subcommand === 'stats') {
+            await interaction.deferReply();
+            const archiveService = new (require('../../utils/services/archiveService'))();
+            const stats = await archiveService.getPlayerStats(interaction.user.id);
+            const { buildArchiveProfile } = require('../../utils/archive/ArchiveUI');
+            const profile = buildArchiveProfile(interaction.user, stats);
+            // buildArchiveProfile uses flags: 64, but editReply doesn't support flags natively unless initialized with it, which we didn't deferReply(hidden). But discord allows embeds.
+            await interaction.editReply({ embeds: profile.embeds });
         }
     }
 };

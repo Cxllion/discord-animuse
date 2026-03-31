@@ -88,36 +88,36 @@ module.exports = {
         const joinedDate = member ? member.joinedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Unknown';
         const messages = Math.floor(xp / 20);
 
-        // Fetch AniList Data
+        // --- INITIALIZE USER DATA ---
         let anilistStats = { completed: 0, days: 0, meanScore: 0 };
         let favorites = [];
         let alMaintenance = false;
 
-        if (linkedUsername) {
-            const alRes = await getAniListProfile(linkedUsername);
-            anilistStats = alRes.stats;
-            favorites = alRes.favorites;
-            alMaintenance = !!alRes.maintenance;
-            if (avatarConfig && avatarConfig.source === 'ANILIST') avatarConfig.anilistAvatar = alRes.avatar;
-        }
-
-        const titleVal = member ? await getDynamicUserTitle(member) : 'Reader';
         const userData = {
             xp, level, rank: rankData ? rankData.rank : '?',
             current: progress.current, required: progress.required, percent: progress.percent,
-            title: (title && !title.includes('Muse')) ? title : knowledgeRank.toUpperCase(),
             joinedDate, messages, knowledgeRank,
             is_premium: isPremium, is_booster: isBooster,
             rankColor,
             anilist_maintenance: alMaintenance,
-            // FORCE COMPACT FALLBACK: If API is dead, act as if not synced for layout purposes
-            anilist_synced: !!linkedUsername && !alMaintenance,
             anilist: anilistStats,
             avatarConfig: avatarConfig,
             guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : targetUser.displayAvatarURL({ extension: 'png' })
         };
 
-        // Generate Image
+        // --- FETCH ANILIST DATA ---
+        if (linkedUsername) {
+            const alRes = await getAniListProfile(linkedUsername);
+            userData.anilist = alRes.stats;
+            favorites = alRes.favorites;
+            userData.anilist_maintenance = !!alRes.maintenance;
+            if (avatarConfig && avatarConfig.source === 'ANILIST') avatarConfig.anilistAvatar = alRes.avatar;
+        }
+
+        userData.anilist_synced = !!linkedUsername && !userData.anilist_maintenance;
+        userData.title = (title && !title.includes('Muse')) ? title : knowledgeRank.toUpperCase();
+        userData.titleVal = member ? await getDynamicUserTitle(member) : 'Reader';
+
         const displayName = member ? member.displayName : targetUser.username;
 
         // Provide immediate feedback with a beautiful animated progress bar

@@ -75,9 +75,10 @@ function resolveNightStack(game) {
                 break;
                 
             case 4: // Rewrites (Corruptor)
+                if (!target.alive) break; // Can't infect the dead
                 if (!deaths.find(d => d.target.id === target.id)) {
                     // Convert target's faction if applicable
-                    if (target.role.faction === 'Archivists') {
+                    if (target.role && target.role.faction === 'Archivists') {
                         target.role.faction = 'Revisions';
                         readings.push({ viewerId: target.id, message: `🩸 **You have been infected.** The Viral Rot has taken hold. You are now aligned with the **Revisions** (Infected). You win with them.` });
                         
@@ -118,6 +119,7 @@ function resolveNightStack(game) {
     // Apply deaths
     for (const d of deaths) {
         d.target.die();
+        d.target.deathDay = game.dayCount;
     }
 
     return { deaths, readings };

@@ -20,9 +20,10 @@ class ArchivePlayer {
         this.criticTarget = null;
         this.guilt = false;
         this.won = false;
-        this.lastWill = ""; // Final message revealed on death
-        this.requiresConfirmation = false; // For waitlist auto-imports
+        this.lastWill = null; // Final message revealed on death
         this.isConfirmed = false; 
+        this.deathDay = null; // Track when they died for timelines
+        this.missedVotes = 0; // Track AFK voting
     }
 
     assignRole(roleObject) {

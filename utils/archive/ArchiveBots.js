@@ -9,20 +9,20 @@ function handleBotNightActions(game) {
         
         // Smarter Targeting Logic
         if (bot.role.faction === 'Revisions') {
-            // Revisions try to find Archivists (Town)
             possible = alivePlayers.filter(p => !p.role || p.role.faction !== 'Revisions');
         } else if (bot.role.faction === 'Archivists') {
             if (bot.role.name === 'The Conservator') {
-                // Conservator (Doctor) protects suspected Archivists or themselves
+                // 30% chance to self-protect
+                if (Math.random() < 0.3) {
+                    bot.nightActionTarget = bot.id;
+                    console.log(`[ARCHIVE-AI] ${bot.name} (${bot.role.name}) self-protected.`);
+                    continue;
+                }
                 possible = alivePlayers.filter(p => p.id !== bot.id);
-                // 30% chance to self-protect if allowed (usually but not always)
-                if (Math.random() < 0.3) bot.nightActionTarget = bot.id; 
             } else {
-                // Other town members target everyone else
                 possible = alivePlayers.filter(p => p.id !== bot.id);
             }
         } else {
-            // Neutrals target anyone
             possible = alivePlayers.filter(p => p.id !== bot.id);
         }
 
@@ -37,55 +37,139 @@ function handleBotNightActions(game) {
 function handleBotDayVoting(game) {
     const aliveBots = game.getAlivePlayers().filter(p => p.isBot);
     const alivePlayers = game.getAlivePlayers();
+    const humans = alivePlayers.filter(p => !p.isBot);
 
     for (const bot of aliveBots) {
-        // Random thinking delay to mimic real players
-        const delay = Math.floor(Math.random() * 15000) + 5000;
-        
-        const timer = setTimeout(() => {
-            if (game.state !== 'VOTING' || !bot.alive || game.isDestroyed) return;
+        if (!bot.alive) continue;
 
-            const tallies = {};
+        const humanTallies = {};
+        humans.forEach(h => {
+            if (h.voteTarget) {
+                humanTallies[h.voteTarget] = (humanTallies[h.voteTarget] || 0) + 1;
+            }
+        });
+
+        // Find the most voted target by human survivors
+        const sortedHumans = Object.entries(humanTallies).sort((a,b) => b[1] - a[1]);
+        const bestHumanLedTargetId = sortedHumans[0]?.[0];
+
+        let targetId = null;
+
+        // Scenario 1: Follow the human majority
+        if (bestHumanLedTargetId) {
+            targetId = bestHumanLedTargetId;
+        } 
+        // Scenario 2: Global bandwagon (including other bots who might have voted if we were looping)
+        // Note: Since this is called in a loop, later bots might see earlier bots' votes
+        else {
+            const totalTallies = {};
             alivePlayers.forEach(p => {
-                if (p.voteTarget) {
-                    tallies[p.voteTarget] = (tallies[p.voteTarget] || 0) + 1;
-                }
+                if (p.voteTarget) totalTallies[p.voteTarget] = (totalTallies[p.voteTarget] || 0) + 1;
             });
+            targetId = Object.entries(totalTallies).sort((a,b) => b[1] - a[1])[0]?.[0];
+        }
 
-            let targetId = null;
-            
-            // Logic: Bandwagoning or Faction Defense
-            const leadingTargetId = Object.entries(tallies).sort((a,b) => b[1] - a[1])[0]?.[0];
-            const leadingVotes = tallies[leadingTargetId] || 0;
-
-            if (bot.role?.faction === 'Revisions') {
-                const leaderP = game.players.get(leadingTargetId);
-                if (leaderP?.role?.faction === 'Revisions' && leadingVotes >= (alivePlayers.length / 3)) {
-                    // Try to shift vote AWAY from a fellow Revision if they are dying
-                    const others = alivePlayers.filter(p => p.id !== bot.id && p.role?.faction !== 'Revisions');
-                    if (others.length > 0) targetId = others[Math.floor(Math.random() * others.length)].id;
-                }
+        // Fallback: Random (avoiding self and biological conflicts)
+        if (!targetId) {
+            if (Math.random() < 0.1) {
+                targetId = 'skip';
+            } else {
+                const possible = alivePlayers.filter(p => p.id !== bot.id && p.id !== bot.inkBoundTarget);
+                if (possible.length > 0) targetId = possible[Math.floor(Math.random() * possible.length)].id;
             }
+        }
 
-            // Normal bandwagon logic (High chance if voting is already leaning one way)
-            if (!targetId && leadingTargetId && Math.random() < 0.6) {
-                targetId = leadingTargetId;
-            }
-
-            // Fallback: Random
-            if (!targetId) {
-                const others = alivePlayers.filter(p => p.id !== bot.id && p.id !== bot.inkBoundTarget);
-                if (others.length > 0) targetId = others[Math.floor(Math.random() * others.length)].id;
-            }
-
-            if (targetId && targetId !== bot.id) {
-                bot.voteTarget = targetId;
-                game.updateVotingBoard();
-            }
-
-        }, delay);
-        game.botTimers.push(timer);
+        if (targetId && targetId !== bot.id) {
+            bot.voteTarget = targetId;
+            console.log(`[ARCHIVE-AI] ${bot.name} (Bot) finalized vote for: ${targetId}`);
+        }
     }
 }
 
-module.exports = { handleBotNightActions, handleBotDayVoting };
+async function handleBotDaySpeech(game) {
+    if (!game.thread || !game.thread.parent) return;
+    
+    const aliveBots = game.getAlivePlayers().filter(p => p.isBot);
+    if (aliveBots.length === 0) return;
+    
+    const lastNight = game.dayCount - 1; 
+
+    // Fetch or create a webhook for the channel
+    let archiveWebhook = null;
+    try {
+        const webhooks = await game.thread.parent.fetchWebhooks();
+        archiveWebhook = webhooks.find(wh => wh.token);
+        if (!archiveWebhook) {
+            archiveWebhook = await game.thread.parent.createWebhook({
+                name: 'Sanctuary Archive Node',
+                avatar: 'https://cdn.discordapp.com/embed/avatars/1.png' 
+            });
+        }
+    } catch (e) {
+        console.error('[ARCHIVE-AI] Could not setup webhook for bot speech:', e);
+    }
+    
+    for (const bot of aliveBots) {
+        if (!bot.alive || !bot.role) continue;
+        
+        // 80% chance to speak if they have something to say
+        if (Math.random() > 0.8) continue;
+        
+        let message = null;
+        
+        if (bot.role.name === 'The Indexer' && bot.nightActionTarget) {
+            const target = game.players.get(bot.nightActionTarget);
+            if (target) {
+                const targetDisplay = target.isBot ? `**${target.name}**` : `<@${target.id}>`;
+                const faction = target.role?.faction === 'Revisions' && target.role?.name !== 'The Plagiarist' ? 'Revisions' : 'Archivists';
+                if (faction === 'Revisions') {
+                    message = `🚨 **ALERT:** My bio-scans confirm that ${targetDisplay} is corrupted! They are aligned with the Revisions.`;
+                } else {
+                    message = `🛡️ I scanned ${targetDisplay} last night. Their signature is clean (Archivists).`;
+                }
+            }
+        } else if (bot.role.name === 'The Conservator' && bot.nightActionTarget) {
+            if (bot.nightActionTarget !== bot.id) {
+                const target = game.players.get(bot.nightActionTarget);
+                if (target) {
+                    const targetDisplay = target.isBot ? `**${target.name}**` : `<@${target.id}>`;
+                    message = `🛡️ I maintained a protective barrier over ${targetDisplay} last night.`;
+                }
+            }
+        } else if (bot.role.name === 'The Scribe' && bot.nightActionTarget) {
+            const target = game.players.get(bot.nightActionTarget);
+            if (target) {
+                const targetNameDisplay = target.isBot ? `**${target.name}**` : `<@${target.id}>`;
+                const visits = game.visitHistory.filter(v => v.night === lastNight && v.targetId === target.id && v.sourceId !== bot.id);
+                if (visits.length > 0) {
+                    const visitors = visits.map(v => {
+                        const vp = game.players.get(v.sourceId);
+                        return (vp && vp.isBot) ? `**${vp.name}**` : `<@${v.sourceId}>`;
+                    });
+                    message = `🔎 I analyzed the remains of ${targetNameDisplay}. They were visited by: ${visitors.join(', ')}.`;
+                } else {
+                    message = `🔎 I analyzed the remains of ${targetNameDisplay}, but found no recent traces.`;
+                }
+            }
+        }
+        
+        if (message) {
+            setTimeout(async () => {
+                if (game.state === 'DAY' && !game.isDestroyed) {
+                    if (archiveWebhook) {
+                        await archiveWebhook.send({
+                            content: message,
+                            username: bot.name,
+                            avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png',
+                            threadId: game.thread.id
+                        }).catch(() => {});
+                    } else {
+                        game.thread.send(`[**${bot.name}**]: ${message}`).catch(() => {});
+                    }
+                }
+            }, Math.random() * 5000 + 2000);
+        }
+    }
+}
+
+module.exports = { handleBotNightActions, handleBotDayVoting, handleBotDaySpeech };

@@ -48,7 +48,10 @@ class ArchiveGame extends EventEmitter {
         this.settings = {
             discussionTime: 120, // seconds
             votingTime: 60, // seconds
-            gameMode: 'First Edition'
+            nightTime: 60, // seconds
+            prologueTime: 15, // seconds
+            gameMode: 'First Edition',
+            revealRoles: true // Show roles on death/exile
         };
 
         // Players collection: userId -> Player
@@ -58,12 +61,13 @@ class ArchiveGame extends EventEmitter {
         this.addPlayer(hostUser);
         
         // Game State
-        this.state = 'LOBBY'; // LOBBY, PROLOGUE, NIGHT, DAY, STAND, GAME_OVER
+        this.state = 'LOBBY'; // LOBBY, PROLOGUE, NIGHT, DAY, VOTING, TWILIGHT, GAME_OVER
         this.dayCount = 0;
         this.activeTimer = null;
         this.hubMessageId = null;
         this.visitHistory = []; // { night, sourceId, targetId }
         this.botTimers = []; // Track bot setTimeouts for cleanup
+        this.graveyardThreadId = null;
         this.isDestroyed = false;
     }
 
@@ -119,16 +123,21 @@ class ArchiveGame extends EventEmitter {
         
         let thread;
         try {
-            // Attempt to start a thread from the interaction message
-            thread = await interaction.message.startThread({
-                name: `📚 Final Library | Session #${this.lobbyMessageId.slice(-4)}`,
-                autoArchiveDuration: 60,
-                reason: 'Started a Sanctuary Session',
-            });
+            // Attempt to start a thread from the interaction message (if it exists)
+            if (interaction.message) {
+                thread = await interaction.message.startThread({
+                    name: `📚 Final Library | Session #${this.lobbyMessageId.slice(-4)}`,
+                    autoArchiveDuration: 60,
+                    reason: 'Started a Sanctuary Session',
+                });
+            } else {
+                throw new Error('No attached message found for threading.');
+            }
         } catch (e) {
-            console.error('Thread attachment failed, creating a new thread instead:', e);
-            // Fallback: Create a standalone thread in the same channel
+            if (e.code !== 10008) console.error('Thread attachment failed, creating a new thread instead:', e);
+            // Fallback: Create a standalone thread in the same channel (MUST have name)
             thread = await interaction.channel.threads.create({
+                name: `📚 Final Library | Session #${this.lobbyMessageId.slice(-4)}`,
                 autoArchiveDuration: 60,
                 reason: 'Started a game of Mafia',
             });
@@ -145,10 +154,22 @@ class ArchiveGame extends EventEmitter {
             }
         }
 
-        // Lock thread (if we want them silent during setup)
+        // Lock thread during setup
         await thread.setLocked(true, 'Setup phase');
         
-        // Build dynamic role mapping for initial post
+        // Generate roles FIRST so the composition display is accurate
+        const { generateRolesForMode } = require('./ArchiveModes');
+        const availableRoles = generateRolesForMode(this.settings.gameMode, this.players.size);
+        
+        let i = 0;
+        for (const p of this.players.values()) {
+            if (i < availableRoles.length) {
+                p.assignRole(availableRoles[i]);
+            }
+            i++;
+        }
+        
+        // Build role composition display
         const arch = {};
         const rev = {};
         const unb = {};
@@ -179,18 +200,6 @@ class ArchiveGame extends EventEmitter {
 
         await thread.send(`📜 The Final Library is sealed... The last record of humanity begins! Check your DMs for your Role Cards. ${roleEx}\n\n*Wait quietly... Night falls over the ruined world.*`);
         
-        // Generate mathematically balanced roles depending on mode and player count
-        const { generateRolesForMode } = require('./ArchiveModes');
-        const availableRoles = generateRolesForMode(this.settings.gameMode, this.players.size);
-        
-        let i = 0;
-        for (const p of this.players.values()) {
-            if (i < availableRoles.length) {    
-                p.assignRole(availableRoles[i]);
-            }
-            i++;
-        }
-        
         // Assign targets for special roles
         const alivePlayers = Array.from(this.players.values());
         for (const p of alivePlayers) {
@@ -202,19 +211,15 @@ class ArchiveGame extends EventEmitter {
             }
         }
         
-        // Send actual DMs to human players
+        // Send actual Cinematic Role Cards to human players via Direct Transmission
+        const { buildRoleCard } = require('./ArchiveUI');
         for (const p of this.players.values()) {
             if (!p.isBot && p.role) {
                 try {
-                    const header = p.role.faction === 'Revisions' ? '🩸 **The Corrupted Page (Revision)**' : '📜 **The Final Library (Archivist)**';
-                    let dmStr = `${header}\n\nYou are **${p.role.emoji} ${p.role.name}** (${p.role.faction}).\n*${p.role.description}*`;
-                    if (p.role.name === 'The Critic') {
-                        const tgt = this.players.get(p.criticTarget);
-                        dmStr += `\n\n🎯 **Your Target:** You must subtly manipulate the town into voting out **${tgt?.name}** during the Day phase.`;
-                    }
-                    await p.user.send(dmStr);
+                    const card = buildRoleCard(p, this);
+                    await p.user.send(card);
                 } catch (e) {
-                    console.log(`[WARN] Could not DM player ${p.name}`);
+                    console.log(`[WARN] Transmission error to survivor ${p.name}: Potential block.`);
                 }
             }
         }
@@ -223,9 +228,21 @@ class ArchiveGame extends EventEmitter {
         this.activeTimer = setTimeout(async () => {
             if (this.state === 'GAME_OVER') return;
             
+            // Create Graveyard Thread
+            try {
+                const graveyardThread = await interaction.channel.threads.create({
+                    name: `💀 Deleted Records`,
+                    autoArchiveDuration: 60,
+                    type: 12, 
+                    reason: 'FinalLibrary graveyard channel',
+                });
+                this.graveyardThreadId = graveyardThread.id;
+                await graveyardThread.send(`💀 **The Sanctuary Graveyard.**\nOnly the dead can read and speak here. The living cannot hear you.`);
+            } catch (e) { console.error('Failed to create graveyard thread', e); }
+
             // Create Revision Secret Thread if needed
             const revisions = Array.from(this.players.values()).filter(p => p.role?.faction === 'Revisions' && !p.isBot);
-            if (revisions.length > 1) { // Only if more than 1 human archive
+            if (revisions.length > 1) {
                 try {
                     const archiveThread = await interaction.channel.threads.create({
                         name: `🌑 Viral Rot Secret Hub`,
@@ -237,12 +254,12 @@ class ArchiveGame extends EventEmitter {
                     for (const p of revisions) {
                         await archiveThread.members.add(p.id);
                     }
-                    await archiveThread.send(`🌑 **Revisions, coordinate your strategy here.** Only your faction can see this thread.\nCurrently active: ${revisions.map(p => `<@${p.id}>`).join(', ')}`);
+                    await archiveThread.send(`🌑 **Revisions, coordinate your strategy here.**\nCurrently active: ${revisions.map(p => `<@${p.id}>`).join(', ')}`);
                 } catch (e) { console.error('Failed to create archive thread', e); }
             }
             
             this.startNight();
-        }, 15000);
+        }, this.settings.prologueTime * 1000);
         
         return thread;
     }
@@ -306,76 +323,87 @@ class ArchiveGame extends EventEmitter {
         if (winners.length > 0) archiveService.recordMatchResults(winners, true);
         if (losers.length > 0) archiveService.recordMatchResults(losers, false);
         
-        const colors = {
-            'Archivists': '#3498db',
-            'Revisions': '#e74c3c',
-            'Unbound (The Bookburner)': '#e67e22',
-            'Unbound (The Anomaly)': '#9b59b6'
-        };
-
-        const embed = new EmbedBuilder()
-            .setTitle('🏆 The Game Has Ended!')
-            .setColor(colors[winner] || '#f1c40f')
-            .setDescription(`**Winner:** ${winner}\n\n**Final Survivor Roster:**\n`);
-            
-        let rosterStr = '';
-        for (const p of this.getAlivePlayers()) {
-            rosterStr += `- ${p.role?.emoji || '👤'} ${p.name} (${p.role?.name || 'Unknown'})\n`;
-        }
-        if (rosterStr) embed.setDescription(`**Winner:** ${winner}\n\n**Survivor Roster:**\n${rosterStr}`);
-        
-        // Display victorious third-party roles
-        const wonCritics = Array.from(this.players.values()).filter(p => p.won && p.role?.name === 'The Critic');
-        if (wonCritics.length > 0) {
-            embed.addFields({ name: 'Unbound Victories', value: wonCritics.map(c => `- ${c.name} (The Critic) successfully executed their target.`).join('\n') });
-        }
+        // Use Cinematic Game Over UI
+        const { buildGameOverPayload } = require('./ArchiveUI');
+        const gameOverMsg = buildGameOverPayload(this, winner);
         
         if (this.thread) {
-            await this.thread.send({ embeds: [embed] });
-            await this.thread.setLocked(false, 'Game Over - Post Game Chat');
+            await this.thread.send(gameOverMsg);
+            await this.thread.setLocked(false, 'Sanctuary session concluded.');
+            
+            try {
+                const { buildEndedLobbyPayload } = require('./ArchiveUI');
+                const lobbyMsg = await this.thread.parent.messages.fetch(this.lobbyMessageId);
+                if (lobbyMsg) await lobbyMsg.edit(buildEndedLobbyPayload(this, winner));
+            } catch (e) {
+                console.error('Failed to update main lobby embed on game over', e);
+            }
         }
         
         this.emit('gameEnded', this.threadId);
-        // We don't call destroy() immediately to allow post-game chat, but the manager will handle removal
+        
+        // Auto-archive threads after 10 seconds
+        setTimeout(async () => {
+            try {
+                if (this.thread && !this.thread.archived) {
+                    await this.thread.setLocked(true);
+                    await this.thread.setArchived(true);
+                }
+                if (this.archiveThreadId && this.thread) {
+                    const secret = await this.thread.parent.threads.fetch(this.archiveThreadId).catch(()=>null);
+                    if (secret && !secret.archived) await secret.setArchived(true);
+                }
+                if (this.graveyardThreadId && this.thread) {
+                    const grave = await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(()=>null);
+                    if (grave && !grave.archived) await grave.setArchived(true);
+                }
+            } catch (e) {
+                console.error('Failed to auto-archive threads:', e);
+            }
+        }, 10000);
     }
 
     async startNight() {
         if (this.isDestroyed) return;
         this.state = 'NIGHT';
+        this.dayCount++;
         this.emit('stateChanged', 'NIGHT');
+        
+        // Clean up bot timers from previous phase
+        for (const timer of this.botTimers) clearTimeout(timer);
+        this.botTimers = [];
         
         for (const p of this.players.values()) { p.resetForNight(); }
 
+        // Handle guilt deaths (from Ghostwriter killing an Archivist)
+        // These are tracked and revealed in the morning report
+        this.guiltDeaths = [];
+        for (const p of this.getAlivePlayers()) {
+            if (p.guilt) {
+                p.die();
+                p.deathDay = this.dayCount;
+                this.guiltDeaths.push(p);
+                this.moveToGraveyard(p.id);
+            }
+        }
+
         if (this.thread) {
             await this.thread.setLocked(true, 'Night phase');
-            const endTime = Math.floor(Date.now() / 1000) + 60;
+            const nightDuration = this.settings.nightTime || 60;
+            const endTime = Math.floor(Date.now() / 1000) + nightDuration;
             
             const whisper = NIGHT_WHISPERS[Math.floor(Math.random() * NIGHT_WHISPERS.length)];
             const embed = new EmbedBuilder()
-                .setTitle('🌑 Phase: Night Falling')
-                .setColor('#2c3e50') // Midnight blue/grey
-                .setDescription(`*${whisper}*\n\n📝 **Human players must check their DMs to perform actions.**`)
-                .setFooter({ text: `Night ends in 60s` })
+                .setTitle(`🌑 Night ${this.dayCount}`)
+                .setColor('#2c3e50')
+                .setDescription(`*${whisper}*\n\n📝 **Check your DMs to perform your night actions.**`)
+                .setFooter({ text: `Night ends <t:${endTime}:R>` })
                 .setTimestamp();
 
-            await this.thread.send({
-                content: `🌑 **Phase: Night** | Ends <t:${endTime}:R>`,
-                embeds: [embed]
-            });
-        }
-        
-        const aliveActPool = this.getAlivePlayers();
-        for (const p of aliveActPool) {
-            if (p.guilt) {
-                p.die();
-                let deathMsg = `💀 **${p.name}** (The Ghostwriter) could not bear the guilt of erasing an innocent Archivist. They have tragically taken their own life.`;
-                if (p.lastWill) deathMsg += `\n\n📜 **Last Will:** "*${p.lastWill}*"`;
-                if (this.thread) await this.thread.send(deathMsg);
-            }
+            await this.thread.send({ embeds: [embed] });
         }
         
         const alivePlayers = this.getAlivePlayers();
-        // DM human players with night actions and the Last Will button
         const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
         for (const p of alivePlayers) {
             if (p.isBot) continue;
@@ -386,7 +414,7 @@ class ArchiveGame extends EventEmitter {
             if (p.role && p.role.priority !== 99) {
                 let optionsData = [];
                 if (p.role.name === 'The Scribe') {
-                    optionsData = Array.from(this.players.values()).filter(ap => !ap.alive).map(ap => ({ label: ap.name, value: ap.id }));
+                    optionsData = Array.from(this.players.values()).filter(ap => !ap.alive && !this.guiltDeaths.includes(ap)).map(ap => ({ label: ap.name, value: ap.id }));
                 } else if (p.role.name === 'The Bookburner') {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                     optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
@@ -394,10 +422,14 @@ class ArchiveGame extends EventEmitter {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                 }
 
+                if (optionsData.length === 0 && p.role.name === 'The Scribe') {
+                    optionsData.push({ label: 'No bodies to scan yet', value: 'none', description: 'Wait for a casualty.' });
+                }
+
                 if (optionsData.length > 0) {
                     const dropdown = new StringSelectMenuBuilder()
                         .setCustomId(`archive_night_target_${this.lobbyMessageId}`)
-                        .setPlaceholder('Select a target for your ability...')
+                        .setPlaceholder(`${p.role.emoji} Select a target for: ${p.role.name}`)
                         .addOptions(optionsData.slice(0, 25));
                     components.push(new ActionRowBuilder().addComponents(dropdown));
                 }
@@ -414,10 +446,12 @@ class ArchiveGame extends EventEmitter {
             components.push(willRow);
 
             try {
-                const endTime = Math.floor(Date.now() / 1000) + 60;
-                const willStatus = p.lastWill ? `Current last will: *${p.lastWill}*` : `You haven't written a last will yet.`;
+                const nightDuration = this.settings.nightTime || 60;
+                const endTime = Math.floor(Date.now() / 1000) + nightDuration;
+                const willStatus = p.lastWill ? `📜 Current will: *"${p.lastWill}"*` : `📜 You haven't written a last will yet.`;
+                const roleInfo = p.role.priority !== 99 ? `**Your Role:** ${p.role.emoji} ${p.role.name}` : '';
                 await p.user.send({ 
-                    content: `🌑 **Night ${this.dayCount} (Ends <t:${endTime}:R>)**\n${willStatus}`, 
+                    content: `🌑 **Night ${this.dayCount}** · Ends <t:${endTime}:R>\n${roleInfo}\n${willStatus}`, 
                     components 
                 });
             } catch (e) {
@@ -425,10 +459,10 @@ class ArchiveGame extends EventEmitter {
             }
         }
         
-        // End night after 60s
+        // End night after configured duration
         this.activeTimer = setTimeout(() => {
             if (this.state !== 'GAME_OVER') this.endNight();
-        }, 60000);
+        }, this.settings.nightTime * 1000);
         
         this.emit('saveState');
     }
@@ -436,19 +470,18 @@ class ArchiveGame extends EventEmitter {
     async endNight() {
         const { deaths, readings } = resolveNightStack(this);
         
+        // Merge guilt deaths into the morning report
+        const guiltDeaths = (this.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
+        const allDeaths = [...guiltDeaths, ...deaths];
+        
+        for (const d of deaths) {
+            this.moveToGraveyard(d.target.id);
+        }
+        
         if (this.thread) {
-            if (deaths.length === 0) {
-                await this.thread.send('🌅 **Morning arrives.** The safe-zone filters held. No one was lost to the Rot last night.');
-            } else {
-                let msg = '🌅 **Morning arrives. The air feels heavy with decay.**\n\n';
-                for (const d of deaths) {
-                    const lore = DEATH_LORE[Math.floor(Math.random() * DEATH_LORE.length)].replace('{name}', d.target.name);
-                    msg += `💀 ${lore}\n`;
-                    if (d.target.lastWill) msg += `📜 **Last Will:** "*${d.target.lastWill}*"\n\n`;
-                    else msg += `\n`;
-                }
-                await this.thread.send(msg);
-            }
+            const { buildMorningReport } = require('./ArchiveUI');
+            const report = buildMorningReport(this, allDeaths);
+            await this.thread.send(report);
             
             for (const r of readings) {
                 const viewer = this.players.get(r.viewerId);
@@ -465,7 +498,6 @@ class ArchiveGame extends EventEmitter {
     async startDay() {
         if (this.isDestroyed) return;
         this.state = 'DAY';
-        this.dayCount++;
         this.emit('stateChanged', 'DAY');
         
         for (const p of this.players.values()) { p.resetForDay(); }
@@ -479,18 +511,22 @@ class ArchiveGame extends EventEmitter {
             const embed = new EmbedBuilder()
                 .setTitle(`🌅 ${epithet} (Day ${this.dayCount})`)
                 .setColor('#f39c12')
-                .setDescription(`*The sanctuary is restless. The world outside is dead, but the library must survive.*\n\n**Discussion Period:** Talk amongst yourselves. Humanity's last hope rests on your decisions.`)
+                .setDescription(`*The sanctuary is restless. The world outside is dead, but the library must survive.*\n\n**Survivors Remaining:** ${this.getAlivePlayers().length}/${this.players.size}\n\n**Discussion Period:** Talk amongst yourselves. Humanity's last hope rests on your decisions.`)
                 .setFooter({ text: `Discussion ends in ${duration}s` })
                 .setTimestamp();
 
-            await this.thread.send({
+            const dayMsg = await this.thread.send({
                 content: `🗣️ **Phase: Day ${this.dayCount} (Discussion)** | Ends <t:${endTime}:R>`,
                 embeds: [embed]
             });
+            this.dayMessageId = dayMsg.id;
+            
+            // Trigger Conversational Bots
+            const { handleBotDaySpeech } = require('./ArchiveBots');
+            handleBotDaySpeech(this);
         }
         
-        
-        // Schedule Voting Phase instead of immediate End Day
+        // Schedule Voting Phase
         this.activeTimer = setTimeout(() => {
             if (this.state !== 'GAME_OVER') this.startVoting();
         }, (this.settings.discussionTime || 120) * 1000);
@@ -505,8 +541,17 @@ class ArchiveGame extends EventEmitter {
         this.hubMessageId = null; // Reset current board ID for new block
         
         if (this.thread) {
-            await this.thread.setLocked(true, 'Voting Phase');
+            if (this.dayMessageId) {
+                try {
+                    const dayMsg = await this.thread.messages.fetch(this.dayMessageId).catch(()=>null);
+                    if (dayMsg) {
+                        const newContent = dayMsg.content.replace(/Ends <t:\d+:R>/, '**Ended**');
+                        await dayMsg.edit({ content: newContent });
+                    }
+                } catch(e) {}
+            }
             
+            // Keep thread unlocked so players can discuss while voting
             const alivePlayers = this.getAlivePlayers();
             const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
             
@@ -522,7 +567,14 @@ class ArchiveGame extends EventEmitter {
                     new ButtonBuilder().setCustomId(`archive_vote_${this.lobbyMessageId}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary)
                 );
             }
-            if (currentRow.components.length > 0) rows.push(currentRow);
+            if (currentRow.components.length === 5) {
+                rows.push(currentRow);
+                currentRow = new ActionRowBuilder();
+            }
+            currentRow.addComponents(
+                new ButtonBuilder().setCustomId(`archive_vote_${this.lobbyMessageId}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger)
+            );
+            rows.push(currentRow);
             
             const endTime = Math.floor(Date.now() / 1000) + (this.settings.votingTime || 60);
             
@@ -531,14 +583,11 @@ class ArchiveGame extends EventEmitter {
             if (mayor) flavorText = `\n👑 **The Plurality** is active. Their vote carries the weight of two.`;
 
             const boardMsg = await this.thread.send({
-                content: `🗣️ **Phase: Voting** | Ends <t:${endTime}:R>\n\nThe floor is open. Cast your ballots by selecting a name below:${flavorText}\n\n**Current Tallies:**\n*No votes cast yet.*`,
+                content: `🗣️ **Phase: Voting** | Ends <t:${endTime}:R>\n**Survivors Remaining:** ${alivePlayers.length}/${this.players.size}\n\nThe floor is open. Cast your ballots by selecting a name below:${flavorText}\n\n**Current Tallies:**\n*No votes cast yet.*`,
                 components: rows
             });
             this.hubMessageId = boardMsg.id;
         }
-        
-        const { handleBotDayVoting } = require('./ArchiveBots');
-        handleBotDayVoting(this);
         
         this.activeTimer = setTimeout(() => {
             if (this.state !== 'GAME_OVER') this.endDay();
@@ -547,32 +596,42 @@ class ArchiveGame extends EventEmitter {
         this.emit('saveState');
     }
 
-    async updateVotingBoard() {
-        if (!this.thread || !this.hubMessageId || this.state !== 'VOTING') return;
+    async updateVotingBoard(isFinal = false) {
+        if (!this.thread || !this.hubMessageId || (this.state !== 'VOTING' && !isFinal)) return;
 
         const tallies = {};
-        const alivePlayers = this.getAlivePlayers();
+        const voters = {};
         for (const p of this.players.values()) {
             if (p.alive && p.voteTarget) {
+                // Ink-Bound Rule: Scribes cannot vote for their analyzed suspect
+                if (p.role?.name === 'The Scribe' && p.inkBoundTarget === p.voteTarget) continue;
+
                 const weight = p.role?.name === 'The Plurality' ? 2 : 1;
                 tallies[p.voteTarget] = (tallies[p.voteTarget] || 0) + weight;
+                if (!voters[p.voteTarget]) voters[p.voteTarget] = [];
+                voters[p.voteTarget].push(p.name + (weight > 1 ? ` (x${weight})` : ''));
             }
         }
 
         let tallyStr = '';
         const sorted = Object.entries(tallies).sort((a, b) => b[1] - a[1]);
         for (const [id, count] of sorted) {
-            const p = this.players.get(id);
-            if (p) tallyStr += `- **${p.name}**: ${count} vote(s)\n`;
+            const label = id === 'skip' ? '⏭️ Skip Vote' : this.players.get(id)?.name || 'Unknown';
+            tallyStr += `- **${label}** (${count} votes): ${voters[id].join(', ')}\n`;
         }
         if (!tallyStr) tallyStr = '*No votes cast yet.*';
 
         try {
             const board = await this.thread.messages.fetch(this.hubMessageId);
             if (board) {
-                const currentContent = board.content.split('**Current Tallies:**')[0];
+                let currentContent = board.content;
+                if (isFinal) {
+                    currentContent = currentContent.replace(/Ends <t:\d+:R>/, '**Ended**');
+                }
+                currentContent = currentContent.split('**Current Tallies:**')[0];
                 await board.edit({
-                    content: `${currentContent}**Current Tallies:**\n${tallyStr}`
+                    content: `${currentContent}**Current Tallies:**\n${tallyStr}`,
+                    components: isFinal ? [] : board.components
                 });
             }
         } catch (e) {
@@ -582,12 +641,44 @@ class ArchiveGame extends EventEmitter {
 
     async endDay() {
         if (this.state !== 'VOTING') return;
+
+        const { handleBotDayVoting } = require('./ArchiveBots');
+        handleBotDayVoting(this);
+        
         this.state = 'TWILIGHT';
         this.emit('stateChanged', 'TWILIGHT');
+        
+        await this.updateVotingBoard(true);
+        
+        let afkErased = [];
+        for (const p of this.getAlivePlayers()) {
+            if (!p.isBot) {
+                if (!p.voteTarget) {
+                    p.missedVotes = (p.missedVotes || 0) + 1;
+                    if (p.missedVotes >= 2) {
+                        p.die();
+                        p.deathDay = this.dayCount;
+                        afkErased.push(p);
+                        this.moveToGraveyard(p.id);
+                    }
+                } else {
+                    p.missedVotes = 0; // Reset on valid vote
+                }
+            }
+        }
+        
+        if (this.thread && afkErased.length > 0) {
+            const afkNames = afkErased.map(p => p.name).join(', ');
+            await this.thread.send(`⚠️ **System Purge:** ${afkNames} ${afkErased.length === 1 ? 'was' : 'were'} erased due to biometric inactivity.`);
+            if (this.checkWin()) return;
+        }
         
         const tallies = {};
         for (const p of this.players.values()) {
             if (p.alive && p.voteTarget) {
+                // Ink-Bound Rule: Scribes cannot vote for their analyzed suspect
+                if (p.role?.name === 'The Scribe' && p.inkBoundTarget === p.voteTarget) continue;
+
                 const weight = p.role?.name === 'The Plurality' ? 2 : 1;
                 tallies[p.voteTarget] = (tallies[p.voteTarget] || 0) + weight;
             }
@@ -613,9 +704,18 @@ class ArchiveGame extends EventEmitter {
                     if (this.state !== 'GAME_OVER') this.startNight();
                 }, 10000);
             } else if (tied.length === 1) {
+                if (tied[0] === 'skip') {
+                    await this.thread.send('⚖️ **The sanctuary chose to skip the execution.** No one is exiled today.');
+                    this.activeTimer = setTimeout(() => {
+                        if (this.state !== 'GAME_OVER') this.startNight();
+                    }, 10000);
+                    return;
+                }
                 const exiled = this.players.get(tied[0]);
                 if (exiled) {
                     exiled.die();
+                    exiled.deathDay = this.dayCount;
+                    this.moveToGraveyard(exiled.id);
                 } else {
                     await this.thread.send('⚖️ **The Archive shifted unexpectedly.** The intended target has vanished from the records.');
                     this.activeTimer = setTimeout(() => {
@@ -624,6 +724,9 @@ class ArchiveGame extends EventEmitter {
                     return;
                 }
                 let lore = EXILE_LORE[Math.floor(Math.random() * EXILE_LORE.length)].replace('{name}', exiled.name);
+                
+                const roleReveal = this.settings.revealRoles ? `${exiled.role?.emoji} **${exiled.role?.name}** (${exiled.role?.faction})` : '🔒 **Classified**';
+                lore += `\n\n**Role:** ${roleReveal}`;
                 
                 // Track critics
                 const wonCritics = this.getAlivePlayers().filter(p => p.role?.name === 'The Critic' && p.criticTarget === exiled.id);
@@ -645,7 +748,8 @@ class ArchiveGame extends EventEmitter {
                 if (this.checkWin()) return;
                 this.triggerTwilight();
             } else {
-                await this.thread.send(`⚖️ **A tie has occurred between ${tied.map(id => this.players.get(id).name).join(' and ')}.** The execution is cancelled.`);
+                const tiedNames = tied.map(id => id === 'skip' ? 'Skip Vote' : this.players.get(id)?.name || 'Unknown').join(' and ');
+                await this.thread.send(`⚖️ **A tie has occurred between ${tiedNames}.** The execution is cancelled.`);
                 this.activeTimer = setTimeout(() => {
                     if (this.state !== 'GAME_OVER') this.startNight();
                 }, 10000);
@@ -655,27 +759,50 @@ class ArchiveGame extends EventEmitter {
         }
     }
 
-    triggerTwilight() {
+    async triggerTwilight() {
         if (!this.thread) {
             this.startNight();
             return;
         }
         
-        this.thread.setLocked(false, 'Twilight Chaos');
+        await this.thread.setLocked(false, 'Twilight phase');
         const embed = new EmbedBuilder()
-            .setTitle('🌆 Phase: Twilight')
+            .setTitle('🌆 Twilight')
             .setColor('#8e44ad')
-            .setDescription('**The sanctuary is under pressure.** You have **10 seconds** to react before the rot spreads further!');
+            .setDescription('**The sanctuary is under pressure.** You have **10 seconds** to react before night falls.');
         
-        this.thread.send({ embeds: [embed] });
+        await this.thread.send({ embeds: [embed] });
         
         this.activeTimer = setTimeout(async () => {
-            if (this.state === 'GAME_OVER') return;
-            await this.thread.setLocked(true, 'End Twilight');
+            if (this.state === 'GAME_OVER' || this.isDestroyed) return;
+            if (this.thread) await this.thread.setLocked(true, 'End Twilight');
             this.startNight();
         }, 10000);
         
         this.emit('saveState');
+    }
+
+    async moveToGraveyard(playerId) {
+        if (!this.graveyardThreadId || !this.thread) return;
+        try {
+            const graveyard = await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(()=>null);
+            if (graveyard) {
+                const p = this.players.get(playerId);
+                if (p && !p.isBot) {
+                    await graveyard.members.add(playerId);
+                    
+                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`archive_graveL_${this.lobbyMessageId}`).setLabel('🧍 View Living Roster').setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder().setCustomId(`archive_graveD_${this.lobbyMessageId}`).setLabel('💀 View Casualties & Roles').setStyle(ButtonStyle.Secondary)
+                    );
+
+                    await graveyard.send({ content: `👻 <@${p.id}> has joined the Deleted Records.`, components: [row] });
+                }
+            }
+        } catch (e) {
+            console.error('Failed to move player to graveyard', e);
+        }
     }
 
     toJSON() {
@@ -700,11 +827,13 @@ class ArchiveGame extends EventEmitter {
                 won: p.won,
                 factionOverride: p.role?.faction,
                 lastWill: p.lastWill,
+                deathDay: p.deathDay,
                 requiresConfirmation: p.requiresConfirmation,
                 isConfirmed: p.isConfirmed
             })),
             visitHistory: this.visitHistory,
-            archiveThreadId: this.archiveThreadId
+            archiveThreadId: this.archiveThreadId,
+            graveyardThreadId: this.graveyardThreadId
         };
     }
 
@@ -732,6 +861,7 @@ class ArchiveGame extends EventEmitter {
             p.guilt = pData.guilt;
             p.won = pData.won;
             p.lastWill = pData.lastWill;
+            p.deathDay = pData.deathDay || null;
             p.requiresConfirmation = pData.requiresConfirmation || false;
             p.isConfirmed = pData.isConfirmed || false;
             
@@ -744,15 +874,16 @@ class ArchiveGame extends EventEmitter {
         }
         this.visitHistory = data.visitHistory || [];
         this.archiveThreadId = data.archiveThreadId || null;
+        this.graveyardThreadId = data.graveyardThreadId || null;
     }
     
     resumePhase() {
         if (this.state === 'GAME_OVER' || this.state === 'LOBBY') return;
         
-        if (this.state === 'PROLOGUE') this.activeTimer = setTimeout(() => this.startNight(), 15000);
-        else if (this.state === 'NIGHT') this.activeTimer = setTimeout(() => this.endNight(), 30000);
-        else if (this.state === 'DAY') this.activeTimer = setTimeout(() => this.startVoting(), 30000);
-        else if (this.state === 'VOTING') this.activeTimer = setTimeout(() => this.endDay(), 30000);
+        if (this.state === 'PROLOGUE') this.activeTimer = setTimeout(() => this.startNight(), this.settings.prologueTime * 1000);
+        else if (this.state === 'NIGHT') this.activeTimer = setTimeout(() => this.endNight(), this.settings.nightTime * 1000);
+        else if (this.state === 'DAY') this.activeTimer = setTimeout(() => this.startVoting(), this.settings.discussionTime * 1000);
+        else if (this.state === 'VOTING') this.activeTimer = setTimeout(() => this.endDay(), this.settings.votingTime * 1000);
         else if (this.state === 'TWILIGHT') this.activeTimer = setTimeout(() => this.startNight(), 10000);
     }
 }
