@@ -7,6 +7,7 @@ const anilistClient = axios.create({
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     },
+    timeout: 15000, // 15s Hard Timeout for Render health stability
 });
 
 const NodeCache = require('node-cache');
@@ -604,22 +605,11 @@ const getTrendingMovies = async () => {
  * @returns {Promise<Array>} List of activities
  */
 const getUserActivity = async (userName) => {
-    // 1. Resolve User ID from Name (AniList Activity filter requires ID)
-    const userLookupQuery = `query ($name: String) { User(name: $name) { id } }`;
-    let userId;
-    try {
-        const userData = await queryAnilist(userLookupQuery, { name: userName });
-        if (!userData || !userData.User) return [];
-        userId = userData.User.id;
-    } catch (e) {
-        return [];
-    }
-
-    // 2. Fetch Activities for that ID
+    // 1. Fetch Activities for that ID directly by Username (Consolidated query - 1 hit vs 2)
     const query = `
-    query ($userId: Int) {
+    query ($userName: String) {
         Page(page: 1, perPage: 10) {
-            activities(userId: $userId, sort: ID_DESC) {
+            activities(userName: $userName, sort: ID_DESC, type: MEDIA_LIST) {
                 ... on ListActivity {
                     id
                     status
@@ -650,9 +640,9 @@ const getUserActivity = async (userName) => {
     }
     `;
     try {
-        const data = await queryAnilist(query, { userId });
+        const data = await queryAnilist(query, { userName });
         // Filter out non-ListActivity items (text posts etc)
-        const filtered = (data.Page.activities || []).filter(a => a && a.media);
+        const filtered = (data.Page?.activities || []).filter(a => a && a.media);
         return filtered;
     } catch (e) {
         return [];

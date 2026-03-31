@@ -345,13 +345,14 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
         ctx.beginPath(); ctx.arc(ringX, ringY, ringR, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill(); // Deep core
         
-        const ringGrad = ctx.createLinearGradient(ringX - ringR, ringY - ringR, ringX + ringR, ringY + ringR);
-        ringGrad.addColorStop(0, THEME_COLOR); ringGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.1));
-        ctx.strokeStyle = ringGrad; ctx.lineWidth = 3; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.lineWidth = 3; ctx.stroke(); // Subtle Track
         
-        // Dynamic Outer Progress Arc
+        // Dynamic Outer Progress Arc (Theme Color)
+        const ringGrad = ctx.createLinearGradient(ringX - ringR, ringY - ringR, ringX + ringR, ringY + ringR);
+        ringGrad.addColorStop(0, THEME_COLOR); ringGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.4));
+
         ctx.beginPath(); ctx.arc(ringX, ringY, ringR, -Math.PI / 2, (Math.PI * 2 * levelPercent) - Math.PI / 2);
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+        ctx.strokeStyle = ringGrad; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.stroke();
 
         ctx.fillStyle = '#FFFFFF'; ctx.font = `800 16px ${FONT_STACK}`; ctx.textAlign = 'center';
         ctx.fillText(userData.level || '0', ringX, ringY + 6);

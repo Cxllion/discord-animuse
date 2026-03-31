@@ -528,7 +528,24 @@ const checkUserActivity = async (client) => {
                     logger.info(`[Scheduler] Processing activity for user: ${userRow.anilist_username}`, 'Scheduler');
                     // Rate limit padding
                     await new Promise(r => setTimeout(r, 600));
-                    await checkAndBroadcastUserActivity(client, guild.id, userRow, channel);
+
+                    // --- 🏁 Safety Race: Timeout protection per user scan ---
+                    const scanTimeout = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('USER_SCAN_TIMEOUT')), 30000)
+                    );
+
+                    try {
+                        await Promise.race([
+                            checkAndBroadcastUserActivity(client, guild.id, userRow, channel),
+                            scanTimeout
+                        ]);
+                    } catch (err) {
+                        if (err.message === 'USER_SCAN_TIMEOUT') {
+                            logger.warn(`[Scheduler] ⚠️ Scan for ${userRow.anilist_username} timed out (30s). Skipping to protect pulse health.`, 'Scheduler');
+                        } else {
+                            throw err; // Re-throw other errors to the guild boundary
+                        }
+                    }
                 }
             } catch (guildError) {
                 logger.error(`[Scheduler] Guild Polling Error (${guild.id}):`, guildError, 'Scheduler');
