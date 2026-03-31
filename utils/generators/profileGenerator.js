@@ -275,7 +275,7 @@ const generateProfileCard = async (discordUser, userData, favorites, backgroundU
 
             // Command Label (Integrated Metadata)
             ctx.fillStyle = TEXT_SUB;
-            ctx.font = `700 8px ${FONT_STACK}`;
+            ctx.font = `700 8.5px 'Exton', ${FONT_STACK}`;
             ctx.textAlign = 'right';
             ctx.letterSpacing = '1.5px';
             ctx.fillText(label.toUpperCase(), hX + hW - 10, hY + 14);
