@@ -8,6 +8,7 @@ const logger = require('./utils/core/logger');
 // ==========================================
 // PRODUCTION BOT INSTANCE (Oracle VPS)
 // Status: Mission Successful - 24/7 Active
+// GitHub Auto-Deploy: ENABLED 🟢
 // ==========================================
 
 // Setup Process Safety
