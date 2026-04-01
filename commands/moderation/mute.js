@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
@@ -70,15 +71,17 @@ module.exports = {
             await logAction(interaction.guild, targetUser, interaction.user, 'MUTE', `${reason} (${durationStr})`);
 
             // Reply
-            const successEmbed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.WARNING)
-                .setDescription(`${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}** has been timed out for **${durationStr}**.\n> ${reason}`);
+            const successEmbed = baseEmbed(`🔇 Archival Silence: ${targetUser.tag}`, `${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}** has been placed in archival silence for **${durationStr}**.\n> ${reason}`, interaction.client.user.displayAvatarURL())
+                .setColor(CONFIG.COLORS.WARNING);
 
             await interaction.editReply({ embeds: [successEmbed] });
 
             // DM Notif
             try {
-                await targetUser.send(`You have been muted in **${interaction.guild.name}** for **${durationStr}**.\nReason: ${reason}`);
+                const dmEmbed = baseEmbed(`🔇 Muted in ${interaction.guild.name}`, `You have been placed in archival silence for **${durationStr}**.\n\nDuring this time, you will be unable to participate in the archives.`, interaction.client.user.displayAvatarURL())
+                    .setColor(CONFIG.COLORS.WARNING)
+                    .addFields({ name: 'Reason', value: reason });
+                await targetUser.send({ embeds: [dmEmbed] });
             } catch (e) { }
 
         } catch (error) {

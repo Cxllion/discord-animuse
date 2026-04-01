@@ -167,11 +167,11 @@ const sendProfilePreview = async (interaction, titleOverride = null, colorOverri
 
         const attachment = new AttachmentBuilder(buffer, { name: 'preview.webp' });
         const msgs = [
-            "✨ Looking sharp! Here is your updated design.",
-            "🎨 A fresh coat of paint! How does it look?",
-            "📄 Freshly printed from the archives!",
-            "🧐 Your new identity card is ready for inspection.",
-            "💫 Updates applied! Here is the result."
+            "✨ Your digital signature has been recalibrated.",
+            "🎨 A fresh inscription for the archives! How does it look?",
+            "📄 Freshly printed from the Great Library!",
+            "🧐 Your new identity card is ready for inspection, Patron.",
+            "💫 Updates applied! The archives have been updated."
         ];
 
         await interaction.followUp({
@@ -202,17 +202,40 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
     const ownedTitles = [...ownedTitlesRaw]; // Copy to avoid mutation issues if cached
     if (!ownedTitles.includes('Muse Reader')) ownedTitles.unshift('Muse Reader');
 
-    const embed = new EmbedBuilder()
+    // V4.12: Dynamic Identity Roles (Leveling & Special Titles)
+    const { getLevelRoles } = require('../core/database');
+    const levelRoles = await getLevelRoles(guildId);
+    const userLevel = (await getUserRank(userId, guildId))?.level || 0;
+
+    // Filter earned roles and redact numbers
+    const earnedLevelRoles = levelRoles.filter(lr => lr.level <= userLevel);
+    for (const lr of earnedLevelRoles) {
+        const role = member.guild.roles.cache.get(lr.role_id);
+        if (role) {
+            const redactedName = role.name.replace(/^\d+\s*\|\s*/, '');
+            if (!ownedTitles.includes(redactedName)) ownedTitles.push(redactedName);
+        }
+    }
+
+    // Special Designations
+    if (member.premiumSince) {
+        if (!ownedTitles.includes('Server Booster')) ownedTitles.push('Server Booster');
+    }
+    if (hasPremium(member, config)) {
+        if (!ownedTitles.includes('Seraphic Muse')) ownedTitles.push('Seraphic Muse');
+    }
+
+    const embed = baseEmbed(`Identity Dashboard: ${interaction.user.username}`, 
+        'Manage your official Library Card appearance and details from the Great Archives.',
+        interaction.client.user.displayAvatarURL()
+    )
         .setColor(color)
-        .setTitle(`Identity Dashboard: ${interaction.user.username}`)
-        .setDescription('Manage your official Library Card appearance and details.')
         .setImage('https://dummyimage.com/600x5/2f3136/2f3136.png') // Spacer
         .addFields(
             { name: '🎨 Theme Interface', value: `\`${color}\``, inline: true },
             { name: '🏷️ Active Title', value: `\`${title}\``, inline: true },
-            { name: '🖼️ Banner HUD', value: bannerConfig.source !== 'PRESET' || bannerConfig.customUrl ? '[Active]' : 'Standard', inline: true }
-        )
-        .setFooter({ text: 'AniMuse Library Systems', iconURL: interaction.client.user.displayAvatarURL() });
+            { name: '🖼️ Banner HUD', value: bannerConfig.source !== 'PRESET' || bannerConfig.customUrl ? '[Archived]' : 'Standard', inline: true }
+        );
 
     // --- Title Select ---
     const titleOptions = ownedTitles.slice(0, 25).map(t => new StringSelectMenuOptionBuilder()
@@ -225,7 +248,7 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
 
     const titleSelect = new StringSelectMenuBuilder()
         .setCustomId('profile_title_select')
-        .setPlaceholder('Select your Identity Title')
+        .setPlaceholder('Select your Archival Title')
         .addOptions(titleOptions);
 
     // --- Buttons ---
@@ -352,25 +375,23 @@ const showProfileHUDMenu = async (interaction, targetId) => {
         );
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-hud.webp' });
 
-        const embed = new EmbedBuilder()
+        const embed = baseEmbed(`Identity HUD: ${targetUser.username}`, null, null)
             .setColor(color)
-            .setTitle(`Identity HUD: ${targetUser.username}`)
-            .setImage('attachment://profile-hud.webp')
-            .setFooter({ text: 'AniMuse Identity Systems | Ephemeral Access' });
+            .setImage('attachment://profile-hud.webp');
 
         // 6. Component Architecture
         const select = new StringSelectMenuBuilder()
             .setCustomId(`profile_hud_nav_${targetId}`)
-            .setPlaceholder('Select Telemetry Stream')
+            .setPlaceholder('Select Telemetry Stream (Records)')
             .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('Anime Statistics').setValue('anime').setEmoji('📺').setDescription('Detailed watch-time breakdown'),
+                new StringSelectMenuOptionBuilder().setLabel('Anime Statistics').setValue('anime').setEmoji('📺').setDescription('Detailed watch-time breakdown from AniList'),
                 new StringSelectMenuOptionBuilder().setLabel('Manga Archives').setValue('manga').setEmoji('📚').setDescription('Chapter and volume telemetry'),
                 new StringSelectMenuOptionBuilder().setLabel('Social History').setValue('social').setEmoji('💬').setDescription('Communication and activity logs')
             );
 
         const btnMoreInfo = new ButtonBuilder()
             .setCustomId(`profile_more_info_${targetId}`)
-            .setLabel('More Info')
+            .setLabel('Detailed Records')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('🗃️');
 
@@ -459,10 +480,11 @@ const showBannerMenu = async (interaction, bannerConfig = null) => {
     const buffer = await generateProfileCard(interaction.user, userData, favorites, bannerUrl, color, member.displayName);
     const attachment = new AttachmentBuilder(buffer, { name: 'banner-preview.webp' });
 
-    const embed = new EmbedBuilder()
+    const embed = baseEmbed('🖼️ Identity Banner Controller', 
+        '📡 **Transmission Status**: Archival synchronization active.\nSelect a source or transmit a custom image for your record.', 
+        null
+    )
         .setColor(color)
-        .setTitle('🖼️ Identity Banner Controller')
-        .setDescription('📡 **Transmission Status**: Archival synchronization active.\nSelect a source or transmit a custom image.')
         .setImage('attachment://banner-preview.webp')
         .addFields({ name: 'Current Source', value: `\`${activeBannerConfig.source.replace('_', ' ')}\``, inline: true });
 
@@ -488,7 +510,7 @@ const showBannerMenu = async (interaction, bannerConfig = null) => {
         .setCustomId('profile_banner_sync_anilist')
         .setLabel('Sync AniList')
         .setStyle(activeBannerConfig.source === 'ANILIST' ? ButtonStyle.Success : ButtonStyle.Secondary)
-        .setEmoji('🅰️');
+        .setEmoji('📚');
 
     const btnRemove = new ButtonBuilder()
         .setCustomId('profile_banner_reset')
@@ -543,10 +565,10 @@ const showColorMenu = async (interaction) => {
         fetchConfig(guildId)
     ]);
 
-    const embed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle('🎨 Theme Color Configuration')
-        .setDescription('Select a color source for your profile elements.');
+    const embed = baseEmbed('🎨 Theme Color Configuration', 
+        'Select a pigment source for your profile elements from the Great Palette.', 
+        null
+    ).setColor('#2b2d31');
 
     const btnBasic = new ButtonBuilder()
         .setCustomId('profile_color_basic')
@@ -629,10 +651,10 @@ const showAvatarMenu = async (interaction) => {
         fetchConfig(guildId)
     ]);
 
-    const embed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle('👤 Profile Picture Configuration')
-        .setDescription(`Current Source: **${config.source.replace('_', ' ')}**`);
+    const embed = baseEmbed('👤 Profile Picture Configuration', 
+        `Select your digital signature source.\nCurrent Source: **${config.source.replace('_', ' ')}**`, 
+        null
+    ).setColor('#2b2d31');
 
     const btnDefault = new ButtonBuilder()
         .setCustomId('profile_pfp_default')
@@ -770,13 +792,8 @@ const handleProfileInteraction = async (interaction) => {
 
     if (id === 'profile_pfp_upload') {
         const guildConfig = await fetchConfig(guildId);
-        if (!hasPremium(interaction.member, guildConfig)) {
-            return interaction.reply({ content: '🔒 **Archival Restriction**\nCustomized Transmissions are reserved for "Seraphic Muse" patrons.', flags: MessageFlags.Ephemeral });
-        }
-
-        const filter = m => m.author.id === userId && m.attachments.size > 0;
         await interaction.editReply({ 
-            content: '📡 **Avatar Uplink Initiated**\nPlease upload your new profile picture in this channel. I will capture its digital signature and secure it in the archives. ♡\n*Window expires in 60 seconds.*', 
+            content: '📡 **Profile Picture Uplink Initiated**\nPlease upload your new digital signature (PFP) in this channel. I will capture its essence and secure it within the Great Library archives. ♡\n*Window expires in 60 seconds.*', 
             embeds: [],
             components: []
         });
@@ -807,21 +824,21 @@ const handleProfileInteraction = async (interaction) => {
             try { await m.delete().catch(() => {}); } catch(e) {} 
 
             if (!attachment) {
-                return interaction.followUp({ content: '❌ **Transmission Error**: No file-stream detected.', flags: MessageFlags.Ephemeral });
+                return interaction.followUp({ content: '❌ **Transmission Error**: No archival data-stream detected.', flags: MessageFlags.Ephemeral });
             }
 
             await updateUserAvatarConfig(userId, guildId, 'CUSTOM', finalUrl);
             
             // Re-materialize preview
             await sendProfilePreview(interaction, undefined, undefined, undefined, { source: 'CUSTOM', customUrl: finalUrl });
-            await interaction.followUp({ content: '✅ **Avatar Captured**: Your digital signature has been secured.', flags: MessageFlags.Ephemeral });
+            await interaction.followUp({ content: '✅ **Identity Secured**: Your new digital signature has been successfully archived.', flags: MessageFlags.Ephemeral });
             
             return showAvatarMenu(interaction);
         });
 
         collector.on('end', collected => {
             if (collected.size === 0) {
-                interaction.followUp({ content: '⚠️ **Uplink Terminated**: No archival transmission detected.', flags: MessageFlags.Ephemeral }).catch(() => {});
+                interaction.followUp({ content: '⚠️ **Uplink Terminated**: No archival transmission detected within the 60-second window.', flags: MessageFlags.Ephemeral }).catch(() => {});
             }
         });
         return;
@@ -872,7 +889,7 @@ const handleProfileInteraction = async (interaction) => {
 
         const filter = m => m.author.id === userId && m.attachments.size > 0;
         await interaction.editReply({ 
-            content: '📡 **Identity Uplink Initiated**\nPlease upload your new banner image in this channel. I will capture it and secure the transmission by archiving it in your server\'s identity vault. ♡\n*Window expires in 60 seconds.*', 
+            content: '📡 **Banner HUD Uplink Initiated**\nPlease upload your new archival background in this channel. I will capture its beauty and secure it within your server\'s identity vault. ♡\n*Window expires in 60 seconds.*', 
             embeds: [],
             components: []
         });
@@ -910,7 +927,7 @@ const handleProfileInteraction = async (interaction) => {
             
             // Re-materialize the preview card with the new transmission
             const bannerConfig = await getUserBannerConfig(userId, guildId);
-            await interaction.followUp({ content: '✅ **Banner Captured**: Your identity transmission has been secured in the archives.', flags: MessageFlags.Ephemeral });
+            await interaction.followUp({ content: '✅ **Archival Transmission Logged**: Your identity background has been secured in the archives.', flags: MessageFlags.Ephemeral });
             
             // Refresh the HUD Control Menu
             return showBannerMenu(interaction, bannerConfig);
@@ -1016,7 +1033,7 @@ const handleProfileModals = async (interaction) => {
         }
         if (interaction.customId === 'profile_modal_pfp') {
             const url = interaction.fields.getTextInputValue('url');
-            if (!url.startsWith('http')) return interaction.reply({ content: '❌ Invalid URL.', flags: MessageFlags.Ephemeral });
+            if (!url.startsWith('http')) return interaction.reply({ content: '❌ **Transmission Error**: The provided archival URL is invalid.', flags: MessageFlags.Ephemeral });
 
             await updateUserAvatarConfig(interaction.user.id, interaction.guild.id, 'CUSTOM', url);
 

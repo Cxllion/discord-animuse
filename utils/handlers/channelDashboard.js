@@ -229,9 +229,10 @@ const handleAssignmentHub = async (interaction, isUpdate = false, successMsg = n
 };
 
 const handleSortingControl = async (interaction, isUpdate = false, successMsg = null) => {
-    const embed = new EmbedBuilder()
-        .setTitle('📏 Hybrid Sorting Control')
-        .setDescription('Manage the relative order of channels inside your categories.\n\n**Pinned Tier**: Stay at the top.\n**Active Tier**: Rise based on message pulse.')
+    const embed = baseEmbed('📏 Hybrid Sorting Control', 
+        'Manage the relative order of channels inside your library categories.\n\n**Pinned Tier**: Channels that remain at the top.\n**Active Tier**: Channels that rise based on message pulse.', 
+        null
+    )
         .setColor('#A78BFA')
         .addFields(
             { name: 'Status', value: '🟢 Activity Pulse Active\n🔵 Intra-Category Sorting: Ready' }
@@ -309,9 +310,10 @@ const performChannelOrganize = async (interaction) => {
 };
 
 const handleZoningMenu = async (interaction, isUpdate = false) => {
-    const embed = new EmbedBuilder()
-        .setTitle('👻 Zoning & Ghost Detection')
-        .setDescription('Scan for stagnant channels that haven\'t seen a message in a while. Keep your archives clean and vibrant.')
+    const embed = baseEmbed('👻 Zoning & Ghost Detection', 
+        'Scan for stagnant channels that haven\'t seen a message in over 30 days. Keep your archives clean and vibrant.', 
+        null
+    )
         .setColor('#A78BFA')
         .addFields(
             { name: 'Threshold', value: '30 Days of Inactivity' }
@@ -367,9 +369,10 @@ const performGhostScan = async (interaction) => {
 const handleArchiveMenu = async (interaction, isUpdate = false) => {
     const config = await fetchConfig(interaction.guildId);
     
-    const embed = new EmbedBuilder()
-        .setTitle('📌 Archive Bureau')
-        .setDescription('Configure manual pin mirroring. When a message is pinned anywhere in the server, the bot can automatically back it up to a dedicated history channel.')
+    const embed = baseEmbed('📌 Archive Bureau', 
+        'Configure manual pin mirroring. When a message is pinned anywhere in the server, the bot can automatically back it up to a dedicated history channel within the archives.', 
+        null
+    )
         .setColor('#A78BFA')
         .addFields(
             { name: 'Mirror Status', value: config.archive_mirror_channel_id ? `🟢 Active Mirror: <#${config.archive_mirror_channel_id}>` : '⚪ Mirror Currently Disabled' }

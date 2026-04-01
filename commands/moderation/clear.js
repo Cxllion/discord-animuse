@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
@@ -80,9 +81,8 @@ module.exports = {
             );
 
             // Response Embed
-            const successEmbed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.INFO)
-                .setDescription(`${CONFIG.EMOJIS.SUCCESS || '✅'} Successfully cleared **${deleted.size}** messages${target ? ` sent by <@${target.id}>` : ''}.`);
+            const successEmbed = baseEmbed(`🧹 Archives Purged`, `${CONFIG.EMOJIS.SUCCESS || '✅'} Successfully cleared **${deleted.size}** messages${target ? ` sent by <@${target.id}>` : ''}.\n\n*Those records have been permanently shredded.*`, interaction.client.user.displayAvatarURL())
+                .setColor(CONFIG.COLORS.INFO);
 
             await interaction.editReply({ embeds: [successEmbed] });
 

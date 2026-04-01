@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,25 +14,17 @@ module.exports = {
         const permissions = '8'; // Administrator (you can customize this)
         const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=bot%20applications.commands`;
 
-        const embed = new EmbedBuilder()
-            .setColor('#FFACD1')
-            .setAuthor({
-                name: 'AniMuse Bot',
-                iconURL: interaction.client.user.displayAvatarURL()
-            })
-            .setTitle('📚 Invite AniMuse to Your Server!')
-            .setDescription(
-                'Add AniMuse to bring anime tracking, beautiful profiles, bingo cards, ' +
-                'and interactive features to your community.\n\n' +
-                '**Features Include:**\n' +
-                '• 🎬 Anime episode notifications\n' +
-                '• 🎮 Interactive bingo cards\n' +
-                '• 👤 Custom profile system\n' +
-                '• 🏆 XP & leaderboards\n' +
-                '• 🛡️ Moderation tools'
-            )
-            .setFooter({ text: 'Made with ❤️ for anime communities' })
-            .setTimestamp();
+        const embed = baseEmbed('📚 Invite AniMuse to Your Server!', 
+            'Add AniMuse to bring anime tracking, beautiful profiles, bingo cards, ' +
+            'and interactive features to your community.\n\n' +
+            '**Features Include:**\n' +
+            '• 🎬 Anime episode notifications\n' +
+            '• 🎮 Interactive bingo cards\n' +
+            '• 👤 Custom profile system\n' +
+            '• 🏆 XP & leaderboards\n' +
+            '• 🛡️ Moderation tools',
+            interaction.client.user.displayAvatarURL()
+        );
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()

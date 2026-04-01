@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const moment = require('moment');
 
 module.exports = {
@@ -44,9 +44,8 @@ module.exports = {
             if (member.permissions.has(PermissionsBitField.Flags.KickMembers)) keyPermissions.push('Kick Members');
             if (member.permissions.has(PermissionsBitField.Flags.BanMembers)) keyPermissions.push('Ban Members');
 
-            const embed = new EmbedBuilder()
+            const embed = baseEmbed(targetUser.tag, 'Animuse Citizen Registry', targetUser.displayAvatarURL())
                 .setColor(member.displayHexColor === '#000000' ? CONFIG.COLORS.PRIMARY : member.displayHexColor)
-                .setAuthor({ name: targetUser.tag, iconURL: targetUser.displayAvatarURL() })
                 .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 512 }))
                 .addFields(
                     {

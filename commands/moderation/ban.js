@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
@@ -36,10 +37,9 @@ module.exports = {
 
             // DM Notif
             try {
-                const dmEmbed = new EmbedBuilder()
+                const dmEmbed = baseEmbed(`🔨 Exiled from ${interaction.guild.name}`, `Your access to the archives has been permanently revoked.`, interaction.client.user.displayAvatarURL())
                     .setColor(CONFIG.COLORS.ERROR)
-                    .setTitle(`You have been banned from ${interaction.guild.name}`)
-                    .setDescription(`**Reason:** ${reason}`);
+                    .addFields({ name: 'Reason', value: reason });
                 await targetUser.send({ embeds: [dmEmbed] });
             } catch (e) { }
 
@@ -53,9 +53,8 @@ module.exports = {
             await logAction(interaction.guild, targetUser, interaction.user, 'BAN', reason);
 
             // Reply
-            const successEmbed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.ERROR)
-                .setDescription(`${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}** has been banned.\n> ${reason}`);
+            const successEmbed = baseEmbed(null, `${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}** has been exiled from the archives.\n> ${reason}`, interaction.client.user.displayAvatarURL())
+                .setColor(CONFIG.COLORS.ERROR);
 
             await interaction.editReply({ embeds: [successEmbed] });
 

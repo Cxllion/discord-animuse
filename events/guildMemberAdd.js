@@ -84,16 +84,17 @@ module.exports = {
         }
 
         // --- STAGE 2: USER BRIEFING (DM) ---
-        const briefingEmbed = new EmbedBuilder()
-            .setTitle('🔰 Welcome to AniMuse!')
-            .setDescription(`You've just joined **${guild.name}**. Here is a quick start guide to your new anime journey.`)
+        const baseEmbed = require('../utils/generators/baseEmbed');
+        const briefingEmbed = baseEmbed('🔰 Welcome to AniMuse!', 
+            `You've just joined **${guild.name}**. I am the Great Librarian, here to guide you through our collection.`, 
+            null
+        )
             .addFields(
-                { name: '👋 Profile', value: 'Use `/profile` to view your card. You can customize it with themes and backgrounds!', inline: true },
-                { name: '🔎 Search', value: 'Use `/search` to find anime/manga details from AniList.', inline: true },
-                { name: '📈 Leveling', value: 'Chatting earns you XP. Check `/rank` to see where you stand.', inline: true }
+                { name: '👋 Profile Card', value: 'Use `/profile` to view your archival signature. You can customize it with themes!', inline: true },
+                { name: '🔎 Search Records', value: 'Use `/search` to find anime/manga details from the global database.', inline: true },
+                { name: '📈 Muse Tiers', value: 'Engaging in the library earns you XP. Check `/rank` to see your progress.', inline: true }
             )
-            .setColor('#A78BFA') // Briefing Purple
-            .setFooter({ text: 'Explore. Collect. Connect.' });
+            .setColor('#A78BFA');
 
         try {
             await member.send({ embeds: [briefingEmbed] });

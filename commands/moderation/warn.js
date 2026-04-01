@@ -1,4 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
@@ -34,11 +35,9 @@ module.exports = {
 
             // DM the user
             try {
-                const dmEmbed = new EmbedBuilder()
+                const dmEmbed = baseEmbed(`⚠️ Warning Received`, `An entry has been recorded in your archival record for **${interaction.guild.name}**.`, interaction.client.user.displayAvatarURL())
                     .setColor(CONFIG.COLORS.WARNING)
-                    .setTitle(`⚠️ Warning Received in ${interaction.guild.name}`)
-                    .setDescription(`**Reason:** ${reason}`)
-                    .setTimestamp();
+                    .addFields({ name: 'Reason', value: reason });
                 await targetUser.send({ embeds: [dmEmbed] });
             } catch (e) {
                 // Ignore DM failure
@@ -48,9 +47,8 @@ module.exports = {
             await logAction(interaction.guild, targetUser, interaction.user, 'WARN', reason);
 
             // Reply
-            const successEmbed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.SUCCESS)
-                .setDescription(`${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}** has been warned.\n> ${reason}`);
+            const successEmbed = baseEmbed(null, `${CONFIG.EMOJIS.SUCCESS} **${targetUser.tag}**'s record has been updated with a warning.\n> ${reason}`, interaction.client.user.displayAvatarURL())
+                .setColor(CONFIG.COLORS.SUCCESS);
 
             await interaction.editReply({ embeds: [successEmbed] });
 

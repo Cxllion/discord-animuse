@@ -79,6 +79,7 @@ module.exports = {
     getAnimeDueForUpdate,
     getTrackedAnimeState,
     updateTrackedAnimeState,
+    getGuildTrackers,
     removeAllTrackersForAnime,
 
     getGlobalTrackCount: async () => {

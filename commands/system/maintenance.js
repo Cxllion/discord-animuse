@@ -29,15 +29,16 @@ module.exports = {
         const statusLabel = enabled ? "SEALED (Maintenance On)" : "OPEN (Maintenance Off)";
         const color = enabled ? 0xffaa00 : 0x00ffaa;
 
-        const embed = new EmbedBuilder()
-            .setTitle('Library Status Updated')
-            .setDescription(`The Library gates are now **${statusLabel}**.`)
+        const baseEmbed = require('../../utils/generators/baseEmbed');
+        const embed = baseEmbed('Library Status Updated', 
+            `The Library gates are now **${statusLabel}**.`, 
+            null
+        )
             .addFields(
                 { name: 'Status', value: enabled ? '🚧 Restricted Access' : '📖 Public Access', inline: true },
                 { name: 'Updated By', value: `<@${interaction.user.id}>`, inline: true }
             )
-            .setColor(color)
-            .setTimestamp();
+            .setColor(color);
 
         logger.info(`Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'} by ${interaction.user.tag}`, 'System');
 

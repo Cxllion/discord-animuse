@@ -33,16 +33,13 @@ module.exports = {
                     const latestPin = pinnedMessages.first();
 
                     if (latestPin) {
-                        const { EmbedBuilder } = require('discord.js');
-                        const archiveEmbed = new EmbedBuilder()
+                        const archiveEmbed = baseEmbed(null, latestPin.content || '*No content*', null)
                             .setAuthor({ name: latestPin.author.tag, iconURL: latestPin.author.displayAvatarURL() })
-                            .setDescription(latestPin.content || '*No content*')
                             .addFields(
-                                { name: 'Source', value: `<#${message.channel.id}>`, inline: true },
-                                { name: 'Jump', value: `[Go to Message](${latestPin.url})`, inline: true }
+                                { name: 'Source Wing', value: `<#${message.channel.id}>`, inline: true },
+                                { name: 'Jump to Record', value: `[Go to Message](${latestPin.url})`, inline: true }
                             )
-                            .setColor('#A78BFA')
-                            .setTimestamp(latestPin.createdAt);
+                            .setColor('#A78BFA');
 
                         if (latestPin.attachments.size > 0) {
                             archiveEmbed.setImage(latestPin.attachments.first().url);

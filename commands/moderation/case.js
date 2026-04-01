@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder , MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const { getModerationLogs } = require('../../utils/core/database');
 const moment = require('moment');
 
@@ -24,9 +24,8 @@ module.exports = {
             if (logs.length === 0) {
                 return await interaction.editReply({
                     embeds: [
-                        new EmbedBuilder()
+                        baseEmbed('Archival Record', `✅ **${targetUser.tag}** has a clean record.`, interaction.client.user.displayAvatarURL())
                             .setColor(CONFIG.COLORS.SUCCESS)
-                            .setDescription(`✅ **${targetUser.tag}** has a clean record.`)
                     ]
                 });
             }
@@ -34,10 +33,8 @@ module.exports = {
             // Pagination could be added, but for now take last 10
             const recentLogs = logs.slice(0, 10);
 
-            const embed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.WARNING)
-                .setAuthor({ name: `Moderation History: ${targetUser.tag}`, iconURL: targetUser.displayAvatarURL() })
-                .setFooter({ text: `Total Records: ${logs.length}` });
+            const embed = baseEmbed(`Archival Record: ${targetUser.tag}`, null, targetUser.displayAvatarURL())
+                .setColor(CONFIG.COLORS.WARNING);
 
             const fields = await Promise.all(recentLogs.map(async (log) => {
                 const modUser = await interaction.client.users.fetch(log.moderator_id).catch(() => ({ tag: 'Unknown' }));

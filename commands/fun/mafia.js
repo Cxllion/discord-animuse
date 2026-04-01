@@ -3,9 +3,10 @@ const {
     ActionRowBuilder,
     StringSelectMenuBuilder,
     MessageFlags,
-    PermissionFlagsBits,
-    EmbedBuilder
+    PermissionFlagsBits
 } = require('discord.js');
+const baseEmbed = require('../../utils/generators/baseEmbed');
+const CONFIG = require('../../utils/config');
 
 const gameManager = require('../../utils/archive/ArchiveManager');
 const { buildLobbyPayload } = require('../../utils/archive/ArchiveUI');
@@ -64,7 +65,9 @@ module.exports = {
 
                 if (existingLobby) {
                     await existingLobby.bumpLobby(interaction.channel);
-                    return interaction.editReply({ content: '✅ **Sanctuary Relocated.** Your active lobby has been moved here for better visibility.' });
+                    return interaction.editReply({ 
+                        content: '✅ **Sanctuary Relocated.** Your active lobby has been moved here for better visibility within the archives.' 
+                    });
                 }
 
                 if (existingGame) {
@@ -101,17 +104,21 @@ module.exports = {
         
         if (subcommand === 'status' || subcommand === 'role' || subcommand === 'will') {
             if (!game || game.state === 'GAME_OVER') {
-                return interaction.reply({ content: '📜 No active archive session found in this thread.', flags: MessageFlags.Ephemeral });
+                return interaction.reply({ 
+                    content: '📜 **Archival Error**: No active archive session found in this thread.', 
+                    flags: MessageFlags.Ephemeral 
+                });
             }
 
             if (subcommand === 'status') {
                 const alive = game.getAlivePlayers();
                 const dead = Array.from(game.players.values()).filter(p => !p.alive);
                 
-                const embed = new EmbedBuilder()
-                    .setTitle(`📚 Session Status: ${game.state}`)
+                const embed = baseEmbed(`📚 Session Status: ${game.state}`, 
+                    `**Day:** ${game.dayCount}\n**Players:** ${game.players.size} (${alive.length} Alive)`,
+                    interaction.client.user.displayAvatarURL()
+                )
                     .setColor('#8B5CF6')
-                    .setDescription(`**Day:** ${game.dayCount}\n**Players:** ${game.players.size} (${alive.length} Alive)`)
                     .addFields(
                         { name: 'Alive', value: alive.map(p => `• ${p.name}`).join('\n') || 'None' },
                         { name: 'Redacted', value: dead.map(p => `• ~~${p.name}~~ (${p.role?.name || 'Unknown'})`).join('\n') || 'None' }
@@ -176,6 +183,7 @@ module.exports = {
                 try {
                     await game.thread.send('⏹️ **The game has been forcefully terminated by an administrator.**');
                     await game.thread.setLocked(true, 'Force ended');
+                    await game.thread.setArchived(true, 'Force ended');
                 } catch (e) {
                     console.error('Failed to notify thread closure', e);
                 }

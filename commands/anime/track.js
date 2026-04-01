@@ -1,7 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const { searchMedia, getMediaById, getMediaByIds, getWatchingList } = require('../../utils/services/anilistService');
 const { addTracker, removeTracker, getUserTrackedAnime, getLinkedAnilist } = require('../../utils/core/database');
 const baseEmbed = require('../../utils/generators/baseEmbed');
+const CONFIG = require('../../utils/config');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -80,19 +81,25 @@ module.exports = {
             const animeId = parseInt(interaction.options.getString('anime'));
 
             if (isNaN(animeId)) {
-                return await interaction.editReply({ content: '❌ Invalid Entry. Please select a valid anime from the autocomplete list.' });
+                return await interaction.editReply({ 
+                    content: '❌ **Archival Error**: Invalid Entry. Please select a valid anime from the autocomplete list.' 
+                });
             }
 
             const media = await getMediaById(animeId);
             if (!media) {
-                return await interaction.editReply({ content: '❌ Record not found. I could not retrieve details for that ID.' });
+                return await interaction.editReply({ 
+                    content: '❌ **Archival Error**: Record not found. I could not retrieve details for that ID from the AniList archives.' 
+                });
             }
 
             const title = media.title.english || media.title.romaji;
             const res = await addTracker(guildId, userId, animeId, title);
 
             if (res.error) {
-                return await interaction.editReply({ content: '❌ Database Error. I failed to save this track request.' });
+                return await interaction.editReply({ 
+                    content: '❌ **Database Error**: I failed to save this track request to our local records.' 
+                });
             }
 
             const statusEmoji = {
@@ -100,9 +107,9 @@ module.exports = {
                 'NOT_YET_RELEASED': '🆕 Upcoming'
             }[media.status] || '❓ Unknown';
 
-            const embed = baseEmbed()
-                .setTitle(`Observation Initiated: ${title}`)
-                .setDescription(`I have added **${title}** to your tracking archives. You will receive a notification in this server whenever a new episode airs.`)
+            const embed = baseEmbed(`Observation Initiated: ${title}`, 
+                `I have added **${title}** to your tracking archives. You will receive a notification in this server whenever a new episode airs.`, 
+                interaction.client.user.displayAvatarURL())
                 .addFields(
                     { name: 'Status', value: statusEmoji, inline: true },
                     { name: 'Score', value: `⭐ ${media.averageScore || 'N/A'}/100`, inline: true },
@@ -110,7 +117,7 @@ module.exports = {
                 )
                 .setThumbnail(media.coverImage?.large)
                 .setImage(media.bannerImage)
-                .setColor(media.coverImage?.color || '#FFACD1');
+                .setColor(media.coverImage?.color || CONFIG.COLORS.PRIMARY);
 
             await interaction.editReply({ embeds: [embed] });
 
@@ -119,11 +126,11 @@ module.exports = {
             const animeId = parseInt(interaction.options.getString('anime'));
 
             if (isNaN(animeId)) {
-                return await interaction.editReply({ content: '❌ Please select a valid item to remove.' });
+                return await interaction.editReply({ content: '❌ **Archival Error**: Please select a valid item to remove from your observation records.' });
             }
 
             await removeTracker(guildId, userId, animeId);
-            await interaction.editReply({ content: `✅ As you wish. I have ceased observation of that series.` });
+            await interaction.editReply({ content: `✅ **As you wish.** I have ceased observation of that series in your name.` });
 
         } else if (subcommand === 'sync') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -131,7 +138,7 @@ module.exports = {
 
             if (!linkedUsername) {
                 return await interaction.editReply({
-                    content: '❌ Your account is not currently bound to an AniList profile. Use `/link` first to enable synchronization.'
+                    content: '❌ **Archival Access Denied**: Your account is not currently bound to an AniList profile. Use `/link` first to enable synchronization.'
                 });
             }
 
@@ -140,7 +147,7 @@ module.exports = {
 
             if (filteredList.length === 0) {
                 return await interaction.editReply({
-                    content: `🍂 I searched your profile, but it seems you aren't currently "Watching" any ongoing or upcoming series on AniList.`
+                    content: `🍂 **Archive Search Result**: I searched your profile, but it seems you aren't currently "Watching" any ongoing or upcoming series on AniList.`
                 });
             }
 
@@ -151,10 +158,9 @@ module.exports = {
                 if (!result.error) addedCount++;
             }
 
-            const embed = baseEmbed()
-                .setTitle('AniList Synchronization Complete')
+            const embed = baseEmbed('AniList Synchronization Complete', null, interaction.client.user.displayAvatarURL())
                 .setThumbnail(interaction.user.displayAvatarURL())
-                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n✅ Added **${addedCount}** new anime to your observation list.\n\nOnly ongoing and upcoming series from your "Watching" list were added.`);
+                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n✅ Added **${addedCount}** new anime to your observation list.\n\n*Only ongoing and upcoming series from your "Watching" list were added.*`);
 
             await interaction.editReply({ embeds: [embed] });
 
@@ -164,7 +170,7 @@ module.exports = {
 
             if (subs.length === 0) {
                 return await interaction.editReply({
-                    embeds: [baseEmbed().setTitle('Schedule Empty').setDescription('You are not currently tracking any anime. Use `/track add` to begin.')]
+                    embeds: [baseEmbed('Schedule Empty', 'You are not currently tracking any anime. Use `/track add` to begin.', interaction.client.user.displayAvatarURL())]
                 });
             }
 
@@ -175,7 +181,7 @@ module.exports = {
 
             if (ongoing.length === 0) {
                 return await interaction.editReply({
-                    embeds: [baseEmbed().setTitle('No Airing Information').setDescription('None of your tracked series have upcoming airing dates scheduled on AniList at the moment.')]
+                    embeds: [baseEmbed('No Airing Information', 'None of your tracked series have upcoming airing dates scheduled on AniList at the moment.', interaction.client.user.displayAvatarURL())]
                 });
             }
 
@@ -185,11 +191,8 @@ module.exports = {
                 return `• **${title}** (Ep ${m.nextAiringEpisode.episode}): ${timeStr}`;
             });
 
-            const embed = baseEmbed()
-                .setTitle('Observatory Schedule: Upcoming Airings')
-                .setThumbnail(interaction.user.displayAvatarURL())
-                .setDescription(`Here are the next episodes scheduled for your tracked collection:\n\n${scheduleLines.join('\n')}`)
-                .setFooter({ text: 'All times are shown in your local time zone.' });
+            const embed = baseEmbed('Observatory Schedule', `Here are the next episodes scheduled for your tracked collection:\n\n${scheduleLines.join('\n')}`, interaction.client.user.displayAvatarURL())
+                .setThumbnail(interaction.user.displayAvatarURL());
 
             await interaction.editReply({ embeds: [embed] });
 

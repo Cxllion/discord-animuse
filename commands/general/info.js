@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const os = require('os');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -34,14 +35,8 @@ module.exports = {
         // Version (you can update this manually or use package.json)
         const version = '2.0.0';
 
-        const embed = new EmbedBuilder()
-            .setColor('#FFACD1')
-            .setAuthor({
-                name: 'AniMuse Bot Information',
-                iconURL: client.user.displayAvatarURL()
-            })
+        const embed = baseEmbed('AniMuse Bot Information', '📖 Library statistics and technical information', client.user.displayAvatarURL())
             .setThumbnail(client.user.displayAvatarURL({ size: 256 }))
-            .setDescription('📖 Library statistics and technical information')
             .addFields(
                 {
                     name: '📊 Statistics',
@@ -78,9 +73,7 @@ module.exports = {
                         '• [GitHub](https://github.com/Cxllion/discord-animuse)',
                     inline: false
                 }
-            )
-            .setFooter({ text: 'Made with ❤️ for anime communities' })
-            .setTimestamp();
+            );
 
         await interaction.reply({ embeds: [embed] });
     }

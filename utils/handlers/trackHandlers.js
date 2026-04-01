@@ -13,7 +13,7 @@ const renderTrackList = async (guildId, userId, page = 0) => {
 
     if (subs.length === 0) {
         return { 
-            embeds: [baseEmbed().setTitle('Archive Empty').setDescription('🍂 **Your Tracking Scroll is Empty**\n\nThe archives show no records under your name.')], 
+            embeds: [baseEmbed('Archive Empty', '🍂 **Your Tracking Scroll is Empty**\n\nThe archives show no records under your name.', null)], 
             components: [] 
         };
     }
@@ -42,10 +42,10 @@ const renderTrackList = async (guildId, userId, page = 0) => {
         return `• ${statusEmoji} **${s.anime_title}**${format}`;
     }).join('\n');
 
-    const embed = baseEmbed()
-        .setTitle('Tracing Archives: Observation List')
-        .setDescription(`Viewing your currently tracked collection. You will receive notifications for these series when new episodes arrive.\n\n${listText}`)
-        .setFooter({ text: `Page ${page + 1} of ${totalPages} • Total: ${subs.length} Series` });
+    const embed = baseEmbed('Tracing Archives: Observation List', 
+        `Viewing your currently tracked collection. You will receive notifications for these series when new episodes arrive.\n\n${listText}`, 
+        null
+    ).setFooter({ text: `Page ${page + 1} of ${totalPages} • Total: ${subs.length} Series` });
 
     const optionsArr = pageSubs.map(s => ({
         label: s.anime_title.substring(0, 100),
@@ -89,7 +89,7 @@ const renderGuildTrackView = async (guild, moderatorId, page = 0) => {
 
     if (trackers.length === 0) {
         return { 
-            embeds: [baseEmbed().setTitle('Archive Empty').setDescription('🍂 **The Global Tracking Scroll is Empty**\n\nNo records of inter-server observation were found.')], 
+            embeds: [baseEmbed('Archive Empty', '🍂 **The Global Tracking Scroll is Empty**\n\nNo records of inter-server observation were found.', null)], 
             components: [] 
         };
     }
@@ -109,10 +109,10 @@ const renderGuildTrackView = async (guild, moderatorId, page = 0) => {
         return `• **${name}**: ${t.count} shows`;
     }));
 
-    const embed = baseEmbed()
-        .setTitle('Global Observation Records')
-        .setDescription(`Viewing all active tracking archives across the server.\n\n${listText.join('\n')}`)
-        .setFooter({ text: `Page ${page + 1} of ${totalPages} • Total: ${trackers.length} Users` });
+    const embed = baseEmbed('Global Observation Records', 
+        `Viewing all active tracking archives across the server.\n\n${listText.join('\n')}`, 
+        null
+    ).setFooter({ text: `Page ${page + 1} of ${totalPages} • Total: ${trackers.length} Users` });
 
     const optionsArr = await Promise.all(pageTrackers.map(async (t) => {
         const member = await guild.members.fetch(t.user_id).catch(() => null);
@@ -162,11 +162,10 @@ const renderUserDetailView = async (guild, moderatorId, targetUserId) => {
 
     const listText = subs.map(s => `• **${s.anime_title}**`).join('\n') || 'No active records found.';
 
-    const embed = baseEmbed()
-        .setTitle(`Archive Review: ${name}`)
-        .setDescription(`Viewing the specific observation list for **${name}**.\n\n${listText}`)
-        .setThumbnail(member ? member.user.displayAvatarURL() : null)
-        .setFooter({ text: 'Moderator View • Read-Only Access' });
+    const embed = baseEmbed(`Archive Review: ${name}`, 
+        `Viewing the specific observation list for **${name}**.\n\n${listText}`, 
+        member ? member.user.displayAvatarURL() : null
+    ).setFooter({ text: 'Moderator View • Read-Only Access' });
 
     const rows = [
         new ActionRowBuilder().addComponents(

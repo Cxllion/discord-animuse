@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const moment = require('moment');
 
 module.exports = {
@@ -32,9 +32,7 @@ module.exports = {
             const createdDate = moment(guild.createdAt).format('MMMM Do YYYY, h:mm a');
             const createdAgo = moment(guild.createdAt).fromNow();
 
-            const embed = new EmbedBuilder()
-                .setColor(CONFIG.COLORS.PRIMARY)
-                .setTitle(`${guild.name} Archive Data`)
+            const embed = baseEmbed(`${guild.name} Archive Data`, `**Guild ID:** \`${guild.id}\``, interaction.client.user.displayAvatarURL())
                 .setThumbnail(guild.iconURL({ dynamic: true, size: 512 }))
                 .setImage(guild.bannerURL({ size: 1024 }))
                 .addFields(
@@ -63,8 +61,7 @@ module.exports = {
                         value: `**Level:** ${guild.premiumTier}\n**Boosts:** ${guild.premiumSubscriptionCount}`,
                         inline: true
                     }
-                )
-                .setFooter({ text: `ID: ${guild.id} | Animuse System`, iconURL: interaction.client.user.displayAvatarURL() });
+                );
 
             await interaction.reply({ embeds: [embed] });
 

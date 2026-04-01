@@ -133,7 +133,7 @@ const addXp = async (userId, guildId, member = null, message = null) => {
 
                 // --- Milestone Announcement (Themed Embed in SAME channel) ---
                 if (newTierEarned && message) {
-                    const { EmbedBuilder } = require('discord.js');
+                    const baseEmbed = require('../generators/baseEmbed');
                     const { getDynamicUserTitle } = require('../core/userMeta');
                     const title = await getDynamicUserTitle(member);
                     
@@ -146,12 +146,9 @@ const addXp = async (userId, guildId, member = null, message = null) => {
                     const preset = presets[Math.floor(Math.random() * presets.length)];
 
                     const tierName = newTierEarned.name.replace(/^\d+\s*\|\s*/, '');
-                    const embed = new EmbedBuilder()
-                        .setTitle(preset.title)
-                        .setDescription(`${preset.text}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`)
+                    const embed = baseEmbed(preset.title, `${preset.text}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`, null)
                         .setThumbnail(member.user.displayAvatarURL({ extension: 'png' }))
-                        .setColor('#A78BFA')
-                        .setFooter({ text: preset.footer });
+                        .setColor('#A78BFA');
 
                     await message.channel.send({ content: `<@${userId}>`, embeds: [embed] }).catch(() => null);
                 }

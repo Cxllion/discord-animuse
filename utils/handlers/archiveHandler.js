@@ -19,6 +19,22 @@ const handleArchiveInteraction = async (interaction) => {
         lobbyId = parts[2];
     }
     
+    // ═══════════════════════════════════════
+    // GLOBAL INTERACTIONS (No Game Required)
+    // ═══════════════════════════════════════
+    
+    // Survival Guide Select Menu
+    if (interaction.customId === 'archive_help_menu') {
+        const page = interaction.values[0];
+        return interaction.update(require('../archive/ArchiveUI').buildSurvivalGuide(page));
+    }
+
+    // Survival Guide General Button (Lobby)
+    if (interaction.customId.startsWith('archive_help_general_')) {
+        const { buildSurvivalGuide } = require('../archive/ArchiveUI');
+        return interaction.reply(buildSurvivalGuide());
+    }
+
     const game = gameManager.getGameByLobby(lobbyId) || gameManager.getGameByThread(interaction.channelId);
 
     if (!game) {
@@ -63,11 +79,6 @@ const handleArchiveInteraction = async (interaction) => {
             return;
         }
 
-        // Survival Guide (lobby button)
-        if (interaction.customId.startsWith('archive_help_general_')) {
-            const { buildSurvivalGuide } = require('../archive/ArchiveUI');
-            return interaction.reply(buildSurvivalGuide());
-        }
 
         // Back to Lobby (settings back button)
         if (interaction.customId.startsWith('archive_lobby_back_')) {
@@ -81,7 +92,12 @@ const handleArchiveInteraction = async (interaction) => {
             game.settings.revealRoles = !game.settings.revealRoles;
             gameManager.hostPreferences.set(game.hostId, game.settings);
             gameManager.saveState();
-            return interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game));
+            await interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game));
+            try {
+                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
+                await lobbyMsg.edit(require('../archive/ArchiveUI').buildLobbyPayload(game));
+            } catch(e) {}
+            return;
         }
 
         // Queue for next game
@@ -243,11 +259,6 @@ const handleArchiveInteraction = async (interaction) => {
     // ═══════════════════════════════════════
     if (interaction.isStringSelectMenu()) {
 
-        // Survival Guide Pagination
-        if (interaction.customId === 'archive_help_menu') {
-            const page = interaction.values[0];
-            return interaction.update(require('../archive/ArchiveUI').buildSurvivalGuide(page));
-        }
 
         // Game Mode selector (settings)
         if (interaction.customId.startsWith('archive_setmode_')) {
@@ -285,7 +296,12 @@ const handleArchiveInteraction = async (interaction) => {
 
             gameManager.hostPreferences.set(game.hostId, game.settings);
             gameManager.saveState();
-            return interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game, cat));
+            await interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game, cat));
+            try {
+                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
+                await lobbyMsg.edit(require('../archive/ArchiveUI').buildLobbyPayload(game));
+            } catch(e) {}
+            return;
         }
         
         // Night ability target selector (DM)

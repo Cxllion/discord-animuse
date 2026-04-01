@@ -152,22 +152,22 @@ module.exports = {
                 const fmt = (id) => id ? `<#${id}>` : '`Not Set`';
                 const fmtList = (ids) => (ids && ids.length) ? ids.map(id => `<#${id}>`).join(', ') : '`None`';
 
-                const embed = new EmbedBuilder()
-                    .setTitle(`⚙️ Server Configuration: ${interaction.guild.name}`)
-                    .setDescription('Current channel assignments for AniMuse features.')
+                const baseEmbed = require('../../utils/generators/baseEmbed');
+                const embed = baseEmbed(`⚙️ Server Architecture: ${interaction.guild.name}`, 
+                    'Current channel assignments for AniMuse library wings and features.', 
+                    null
+                )
                     .addFields(
-                        { name: '👋 Welcome', value: fmt(config?.welcome_channel_id), inline: true },
-                        { name: '🎱 Bingo', value: fmt(config?.bingo_channel_id), inline: true },
-                        { name: '👋 Greeting', value: fmt(config?.greeting_channel_id), inline: true },
-                        { name: '📢 Airing', value: fmt(config?.airing_channel_id), inline: true },
-                        { name: '🔔 Activity', value: fmt(config?.activity_channel_id), inline: true },
-                        { name: '📋 Logs', value: fmt(config?.logs_channel_id), inline: true },
+                        { name: '👋 Welcome Wing', value: fmt(config?.welcome_channel_id), inline: true },
+                        { name: '🎱 Bingo Hall', value: fmt(config?.bingo_channel_id), inline: true },
+                        { name: '👋 Greeting Hall', value: fmt(config?.greeting_channel_id), inline: true },
+                        { name: '📢 Airing Tower', value: fmt(config?.airing_channel_id), inline: true },
+                        { name: '🔔 Activity Feed', value: fmt(config?.activity_channel_id), inline: true },
+                        { name: '📜 Security Logs', value: fmt(config?.logs_channel_id), inline: true },
                         { name: '🖼️ Identity Dump', value: fmt(config?.banner_dump_channel_id), inline: true },
-                        { name: '📸 Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
+                        { name: '📸 Media Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
-                    .setColor(0x3b82f6) // Blue
-                    .setFooter({ text: 'Use /channel assign to modify these settings.' })
-                    .setTimestamp();
+                    .setColor(0x3b82f6);
 
                 await interaction.editReply({ embeds: [embed] });
 

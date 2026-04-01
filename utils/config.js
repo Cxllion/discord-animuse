@@ -13,6 +13,13 @@ const CONFIG = {
         INVISIBLE: '#2B2D31' // Discord Dark Mode Blend
     },
 
+    // Librarian Theme Branding
+    THEME: {
+        AUTHOR: 'Animuse Librarian',
+        FOOTER: 'Animuse Archives',
+        ICON: '📚'
+    },
+
     // Standardized Emojis (Imported from emojiConfig)
     EMOJIS: EMOJIS,
 

@@ -8,6 +8,7 @@ const { handleMuseBureauInteraction } = require('./museBureau');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
 const { handleDashboardInteraction } = require('./roleDashboard');
 const { handleArchiveInteraction } = require('./archiveHandler');
+const { handleWordleInteraction, handleWordleModals } = require('./wordleHandlers');
 const logger = require('../core/logger');
 const { MessageFlags, EmbedBuilder } = require('discord.js');
 const { isUnknownInteraction } = require('../core/errorHandler');
@@ -84,6 +85,13 @@ const routeInteraction = async (interaction) => {
         // 9. Help Menu
         if (customId.startsWith('help_')) {
             await handleHelpInteraction(interaction);
+            return true;
+        }
+
+        // 10. Wordle Game
+        if (customId.startsWith('wordle_')) {
+            if (interaction.isModalSubmit()) await handleWordleModals(interaction);
+            else await handleWordleInteraction(interaction);
             return true;
         }
 

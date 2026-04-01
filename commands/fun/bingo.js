@@ -109,14 +109,14 @@ module.exports = {
         if (subcommand === 'view') {
             await interaction.deferReply();
             const loader = new LoadingManager(interaction);
-            loader.startProgress('Sketching Bingo Card...', 8);
+            loader.startProgress('Sketching your bingo card...', 8);
             
             const targetUser = interaction.options.getUser('user') || interaction.user;
             const cardIdStr = interaction.options.getString('card');
 
             const cards = await getBingoCards(targetUser.id, interaction.guild.id);
             if (!cards || cards.length === 0) {
-                return await loader.stop({ content: `📂 **${targetUser.username}** has no bingo cards yet.` });
+                return await loader.stop({ content: `📂 **Archival Error**: **${targetUser.username}** has no bingo cards yet.` });
             }
 
             let card;
@@ -127,7 +127,7 @@ module.exports = {
                 card = cards[0];
             }
 
-            if (!card) return await loader.stop({ content: '❌ Card not found.' });
+            if (!card) return await loader.stop({ content: '❌ **Archival Error**: Card not found in our records.' });
 
             const payload = await renderBingoDashboard(interaction, card.id, targetUser.id);
             await loader.stop(payload);

@@ -8,32 +8,29 @@ module.exports = {
     botPermissions: ['SendMessages', 'EmbedLinks'],
 
     async execute(interaction) {
-        const embed = new EmbedBuilder()
+        const baseEmbed = require('../../utils/generators/baseEmbed');
+        const embed = baseEmbed('💬 Need Help?', 
+            'Join our support server for assistance with archival protocols, reporting viral rot (bugs), or architectural suggestions.', 
+            interaction.client.user.displayAvatarURL()
+        )
             .setColor('#FFACD1')
-            .setAuthor({
-                name: 'AniMuse Support',
-                iconURL: interaction.client.user.displayAvatarURL()
-            })
-            .setTitle('💬 Need Help?')
-            .setDescription(
-                'Join our support server for assistance with:\n\n' +
-                '• ⚙️ **Setup & Configuration**\n' +
-                '• 🐛 **Bug Reports**\n' +
-                '• 💡 **Feature Suggestions**\n' +
-                '• ❓ **General Questions**\n' +
-                '• 🎉 **Community Events**\n\n' +
-                'Our friendly staff and community are ready to help!'
-            )
             .addFields(
+                {
+                    name: '🗂️ Support Categories',
+                    value: '• ⚙️ **Setup & Configuration**\n' +
+                           '• 🐛 **Bug Reports (Viral Rot)**\n' +
+                           '• 💡 **Feature Suggestions**\n' +
+                           '• ❓ **General Inquiries**',
+                    inline: false
+                },
                 {
                     name: '📖 Quick Links',
                     value: '• [Documentation](https://github.com/Cxllion/discord-animuse#readme)\n' +
                         '• [GitHub Issues](https://github.com/Cxllion/discord-animuse/issues)\n' +
-                        '• [Privacy Policy](https://github.com/Cxllion/discord-animuse#privacy)'
+                        '• [Privacy Policy](https://github.com/Cxllion/discord-animuse#privacy)',
+                    inline: false
                 }
-            )
-            .setFooter({ text: 'We typically respond within a few hours' })
-            .setTimestamp();
+            );
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()

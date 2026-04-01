@@ -1,5 +1,6 @@
-const { EmbedBuilder , MessageFlags } = require('discord.js');
 const logger = require('./logger');
+const baseEmbed = require('../generators/baseEmbed');
+const CONFIG = require('../config');
 const { formatPermission, getPermissionSuggestion } = require('./permissionChecker');
 const { fetchConfig } = require('./database');
 
@@ -26,16 +27,9 @@ const COLORS = {
  * @param {Object} options - Additional options (footer, fields, etc.)
  * @returns {EmbedBuilder}
  */
-const createErrorEmbed = (title, description, color = COLORS.ERROR, options = {}) => {
-    const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(title)
-        .setDescription(description)
-        .setTimestamp();
-
-    if (options.footer) {
-        embed.setFooter({ text: options.footer });
-    }
+const createErrorEmbed = (title, description, color = CONFIG.COLORS.ERROR, options = {}) => {
+    const embed = baseEmbed(title, description)
+        .setColor(color);
 
     if (options.fields) {
         embed.addFields(options.fields);
@@ -56,10 +50,7 @@ const createCooldownEmbed = (seconds, commandName = '') => {
     return createErrorEmbed(
         '📚 Please Wait!',
         `You're browsing the archives too quickly.\n\nTry **${commandName ? `\`/${commandName}\`` : 'this command'}** again in **${timeText}**.`,
-        COLORS.COOLDOWN,
-        {
-            footer: 'Cooldowns help prevent spam and keep the bot responsive for everyone'
-        }
+        CONFIG.COLORS.WARNING
     );
 };
 
@@ -75,10 +66,7 @@ const createBotPermissionEmbed = (missing) => {
     return createErrorEmbed(
         '🔒 Missing Permissions',
         `I need the following permissions to do that:\n\n${formatted}${suggestion}`,
-        COLORS.PERMISSION,
-        {
-            footer: 'The bot role needs these permissions in Server Settings → Roles'
-        }
+        CONFIG.COLORS.ERROR
     );
 };
 
@@ -101,10 +89,7 @@ const createUserPermissionEmbed = (missing, requiredRole = null) => {
     return createErrorEmbed(
         '🚫 Access Denied',
         description,
-        COLORS.PERMISSION,
-        {
-            footer: 'Only authorized members can access this feature'
-        }
+        CONFIG.COLORS.ERROR
     );
 };
 
@@ -121,10 +106,7 @@ const createDatabaseErrorEmbed = (critical = false) => {
     return createErrorEmbed(
         '📚 Archives Temporarily Unavailable',
         description,
-        COLORS.WARNING,
-        {
-            footer: critical ? 'Error code: DB_CRITICAL' : 'This usually resolves quickly'
-        }
+        CONFIG.COLORS.WARNING
     );
 };
 
@@ -141,10 +123,7 @@ const createGeneralErrorEmbed = (message = null, errorCode = null) => {
     return createErrorEmbed(
         '❌ Something Went Wrong',
         errorCode ? `${description}\n\n**Error Code**: \`${errorCode}\`` : description,
-        COLORS.ERROR,
-        {
-            footer: 'If this continues, please contact support'
-        }
+        CONFIG.COLORS.ERROR
     );
 };
 
@@ -157,10 +136,7 @@ const createNotFoundEmbed = (itemType = 'item') => {
     return createErrorEmbed(
         '📖 Not Found',
         `That ${itemType} doesn't exist in our catalog.\n\nPlease check your input and try again.`,
-        COLORS.WARNING,
-        {
-            footer: 'Make sure the spelling is correct'
-        }
+        CONFIG.COLORS.WARNING
     );
 };
 
@@ -205,16 +181,13 @@ const handleCommandError = async (interaction, error, commandName) => {
         try {
             const config = await fetchConfig(interaction.guild.id);
             if (config?.logs_channel_id) {
-                const reportEmbed = new EmbedBuilder()
-                    .setTitle('📋 Library Incident Report')
-                    .setDescription(`An error occurred while processing a command.`)
+                const reportEmbed = baseEmbed('📋 Library Incident Report', 'An error occurred while processing a command.')
                     .addFields(
                         { name: 'Command', value: `\`/${commandName}\``, inline: true },
                         { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
                         { name: 'Error', value: `\`\`\`js\n${error.message || 'No message'}\n\`\`\``, inline: false }
                     )
-                    .setColor(COLORS.ERROR)
-                    .setTimestamp();
+                    .setColor(CONFIG.COLORS.ERROR);
 
                 // Get the error code from the user embed if it exists
                 const userEmbed = embed.data;

@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder, version, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, version, MessageFlags } = require('discord.js');
 const os = require('os');
+const baseEmbed = require('../../utils/generators/baseEmbed');
 const supabase = require('../../utils/core/supabaseClient');
 const { getGlobalTrackCount } = require('../../utils/services/animeTrackerService');
 const { getGlobalBingoCount } = require('../../utils/services/bingoService');
@@ -60,9 +61,7 @@ module.exports = {
         const trackedCount = await getGlobalTrackCount();
         const bingoCount = await getGlobalBingoCount();
 
-        const embed = new EmbedBuilder()
-            .setTitle('📖 Library Health Report')
-            .setDescription(`Diagnostic overview for **AniMuse** ${interaction.client.isTestBot ? '(Test Lib)' : '(Global Lib)'}`)
+        const embed = baseEmbed('📖 Library Health Report', `Diagnostic overview for **AniMuse** ${interaction.client.isTestBot ? '(Test Lib)' : '(Global Lib)'}`, interaction.client.user.displayAvatarURL())
             .addFields(
                 { name: '📡 Connection', value: `${pingIcon} **${ping}ms** (WS)`, inline: true },
                 { name: '💾 Memory', value: `💬 **${heapUsed}MB** / **${rss}MB** RSS`, inline: true },
@@ -72,9 +71,7 @@ module.exports = {
                 { name: '⚙️ Platform', value: `📦 **v${require('../../package.json').version}** • Node **${process.version}**`, inline: true },
                 { name: '💎 Cluster', value: `💠 Shard **${shardId}/${totalShards}**`, inline: true }
             )
-            .setColor(dbStatus === '🟢 Operational' ? '#A78BFA' : '#FF6B6B')
-            .setFooter({ text: '✦ Archives of AniMuse • Diagnostics Unit' })
-            .setTimestamp();
+            .setColor(dbStatus === '🟢 Operational' ? '#FFACD1' : '#E57373');
 
         await interaction.editReply({ embeds: [embed] });
     },

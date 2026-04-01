@@ -29,8 +29,9 @@ const loadCommands = (client) => {
                 const command = require(filePath);
                 
                 if ('data' in command && 'execute' in command) {
+                    command.category = folder.name;
                     client.commands.set(command.data.name, command);
-                    logger.debug(`Loaded command: ${command.data.name}`, 'Loader');
+                    logger.debug(`Loaded command: ${command.data.name} in category ${folder.name}`, 'Loader');
                     totalLoaded++;
                 } else {
                     logger.warn(`The command at ${filePath} is missing a required "data" or "execute" property.`, 'Loader');

@@ -131,22 +131,18 @@ class StatusManager {
     }
 
     createMaintenanceEmbed() {
+        const baseEmbed = require('./baseEmbed');
         const preset = this.getRandomPreset();
-        return new EmbedBuilder()
-            .setTitle(preset.title)
-            .setDescription(`${preset.description}\n\n*The Bot is currently in Maintenance Mode.*`)
-            .setColor('#D4AF37') // Gold / Premium Color
-            .setFooter({ text: 'AniMuse Library Restoration' })
-            .setTimestamp();
+        return baseEmbed(preset.title, `${preset.description}\n\n*The Bot is currently in Maintenance Mode.*`, null)
+            .setColor('#D4AF37'); // Gold / Premium Color
     }
 
     createStartupEmbed() {
-        return new EmbedBuilder()
-            .setTitle("⏳ The Library is Opening")
-            .setDescription("Our Archivists are currently unlocking the main gates and dusting the shelves. Please wait a moment while we organize the library records.")
-            .setColor('#3498DB') // Startup Blue
-            .setFooter({ text: 'AniMuse Library Booting' })
-            .setTimestamp();
+        const baseEmbed = require('./baseEmbed');
+        return baseEmbed("⏳ The Library is Opening", 
+            "Our Archivists are currently unlocking the main gates and dusting the shelves. Please wait a moment while we organize the library records.", 
+            null
+        ).setColor('#3498DB'); // Startup Blue
     }
 }
 

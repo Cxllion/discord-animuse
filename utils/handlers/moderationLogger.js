@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
 const { logModerationAction } = require('../core/database');
 const logger = require('../core/logger');
@@ -26,16 +26,14 @@ const logAction = async (guild, targetUser, moderator, actionType, reason) => {
         if (config && config.logs_channel_id) {
             const channel = await guild.channels.fetch(config.logs_channel_id).catch(() => null);
             if (channel && channel.isTextBased()) {
-                const embed = new EmbedBuilder()
+                const embed = baseEmbed(`🛡️ Archival Enforcement: ${actionType}`, null, guild.client.user.displayAvatarURL())
                     .setColor(CONFIG.COLORS.WARNING)
-                    .setTitle(`🛡️ Moderation: ${actionType}`)
                     .addFields(
-                        { name: 'Target', value: `${targetUser.tag} (${targetUser.id})`, inline: true },
-                        { name: 'Moderator', value: `${moderator.tag}`, inline: true },
+                        { name: 'Target', value: `👤 **${targetUser.tag}** (\`${targetUser.id}\`)`, inline: true },
+                        { name: 'Head Archivist', value: `🔨 **${moderator.tag}**`, inline: true },
                         { name: 'Reason', value: reason || 'No reason provided', inline: false }
                     )
-                    .setThumbnail(targetUser.displayAvatarURL())
-                    .setTimestamp();
+                    .setThumbnail(targetUser.displayAvatarURL());
 
                 // Color coding
                 if (actionType === 'BAN') embed.setColor(CONFIG.COLORS.ERROR);

@@ -70,7 +70,7 @@ class ArchiveManager {
         if (channel) game.channelId = channel.id;
         
         if (this.hostPreferences.has(hostUser.id)) {
-            game.settings = { ...this.hostPreferences.get(hostUser.id), gameMode: game.settings.gameMode };
+            game.settings = { ...game.settings, ...this.hostPreferences.get(hostUser.id) };
         }
         
         // --- QUEUE AUTO-IMPORT ---

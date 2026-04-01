@@ -1,5 +1,4 @@
 const { 
-    EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
@@ -8,7 +7,8 @@ const {
 } = require('discord.js');
 const { fetchConfig, getRoleCategories, getServerRoles } = require('../core/database');
 const { COLOR_FAMILIES, BASIC_COLORS } = require('../config/colorConfig');
-const { getDynamicUserTitle } = require('../core/userMeta');
+const baseEmbed = require('../generators/baseEmbed');
+const CONFIG = require('../config');
 
 /**
  * Renders the Boutique view (Main or Category)
@@ -51,7 +51,6 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
         // --- Main Menu ---
         const botAvatar = member?.guild?.members?.me?.user?.displayAvatarURL({ dynamic: true }) || null;
         const thumbnail = config.boutique_thumbnail || botAvatar;
-        const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
 
         // Generate dynamic category list for embed
         const categoryList = filteredCats.map(cat => {
@@ -59,20 +58,16 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
             return `${meta.emoji} **\`${meta.label}\`** • ${meta.description}`;
         }).join('\n');
 
-        const embed = new EmbedBuilder()
-            .setTitle('🎭 Self Roles')
-            .setDescription(
-                `Personalize your server experience by selecting roles that represent you.\n\n` +
-                `📖 **How to Use**\n` +
-                `1. Select a category from the dropdown below\n` +
-                `2. Choose your preferred roles from the menu\n` +
-                `3. Update your selections anytime you want\n\n` +
-                `🎯 **Available Categories**:\n` +
-                `${categoryList}`
-            )
-            .setColor('#2F3136')
-            .setThumbnail(thumbnail)
-            .setFooter({ text: footerText });
+        const embed = baseEmbed('🎭 Self Role Boutique', 
+            `Personalize your server experience by selecting roles that represent you.\n\n` +
+            `📖 **How to Use**\n` +
+            `1. Select a category from the dropdown below\n` +
+            `2. Choose your preferred roles from the menu\n` +
+            `3. Update your selections anytime you want\n\n` +
+            `🎯 **Available Categories**:\n` +
+            `${categoryList}`,
+            botAvatar
+        ).setThumbnail(thumbnail);
 
         const nonce = Date.now().toString().slice(-4);
         const selectMenu = new StringSelectMenuBuilder()
@@ -97,7 +92,6 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
 
         const botAvatar = member?.guild?.members?.me?.user?.displayAvatarURL({ dynamic: true }) || null;
         const thumbnail = config.boutique_thumbnail || botAvatar;
-        const footerText = config.boutique_footer || 'AniMuse • Self Roles System';
 
         const rolesInCat = serverRoles.filter(sr => sr.category_id === cat.id);
         
@@ -111,11 +105,8 @@ const renderBoutique = async (guildId, categoryName = null, member = null, selec
             });
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle(`◈ ${categoryName}`)
-            .setColor('#2F3136')
-            .setThumbnail(thumbnail)
-            .setFooter({ text: footerText });
+        const embed = baseEmbed(`◈ ${categoryName}`, null, botAvatar)
+            .setThumbnail(thumbnail);
 
         const rows = [];
         

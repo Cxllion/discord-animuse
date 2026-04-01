@@ -464,12 +464,13 @@ class ArchiveGame extends EventEmitter {
             const endTime = Math.floor(Date.now() / 1000) + nightDuration;
             
             const whisper = NIGHT_WHISPERS[Math.floor(Math.random() * NIGHT_WHISPERS.length)];
-            const embed = new EmbedBuilder()
-                .setTitle(`🌑 Night ${this.dayCount}`)
+            const baseEmbed = require('./ArchiveUI').baseEmbed; // Exported from ArchiveUI
+            const embed = baseEmbed(`🌑 Night ${this.dayCount}`, 
+                `*${whisper}*\n\n📝 **Check your DMs to perform your night actions.**`, 
+                null
+            )
                 .setColor('#2c3e50')
-                .setDescription(`*${whisper}*\n\n📝 **Check your DMs to perform your night actions.**`)
-                .setFooter({ text: `Night ends <t:${endTime}:R>` })
-                .setTimestamp();
+                .setFooter({ text: `Night ends <t:${endTime}:R>` });
 
             await this.thread.send({ embeds: [embed] });
         }
@@ -579,12 +580,13 @@ class ArchiveGame extends EventEmitter {
             const endTime = Math.floor(Date.now() / 1000) + duration;
             
             const epithet = DAY_EPITHETS[Math.floor(Math.random() * DAY_EPITHETS.length)];
-            const embed = new EmbedBuilder()
-                .setTitle(`🌅 ${epithet} (Day ${this.dayCount})`)
+            const { baseEmbed } = require('./ArchiveUI');
+            const embed = baseEmbed(`🌅 ${epithet} (Day ${this.dayCount})`, 
+                `*The sanctuary is restless. The world outside is dead, but the library must survive.*\n\n**Survivors Remaining:** ${this.getAlivePlayers().length}/${this.players.size}\n\n**Discussion Period:** Talk amongst yourselves. Humanity's last hope rests on your decisions.`, 
+                null
+            )
                 .setColor('#f39c12')
-                .setDescription(`*The sanctuary is restless. The world outside is dead, but the library must survive.*\n\n**Survivors Remaining:** ${this.getAlivePlayers().length}/${this.players.size}\n\n**Discussion Period:** Talk amongst yourselves. Humanity's last hope rests on your decisions.`)
-                .setFooter({ text: `Discussion ends in ${duration}s` })
-                .setTimestamp();
+                .setFooter({ text: `Discussion ends in ${duration}s` });
 
             const dayMsg = await this.thread.send({
                 content: `🗣️ **Phase: Day ${this.dayCount} (Discussion)** | Ends <t:${endTime}:R>`,
@@ -849,11 +851,12 @@ class ArchiveGame extends EventEmitter {
             return;
         }
         
-        await this.thread.setLocked(false, 'Twilight phase');
-        const embed = new EmbedBuilder()
-            .setTitle('🌆 Twilight')
-            .setColor('#8e44ad')
-            .setDescription('**The sanctuary is under pressure.** You have **10 seconds** to react before night falls.');
+        const { baseEmbed } = require('./ArchiveUI');
+        const embed = baseEmbed('🌆 Twilight: Pressure in the Archives', 
+            '**The sanctuary is under immense pressure.** You have **10 seconds** to react before the library seals for the night.', 
+            null
+        )
+            .setColor('#8e44ad');
         
         await this.thread.send({ embeds: [embed] });
         

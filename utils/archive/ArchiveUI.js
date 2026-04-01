@@ -1,8 +1,9 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const baseEmbed = require('../generators/baseEmbed');
+const CONFIG = require('../config');
 
 function buildLobbyPayload(game) {
-    const embed = new EmbedBuilder()
-        .setTitle('📚 The Final Library | Sanctuary Lobby')
+    const embed = baseEmbed('📚 The Final Library | Sanctuary Lobby', null, null)
         .setColor('#8B5CF6') 
         .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivors:** ${game.players.size}/15 (Min: 4)`)
         .setFooter({ text: 'The world is ending. The library must endure.' })
@@ -47,9 +48,12 @@ function buildActionHub(game, user) {
         options.push({ label: 'Disband Sanctuary', value: 'disband', description: 'Permanently close this lobby and delete the record.', emoji: '🗑️' });
     }
 
-    if (isPlayer) {
+    if (isPlayer && game.state !== 'LOBBY') {
         options.push({ label: 'Edit Last Will', value: 'last_will', description: 'Update your final message revealed on death.', emoji: '✍️' });
         options.push({ label: 'Roster Status', value: 'status', description: 'View alive/dead counts and survivor list.', emoji: '📊' });
+    }
+
+    if (isPlayer) {
         options.push({ label: 'Personal Records', value: 'personal_stats', description: 'View your survival statistics.', emoji: '🏅' });
     }
 
@@ -75,10 +79,11 @@ function buildActionHub(game, user) {
         rows.push(new ActionRowBuilder().addComponents(button));
     }
     
-    const embed = new EmbedBuilder()
-        .setTitle('🎧 Sanctuary Terminal')
+    const embed = baseEmbed('🎧 Sanctuary Terminal', 
+        `Connection established for <@${user.id}>.\nAuthorization: **${isHost ? 'Host' : (isPlayer ? 'Survivor' : 'Outsider')}**\n\nSelect a command below to interact with the sanctuary.`, 
+        null
+    )
         .setColor('#8B5CF6')
-        .setDescription(`Connection established for <@${user.id}>.\nAuthorization: **${isHost ? 'Host' : (isPlayer ? 'Survivor' : 'Outsider')}**\n\nSelect a command below to interact with the sanctuary.`)
         .setFooter({ text: isHost ? 'You have full administrative control.' : 'Your actions shape the library\'s fate.' });
 
     return { 
@@ -89,7 +94,7 @@ function buildActionHub(game, user) {
 }
 
 function buildSurvivalGuide(page = 'intro') {
-    const embed = new EmbedBuilder().setColor('#F59E0B');
+    const embed = baseEmbed(null, null, null).setColor('#F59E0B');
 
     const menu = new StringSelectMenuBuilder()
         .setCustomId('archive_help_menu')
@@ -149,16 +154,14 @@ function buildSurvivalGuide(page = 'intro') {
 }
 
 function buildSettingsPayload(game, category = 'discussion') {
-    const embed = new EmbedBuilder()
-        .setTitle('⚙️ Sanctuary Protocol Dashboard')
-        .setColor('#3498db')
-        .setDescription(
-            `Configure the survival simulation parameters.\n\n` +
-            `**Discussion:** \`${game.settings.discussionTime}s\` · **Voting:** \`${game.settings.votingTime}s\`\n` +
-            `**Night:** \`${game.settings.nightTime}s\` · **Prologue:** \`${game.settings.prologueTime}s\`\n` +
-            `**Mode:** ${game.settings.gameMode}\n` +
-            `**Role Reveal on Death:** ${game.settings.revealRoles ? '✅ Enabled' : '❌ Hidden'}`
-        );
+    const embed = baseEmbed('⚙️ Sanctuary Protocol Dashboard', 
+        `Configure the survival simulation parameters.\n\n` +
+        `**Discussion:** \`${game.settings.discussionTime}s\` · **Voting:** \`${game.settings.votingTime}s\`\n` +
+        `**Night:** \`${game.settings.nightTime}s\` · **Prologue:** \`${game.settings.prologueTime}s\`\n` +
+        `**Mode:** ${game.settings.gameMode}\n` +
+        `**Role Reveal on Death:** ${game.settings.revealRoles ? '✅ Enabled' : '❌ Hidden'}`,
+        null
+    ).setColor('#3498db');
 
     const modeRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -232,11 +235,11 @@ function buildStartedLobbyPayload(game) {
     const channelId = game.thread?.parentId || game.thread?.id;
     const queue = gameManager.globalQueues.get(channelId) || new Set();
 
-    const embed = new EmbedBuilder()
-        .setTitle('📚 The Final Library | Session Active')
+    const embed = baseEmbed('📚 The Final Library | Session Active', 
+        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Players:** ${game.players.size}\n\nThe gates are sealed. The survival simulation is underway.`, 
+        null
+    )
         .setColor('#2ecc71')
-        .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Players:** ${game.players.size}\n\nThe gates are sealed. The survival simulation is underway.`)
-        .setFooter({ text: 'Humanity\'s last hope is currently being written.' })
         .setTimestamp();
     
     if (queue.size > 0) {
@@ -252,11 +255,11 @@ function buildStartedLobbyPayload(game) {
 }
 
 function buildEndedLobbyPayload(game, winner) {
-    const embed = new EmbedBuilder()
-        .setTitle('📚 The Final Library | Session Concluded')
+    const embed = baseEmbed('📚 The Final Library | Session Concluded', 
+        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n\n🏆 **Victor:** **${winner.toUpperCase()}**`, 
+        null
+    )
         .setColor(winner === 'Archivists' ? '#2ecc71' : (winner === 'Revisions' ? '#e74c3c' : '#f1c40f'))
-        .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n\n🏆 **Victor:** **${winner.toUpperCase()}**`)
-        .setFooter({ text: 'The history of this sanctuary has been written.' })
         .setTimestamp();
     
     const alive = Array.from(game.players.values()).filter(p => p.alive);
@@ -273,8 +276,7 @@ function buildEndedLobbyPayload(game, winner) {
 function buildMorningReport(game, deaths) {
     const reveal = game.settings.revealRoles;
     
-    const embed = new EmbedBuilder()
-        .setTitle(`🌅 Morning Report — Night ${game.dayCount}`)
+    const embed = baseEmbed(`🌅 Morning Report — Night ${game.dayCount}`, null, null)
         .setColor(deaths.length > 0 ? '#e74c3c' : '#2ecc71')
         .setTimestamp();
 
@@ -306,10 +308,11 @@ function buildMorningReport(game, deaths) {
 }
 
 function buildGameOverPayload(game, winner) {
-    const embed = new EmbedBuilder()
-        .setTitle('📚 The Final Library | Sanctuary Debrief')
+    const embed = baseEmbed('📚 The Final Library | Sanctuary Debrief', 
+        `**Simulation Terminated.**\n\n**Victor:** ${winner.toUpperCase()}`, 
+        null
+    )
         .setColor(winner === 'Archivists' ? '#2ecc71' : (winner === 'Revisions' ? '#e74c3c' : '#f1c40f'))
-        .setDescription(`**Simulation Terminated.**\n\n**Victor:** ${winner.toUpperCase()}`)
         .setTimestamp();
 
     const playersList = Array.from(game.players.values()).map(p => {
@@ -341,10 +344,11 @@ function buildRoleCard(p, game) {
     if (isRevision) color = '#e74c3c';
     if (isUnbound) color = '#f1c40f';
     
-    const embed = new EmbedBuilder()
-        .setTitle(`${p.role.emoji} Your Role: ${p.role.name.toUpperCase()}`)
+    const embed = baseEmbed(`${p.role.emoji} Your Role: ${p.role.name.toUpperCase()}`, 
+        `*${p.role.description}*`, 
+        null
+    )
         .setColor(color)
-        .setDescription(`*${p.role.description}*`)
         .setThumbnail(`https://raw.githubusercontent.com/Cxllion/animuse-assets/main/roles/${p.role.name.toLowerCase().replace(/\s+/g, '_')}.png`)
         .setTimestamp();
 
@@ -375,11 +379,9 @@ function buildRoleCard(p, game) {
 }
 
 function buildArchiveProfile(user, stats) {
-    const embed = new EmbedBuilder()
-        .setTitle('🏅 Sanctuary Protocol Records')
+    const embed = baseEmbed('🏅 Sanctuary Protocol Records', null, null)
         .setColor('#9b59b6')
         .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-        .setFooter({ text: 'Biometric records retrieved.' })
         .setTimestamp();
 
     if (!stats) {
@@ -402,10 +404,11 @@ function buildArchiveProfile(user, stats) {
 }
 
 function buildStagnationPayload(game) {
-    const embed = new EmbedBuilder()
-        .setTitle('⚠️ Sanctuary Protocol Warning')
+    const embed = baseEmbed('⚠️ Sanctuary Protocol Warning', 
+        `Your lobby in <#${game.channelId}> has been inactive for over 10 minutes.\n\nTo preserve archives and maintain focus, inactive lobbies must be confirmed. Please select an action below. If no action is taken within 2 minutes, the sanctuary will be automatically disbanded.`, 
+        null
+    )
         .setColor('#e67e22')
-        .setDescription(`Your lobby in <#${game.channelId}> has been inactive for over 10 minutes.\n\nTo preserve archives and maintain focus, inactive lobbies must be confirmed. Please select an action below. If no action is taken within 2 minutes, the sanctuary will be automatically disbanded.`)
         .addFields(
             { name: 'Current Status', value: `Players: **${game.players.size}**\nMode: **${game.settings.gameMode}**` }
         )

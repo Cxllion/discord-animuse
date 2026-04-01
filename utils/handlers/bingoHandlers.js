@@ -52,7 +52,7 @@ const getBingoWizardPayload = (userId, step = 'MODE', state = {}) => {
             new ButtonBuilder().setCustomId(`bingo_wiz_size_MANGA_${userId}`).setLabel('Manga').setStyle(ButtonStyle.Success).setEmoji('📖')
         );
         return {
-            content: '🧩 **Let\'s build a new Bingo Card!**\nFirst, choose your media type:',
+            content: '🧩 **Let\'s build a new Bingo Card!**\nFirst, choose your media type to be archived:',
             components: [rowMode]
         };
     }
@@ -98,7 +98,7 @@ const getBingoWizardPayload = (userId, step = 'MODE', state = {}) => {
 const renderBingoDashboard = async (interaction, cardId, userId) => {
     const guildId = interaction.guild.id;
     const card = await getBingoCardById(cardId);
-    if (!card) return { content: '❌ Card not found.', embeds: [], components: [], files: [] };
+    if (!card) return { content: '❌ **Archival Error**: Card not found in our records.', embeds: [], components: [], files: [] };
 
     const filledEntries = (card.entries || []).filter(e => e !== null);
 
@@ -107,11 +107,11 @@ const renderBingoDashboard = async (interaction, cardId, userId) => {
     const buffer = await generateBingoCard(card, interaction.client.user, themeColor);
     const attachment = new AttachmentBuilder(buffer, { name: 'bingo_live.webp' });
 
-    const embed = baseEmbed()
-        .setTitle(`⚙️ Dashboard: ${card.title}`)
-        .setDescription(`Manage your bingo progress. Total Filled: **${filledEntries.length}/${card.size * card.size}**\n\n` +
-            (filledEntries.length > 0 ? "Select items below to remove them." : "_No items added yet._"))
-        .setImage('attachment://bingo_live.webp');
+    const embed = baseEmbed(`⚙️ Dashboard: ${card.title}`, 
+        `Manage your bingo progress. Total Filled: **${filledEntries.length}/${card.size * card.size}**\n\n` +
+        (filledEntries.length > 0 ? "Select items below to remove them from this collection." : "*No items added to this record yet.*"),
+        interaction.client.user.displayAvatarURL()
+    ).setImage('attachment://bingo_live.webp');
 
     // 1a. Progress Bar
     const completed = filledEntries.filter(e => (e.status === 'COMPLETED' || e.status === 'FINISHED')).length;
@@ -205,11 +205,11 @@ const resolveCardInteraction = async (interaction, promptText) => {
         });
 
         const selectedId = selection.values[0];
-        await selection.update({ content: `⏳ **${getLoadingMessage('BINGO')}**`, components: [] });
+        await selection.update({ content: `⏳ **Accessing the Archives...**`, components: [] });
 
         return cards.find(c => c.id.toString() === selectedId);
     } catch (e) {
-        await interaction.editReply({ content: '❌ Selection timed out.', components: [] });
+        await interaction.editReply({ content: '❌ **Archival Timeout**: Selection timed out.', components: [] });
         return null;
     }
 };
@@ -282,7 +282,7 @@ const handleBingoInteraction = async (interaction) => {
         const cardId = parseInt(parts[3]);
 
         if (action === 'sync') {
-            await interaction.editReply({ content: '⏳ **Synchronizing with AniList...**', embeds: [], components: [], files: [] });
+            await interaction.editReply({ content: '⏳ **Synchronizing with AniList Archives...**', embeds: [], components: [], files: [] });
             await syncBingoEntriesFromAnilist(cardId, userId, guild.id);
             const payload = await renderBingoDashboard(interaction, cardId, userId);
             return interaction.editReply({ content: '✅ **Archives Synchronized!**', ...payload });
@@ -345,11 +345,11 @@ const handleBingoModals = async (interaction) => {
         await loader.stop();
 
         if (result.error) {
-            return await interaction.editReply({ content: `❌ **Failed to Create**: ${result.error}`, embeds: [], components: [] });
+            return await interaction.editReply({ content: `❌ **Failed to Materialize**: ${result.error}`, embeds: [], components: [] });
         }
 
         return await interaction.editReply({
-            content: `✅ **Card Materialized!** Created **${title}** (${size}x${size} ${mode}).\nUse the dashboard to fill it or sync with your archives!`,
+            content: `✅ **Card Materialized!** Created **${title}** (${size}x${size} ${mode}).\nUse the dashboard to fill it or sync with your AniList archives!`,
             embeds: [],
             components: []
         });
