@@ -2,6 +2,7 @@ const { MessageFlags } = require('discord.js');
 const { getMediaById } = require('../services/anilistService');
 const { addTracker } = require('../core/database');
 const { createMediaResponse } = require('../generators/mediaResponse');
+const { handleInteractionError } = require('../core/errorHandler');
 const logger = require('../core/logger');
 
 /**
@@ -47,11 +48,7 @@ const handleSearchInteraction = async (interaction) => {
 
     } catch (error) {
         logger.error('SearchHandler Error:', error, 'SearchHandlers');
-        try {
-            const payload = { content: '❌ An error occurred while fetching the record.', flags: MessageFlags.Ephemeral };
-            if (interaction.replied || interaction.deferred) await interaction.followUp(payload);
-            else await interaction.reply(payload);
-        } catch (e) {}
+        await handleInteractionError(interaction, error);
     }
 };
 

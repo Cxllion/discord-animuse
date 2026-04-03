@@ -2,6 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { executeColorDeployment } = require('../../utils/handlers/roleDashboard');
 
 module.exports = {
+    category: 'admin',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('deploy')
         .setDescription('Mass-deploy server configuration assets.')

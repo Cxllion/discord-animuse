@@ -26,6 +26,8 @@ const LoadingManager = require('../../utils/ui/LoadingManager');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'fun',
+    dbRequired: true,
     cooldown: 15,
     data: new SlashCommandBuilder()
         .setName('bingo')
@@ -75,7 +77,10 @@ module.exports = {
                         value: m.id.toString()
                     }))
                 );
-            } catch (e) { try { await interaction.respond([]); } catch (err) { } }
+            } catch (e) { 
+                logger.debug(`Autocomplete search failed: ${e.message}`, 'Autocomplete');
+                try { await interaction.respond([]); } catch (err) { } 
+            }
         } else if (focusedOption.name === 'card') {
             const userId = interaction.user.id;
             const cards = await getBingoCards(userId, interaction.guild.id);

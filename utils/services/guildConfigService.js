@@ -106,19 +106,35 @@ const isParentServer = async (guildId) => {
     return !!settings;
 };
 
-// --- Channel Activity & Organization ---
+// Simple in-memory cache for channel activity pulses
+const pulseCache = new Set();
+const PULSE_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Updates the last active timestamp for a channel.
+ * Implements a 5-minute cooldown per channel to prevent database spam.
  * @param {string} guildId 
  * @param {string} channelId 
  */
 const pulseChannelActivity = async (guildId, channelId) => {
     if (!supabase) return;
-    await supabase.from('guild_channels').upsert({
-        guild_id: guildId,
-        channel_id: channelId,
-        last_active_at: new Date().toISOString()
-    }, { onConflict: 'guild_id, channel_id' });
+
+    const key = `${guildId}-${channelId}`;
+    if (pulseCache.has(key)) return;
+
+    // Set cooldown
+    pulseCache.add(key);
+    setTimeout(() => pulseCache.delete(key), PULSE_COOLDOWN);
+
+    try {
+        await supabase.from('guild_channels').upsert({
+            guild_id: guildId,
+            channel_id: channelId,
+            last_active_at: new Date().toISOString()
+        }, { onConflict: 'guild_id, channel_id' });
+    } catch (err) {
+        logger.error(`Failed to pulse activity for channel ${channelId}:`, err, 'Database');
+    }
 };
 
 /**

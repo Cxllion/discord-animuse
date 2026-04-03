@@ -3,6 +3,8 @@ const os = require('os');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('info')
         .setDescription('📊 View bot statistics and information'),

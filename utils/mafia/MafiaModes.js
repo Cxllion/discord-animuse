@@ -14,12 +14,11 @@ const {
     TheAnomaly,
     TheCritic,
     TheBookburner
-} = require('./ArchiveRoles');
+} = require('./MafiaRoles');
 
 function generateRolesForMode(modeName, playerCount) {
     const roles = [];
 
-    // Base math: 1 Revision for every 3-4 Archivists
     let revisionCount = Math.max(1, Math.floor(playerCount / 4));
     let townCount = playerCount - revisionCount;
 
@@ -38,7 +37,7 @@ function generateRolesForMode(modeName, playerCount) {
         const revisionPool = [new TheShredder(), new TheCensor(), new ThePlagiarist()];
         
         roles.push(revisionPool.shift() || new Revision()); revisionCount--;
-        roles.push(unboundPool.shift()); // 1 guaranteed unbound in chaos
+        roles.push(unboundPool.shift()); 
         townCount--; 
         
         while (roles.length < playerCount) {
@@ -59,13 +58,11 @@ function generateRolesForMode(modeName, playerCount) {
         while (revisionCount > 0) { roles.push(new Revision()); revisionCount--; }
         while (townCount > 0) { roles.push(new Archivist()); townCount--; }
     } else {
-        // Fallback default
         roles.push(new TheShredder()); revisionCount--;
         while (revisionCount > 0) { roles.push(new Revision()); revisionCount--; }
         while (townCount > 0) { roles.push(new Archivist()); townCount--; }
     }
     
-    // Shuffle the generated deck securely
     for (let i = roles.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [roles[i], roles[j]] = [roles[j], roles[i]];

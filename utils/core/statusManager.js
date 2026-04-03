@@ -133,14 +133,16 @@ class StatusManager {
     createMaintenanceEmbed() {
         const baseEmbed = require('./baseEmbed');
         const preset = this.getRandomPreset();
-        return baseEmbed(preset.title, `${preset.description}\n\n*The Bot is currently in Maintenance Mode.*`, null)
+        // [Straightforward Header] + [Themed Title]
+        return baseEmbed(`🛠️ [MAINTENANCE] ${preset.title}`, `${preset.description}\n\n**The Archival Mainframe is currently undergoing scheduled maintenance. Please check back shortly.** ♡`, null)
             .setColor('#D4AF37'); // Gold / Premium Color
     }
 
     createStartupEmbed() {
         const baseEmbed = require('./baseEmbed');
-        return baseEmbed("⏳ The Library is Opening", 
-            "Our Archivists are currently unlocking the main gates and dusting the shelves. Please wait a moment while we organize the library records.", 
+        // [Straightforward Header] + [Themed Title]
+        return baseEmbed("⏳ [STARTUP] The Library is Opening", 
+            "Our archivists are currently unlocking the main gates and dusting the shelves.\n\n**Systems are initializing. We should be ready to serve you in a moment.** ♡", 
             null
         ).setColor('#3498DB'); // Startup Blue
     }

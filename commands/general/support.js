@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('support')
         .setDescription('💬 Get help and join our support server'),

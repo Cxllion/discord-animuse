@@ -20,6 +20,8 @@ const { sendNotifications } = require('../../utils/services/scheduler');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'configuration',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('feature')
         .setDescription('Test and verify AniMuse features.')

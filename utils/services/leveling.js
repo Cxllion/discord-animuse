@@ -43,6 +43,21 @@ const getLevelProgress = (xp, level) => {
 const addXp = async (userId, guildId, member = null, message = null) => {
     if (!supabase) return;
 
+    const { fetchConfig } = require('../core/database');
+    const config = await fetchConfig(guildId);
+    
+    // --- 1. Filter Check (Whitelist/Blacklist) ---
+    if (message && config) {
+        if (config.xp_enabled === false) return;
+        
+        const mode = config.leveling_mode || 'BLACKLIST';
+        const channels = config.leveling_channels || [];
+        const currentChannel = message.channel.id;
+
+        if (mode === 'BLACKLIST' && channels.includes(currentChannel)) return;
+        if (mode === 'WHITELIST' && !channels.includes(currentChannel)) return;
+    }
+
     const key = `${guildId}-${userId}`;
     const now = Date.now();
 
@@ -60,42 +75,23 @@ const addXp = async (userId, guildId, member = null, message = null) => {
     const xpToAdd = Math.floor(Math.random() * (25 - 15 + 1)) + 15;
 
     try {
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('xp, level')
-            .eq('user_id', userId)
-            .eq('guild_id', guildId)
-            .single();
+        const { data: result, error: rpcError } = await supabase
+            .rpc('add_xp_to_user', {
+                p_user_id: userId,
+                p_guild_id: guildId,
+                p_xp_to_add: xpToAdd
+            });
 
-        let newXp = xpToAdd;
-        let oldLevel = 0;
-
-        if (user) {
-            newXp += user.xp;
-            oldLevel = user.level;
+        if (rpcError) {
+            logger.error('XP Error - RPC failed:', rpcError, 'Leveling');
+            return;
         }
 
-        const newLevel = calculateLevel(newXp);
+        const { old_level: oldLevel, new_level: newLevel, new_xp: newXp } = result;
 
-        // Update DB
-        const { error: upsertError } = await supabase
-            .from('users')
-            .upsert({
-                user_id: userId,
-                guild_id: guildId,
-                xp: newXp,
-                level: newLevel,
-                last_message: new Date().toISOString()
-            }, { onConflict: 'user_id, guild_id' });
-
-        if (upsertError) {
-            logger.error('XP Error - DB update failed:', upsertError, 'Leveling');
-        } else if (newLevel > oldLevel) {
-            const { getLevelRoles, fetchConfig } = require('../core/database');
-            const [levelRoles, config] = await Promise.all([
-                getLevelRoles(guildId),
-                fetchConfig(guildId)
-            ]);
+        if (newLevel > oldLevel) {
+            const { getLevelRoles } = require('../core/database');
+            const levelRoles = await getLevelRoles(guildId);
 
             // --- Standard Level Up: Reaction ---
             if (message && config?.xp_level_up_emoji) {
@@ -131,26 +127,47 @@ const addXp = async (userId, guildId, member = null, message = null) => {
                     }
                 }
 
-                // --- Milestone Announcement (Themed Embed in SAME channel) ---
+                // --- Milestone Announcement (Themed Embed) ---
                 if (newTierEarned && message) {
                     const baseEmbed = require('../generators/baseEmbed');
                     const { getDynamicUserTitle } = require('../core/userMeta');
                     const title = await getDynamicUserTitle(member);
-                    
-                    const presets = [
-                        { title: '✨ Muse Ascension', text: `${title} **${member.displayName}** has unlocked a new volume of influence.`, footer: 'The Archives resonate with your progress.' },
-                        { title: '📖 Chapter Unlocked', text: `A new tier of the library has opened for ${title} **${member.displayName}**.`, footer: 'Your story is being written in golden ink.' },
-                        { title: '🌟 Celestial Recognition', text: `The Muse tiers shift to accommodate ${title} **${member.displayName}**'s growth.`, footer: 'Premium records have been updated.' }
-                    ];
-                    
-                    const preset = presets[Math.floor(Math.random() * presets.length)];
-
                     const tierName = newTierEarned.name.replace(/^\d+\s*\|\s*/, '');
-                    const embed = baseEmbed(preset.title, `${preset.text}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`, null)
+
+                    let finalTitle = '✨ Muse Ascension';
+                    let finalText = '';
+                    
+                    if (config?.xp_level_up_message) {
+                        finalText = config.xp_level_up_message
+                            .replace(/{user}/g, member.displayName)
+                            .replace(/{level}/g, newLevel)
+                            .replace(/{tier}/g, tierName)
+                            .replace(/{title}/g, title);
+                    } else {
+                        const presets = [
+                            { title: '✨ Muse Ascension', text: `${title} **${member.displayName}** has unlocked a new volume of influence.`, footer: 'The Archives resonate with your progress.' },
+                            { title: '📖 Chapter Unlocked', text: `A new tier of the library has opened for ${title} **${member.displayName}**.`, footer: 'Your story is being written in golden ink.' },
+                            { title: '🌟 Celestial Recognition', text: `The Muse tiers shift to accommodate ${title} **${member.displayName}**'s growth.`, footer: 'Premium records have been updated.' }
+                        ];
+                        const preset = presets[Math.floor(Math.random() * presets.length)];
+                        finalTitle = preset.title;
+                        finalText = preset.text;
+                    }
+
+                    const embed = baseEmbed(finalTitle, `${finalText}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`, null)
                         .setThumbnail(member.user.displayAvatarURL({ extension: 'png' }))
                         .setColor('#A78BFA');
 
-                    await message.channel.send({ content: `<@${userId}>`, embeds: [embed] }).catch(() => null);
+                    // Resolve Target Channel
+                    let targetChannel = message.channel;
+                    if (config?.level_up_channel_id) {
+                        const channel = message.guild.channels.cache.get(config.level_up_channel_id);
+                        if (channel && channel.permissionsFor(message.guild.members.me).has('SendMessages')) {
+                            targetChannel = channel;
+                        }
+                    }
+
+                    await targetChannel.send({ content: `<@${userId}>`, embeds: [embed] }).catch(() => null);
                 }
             }
         }
@@ -210,9 +227,27 @@ const getTopUsers = async (guildId) => {
     return data || [];
 };
 
+const getLevelingStats = async (guildId) => {
+    if (!supabase) return { totalXp: 0, activeUsers: 0, avgLevel: 0 };
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('xp, level')
+        .eq('guild_id', guildId);
+
+    if (error || !data.length) return { totalXp: 0, activeUsers: 0, avgLevel: 0 };
+
+    const totalXp = data.reduce((acc, u) => acc + (u.xp || 0), 0);
+    const activeUsers = data.filter(u => u.xp > 0).length;
+    const avgLevel = data.reduce((acc, u) => acc + (u.level || 0), 0) / data.length;
+
+    return { totalXp, activeUsers, avgLevel };
+};
+
 module.exports = {
     addXp,
     getUserRank,
     getLevelProgress,
-    getTopUsers
+    getTopUsers,
+    getLevelingStats
 };

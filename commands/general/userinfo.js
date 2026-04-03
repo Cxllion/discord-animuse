@@ -1,9 +1,12 @@
+const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const moment = require('moment');
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('userinfo')
         .setDescription('Displays technical data for a specific user.')

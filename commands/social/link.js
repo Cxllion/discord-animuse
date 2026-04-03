@@ -5,6 +5,8 @@ const { linkAnilistAccount } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'social',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('link')
         .setDescription('Link your Discord account to your AniList profile.')

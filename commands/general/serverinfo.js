@@ -1,9 +1,12 @@
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const moment = require('moment');
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('serverinfo')
         .setDescription('Displays the guild\'s registration card.'),

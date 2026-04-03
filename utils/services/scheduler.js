@@ -29,6 +29,10 @@ const BATCH_SIZE = 50;
 let isAiringPolling = false;
 let isActivityPolling = false;
 
+// Telemetry for watchdog diagnostics
+let lastAiringPulse = null;
+let lastActivityPulse = null;
+
 /**
  * Checks for airing anime and sends notifications.
  * @param {Client} client - Discord Client
@@ -52,6 +56,7 @@ const checkAiringAnime = async (client) => {
         }
     } finally {
         isAiringPolling = false;
+        lastAiringPulse = Date.now();
     }
 };
 
@@ -553,7 +558,18 @@ const checkUserActivity = async (client) => {
         }
     } finally {
         isActivityPolling = false;
+        lastActivityPulse = Date.now();
     }
 };
 
-module.exports = { checkAiringAnime, checkUserActivity, checkAndBroadcastUserActivity, sendNotifications };
+/**
+ * Technical Diagnostics for Watchdog
+ */
+const getPulseStatus = () => ({
+    airing: lastAiringPulse,
+    activity: lastActivityPulse,
+    isAiringBusy: isAiringPolling,
+    isActivityBusy: isActivityPolling
+});
+
+module.exports = { checkAiringAnime, checkUserActivity, checkAndBroadcastUserActivity, sendNotifications, getPulseStatus };

@@ -3,16 +3,38 @@ const path = require('path');
 const axios = require('axios');
 const logger = require('../core/logger');
 
+// --- PREMIUM ASSET CACHE ---
+const staticAssetCache = new Map();
+
+/**
+ * Loads a local asset with in-memory caching to prevent disk thrashing.
+ */
+const getCachedLocalImage = async (assetPath) => {
+    if (!assetPath) return null;
+    if (staticAssetCache.has(assetPath)) return staticAssetCache.get(assetPath);
+    
+    try {
+        const img = await loadImage(assetPath);
+        staticAssetCache.set(assetPath, img);
+        return img;
+    } catch (e) {
+        logger.error(`Archival Cache Failed: Could not load ${assetPath}`, e, 'Generator');
+        return null;
+    }
+};
+
 // --- TACTICAL ASSET ACQUISITION ---
 const secureLoadImage = async (url, fallbackPath = null) => {
-    if (!url) return fallbackPath ? await loadImage(fallbackPath) : null;
+    // 1. Check if we're requesting a local fallback directly
+    if (!url && fallbackPath) return await getCachedLocalImage(fallbackPath);
+    if (!url) return null;
     
-    // Local File Optimization
+    // 2. Local File Optimization (Skip remote uplink)
     if (url.startsWith('/') || url.includes(':\\')) {
-        try { return await loadImage(url); } catch (e) { }
+        return await getCachedLocalImage(url);
     }
 
-    // Remote Uplink with Active Timeout (8s)
+    // 3. Remote Uplink with Active Timeout (8s)
     try {
         const response = await axios.get(url, { 
             responseType: 'arraybuffer', 
@@ -23,7 +45,7 @@ const secureLoadImage = async (url, fallbackPath = null) => {
     } catch (err) {
         logger.warn(`Asset Uplink Interrupted: ${url} (${err.message}). Falling back to archives.`, 'Generator');
         if (fallbackPath) {
-            try { return await loadImage(fallbackPath); } catch (e) { }
+            return await getCachedLocalImage(fallbackPath);
         }
     }
     return null;

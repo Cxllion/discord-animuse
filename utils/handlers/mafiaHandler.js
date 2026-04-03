@@ -1,19 +1,18 @@
-const gameManager = require('../archive/ArchiveManager');
+const MafiaManager = require('../mafia/MafiaManager');
 const { MessageFlags } = require('discord.js');
 
-const handleArchiveInteraction = async (interaction) => {
+const handleMafiaInteraction = async (interaction) => {
     const parts = interaction.customId.split('_');
     let lobbyId;
     
     // Extract Lobby ID based on interaction schema
-    // Most IDs: archive_{type}_{lobbyId}
-    // Deeper IDs: archive_{type}_{subtype}_{lobbyId} or archive_{type}_{subtype}_{lobbyId}_{extra}
-    if (interaction.customId.startsWith('archive_night_target_') || 
-        interaction.customId.startsWith('archive_setphase_') ||
-        interaction.customId.startsWith('archive_help_general_') ||
-        interaction.customId.startsWith('archive_lobby_back_')) {
+    if (interaction.customId.startsWith('mafia_night_target_') || 
+        interaction.customId.startsWith('mafia_setphase_') ||
+        interaction.customId.startsWith('mafia_help_general_') ||
+        interaction.customId.startsWith('mafia_lobby_back_') ||
+        interaction.customId.startsWith('mafia_here_')) {
         lobbyId = parts[3];
-    } else if (interaction.customId.startsWith('archive_vote_')) {
+    } else if (interaction.customId.startsWith('mafia_vote_')) {
         lobbyId = parts[2];
     } else {
         lobbyId = parts[2];
@@ -24,18 +23,18 @@ const handleArchiveInteraction = async (interaction) => {
     // ═══════════════════════════════════════
     
     // Survival Guide Select Menu
-    if (interaction.customId === 'archive_help_menu') {
+    if (interaction.customId === 'mafia_help_menu') {
         const page = interaction.values[0];
-        return interaction.update(require('../archive/ArchiveUI').buildSurvivalGuide(page));
+        return interaction.update(require('../mafia/MafiaUI').buildSurvivalGuide(page));
     }
 
     // Survival Guide General Button (Lobby)
-    if (interaction.customId.startsWith('archive_help_general_')) {
-        const { buildSurvivalGuide } = require('../archive/ArchiveUI');
+    if (interaction.customId.startsWith('mafia_help_general_')) {
+        const { buildSurvivalGuide } = require('../mafia/MafiaUI');
         return interaction.reply(buildSurvivalGuide());
     }
 
-    const game = gameManager.getGameByLobby(lobbyId) || gameManager.getGameByThread(interaction.channelId);
+    const game = MafiaManager.getGameByLobby(lobbyId) || MafiaManager.getGameByThread(interaction.channelId);
 
     if (!game) {
         return interaction.reply({ 
@@ -50,15 +49,15 @@ const handleArchiveInteraction = async (interaction) => {
     if (interaction.isButton()) {
 
         // Access Terminal (lobby button)
-        if (interaction.customId.startsWith('archive_access_')) {
-            const { buildActionHub } = require('../archive/ArchiveUI');
+        if (interaction.customId.startsWith('mafia_access_')) {
+            const { buildActionHub } = require('../mafia/MafiaUI');
             return interaction.reply(buildActionHub(game, interaction.user));
         }
 
         // Join Button (from Action Hub)
-        if (interaction.customId.startsWith('archive_join_')) {
+        if (interaction.customId.startsWith('mafia_join_')) {
             if (game.addPlayer(interaction.user)) {
-                const { buildActionHub, buildLobbyPayload } = require('../archive/ArchiveUI');
+                const { buildActionHub } = require('../mafia/MafiaUI');
                 await interaction.update(buildActionHub(game, interaction.user));
                 await game.bumpLobby(interaction.channel);
             } else {
@@ -68,9 +67,9 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         // Leave Button (from Action Hub)
-        if (interaction.customId.startsWith('archive_leave_')) {
+        if (interaction.customId.startsWith('mafia_leave_')) {
             if (game.removePlayer(interaction.user.id)) {
-                const { buildActionHub, buildLobbyPayload } = require('../archive/ArchiveUI');
+                const { buildActionHub } = require('../mafia/MafiaUI');
                 await interaction.update(buildActionHub(game, interaction.user));
                 await game.bumpLobby(interaction.channel);
             } else {
@@ -81,47 +80,47 @@ const handleArchiveInteraction = async (interaction) => {
 
 
         // Back to Lobby (settings back button)
-        if (interaction.customId.startsWith('archive_lobby_back_')) {
-            const { buildActionHub } = require('../archive/ArchiveUI');
+        if (interaction.customId.startsWith('mafia_lobby_back_')) {
+            const { buildActionHub } = require('../mafia/MafiaUI');
             return interaction.update(buildActionHub(game, interaction.user));
         }
 
         // Toggle role reveal setting
-        if (interaction.customId.startsWith('archive_togglereveal_')) {
+        if (interaction.customId.startsWith('mafia_togglereveal_')) {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });
             game.settings.revealRoles = !game.settings.revealRoles;
-            gameManager.hostPreferences.set(game.hostId, game.settings);
-            gameManager.saveState();
-            await interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game));
+            MafiaManager.hostPreferences.set(game.hostId, game.settings);
+            MafiaManager.saveState();
+            await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
             try {
                 const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../archive/ArchiveUI').buildLobbyPayload(game));
+                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
             } catch(e) {}
             return;
         }
 
         // Queue for next game
-        if (interaction.customId.startsWith('archive_queuenext_')) {
+        if (interaction.customId.startsWith('mafia_queuenext_')) {
             const channelId = (interaction.channel.parentId || interaction.channel.id);
-            if (!gameManager.globalQueues.has(channelId)) {
-                gameManager.globalQueues.set(channelId, new Set());
+            if (!MafiaManager.globalQueues.has(channelId)) {
+                MafiaManager.globalQueues.set(channelId, new Set());
             }
-            const queue = gameManager.globalQueues.get(channelId);
+            const queue = MafiaManager.globalQueues.get(channelId);
             
             if (queue.has(interaction.user.id)) {
                 queue.delete(interaction.user.id);
-                await interaction.update(require('../archive/ArchiveUI').buildStartedLobbyPayload(game));
+                await interaction.update(require('../mafia/MafiaUI').buildStartedLobbyPayload(game));
                 return interaction.followUp({ content: 'You have left the next-game queue.', flags: MessageFlags.Ephemeral });
             } else {
                 queue.add(interaction.user.id);
-                gameManager.saveState();
-                await interaction.update(require('../archive/ArchiveUI').buildStartedLobbyPayload(game));
+                MafiaManager.saveState();
+                await interaction.update(require('../mafia/MafiaUI').buildStartedLobbyPayload(game));
                 return interaction.followUp({ content: '✅ You have joined the waitlist for the next session!', flags: MessageFlags.Ephemeral });
             }
         }
 
         // Waitlist confirmation ("I'm here")
-        if (interaction.customId.startsWith('archive_here_')) {
+        if (interaction.customId.startsWith('mafia_here_')) {
             const hereParts = interaction.customId.split('_');
             const hereLobbyId = hereParts[2];
             const userId = hereParts[3];
@@ -130,7 +129,7 @@ const handleArchiveInteraction = async (interaction) => {
                 return interaction.reply({ content: '❌ This beacon is not synchronized to your signature.', flags: MessageFlags.Ephemeral });
             }
             
-            const targetGame = gameManager.getGameByLobby(hereLobbyId);
+            const targetGame = MafiaManager.getGameByLobby(hereLobbyId);
             if (!targetGame) return interaction.reply({ content: '❌ The sanctuary you are trying to enter has been lost.', flags: MessageFlags.Ephemeral });
             
             const p = targetGame.players.get(userId);
@@ -139,8 +138,8 @@ const handleArchiveInteraction = async (interaction) => {
                 await interaction.update({ content: `✅ **Synchronized:** <@${userId}> is here and ready.`, components: [] });
                 
                 try {
-                    const lobbyMsg = await interaction.channel.messages.fetch(hereLobbyId);
-                    const { buildLobbyPayload } = require('../archive/ArchiveUI');
+                    const lobbyMsg = await interaction.channel.messages.fetch(targetGame.lobbyMessageId);
+                    const { buildLobbyPayload } = require('../mafia/MafiaUI');
                     await lobbyMsg.edit(buildLobbyPayload(targetGame));
                 } catch(e) {}
             }
@@ -148,12 +147,12 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         // Last Will button (from Night DM)
-        if (interaction.customId.startsWith('archive_will_')) {
+        if (interaction.customId.startsWith('mafia_will_')) {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'You must join the game first.', flags: MessageFlags.Ephemeral });
             
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-            const modal = new ModalBuilder().setCustomId(`archive_setwill_${lobbyId}`).setTitle('Compose Last Will');
+            const modal = new ModalBuilder().setCustomId(`mafia_setwill_${lobbyId}`).setTitle('Compose Last Will');
             const input = new TextInputBuilder()
                 .setCustomId('last_will_input')
                 .setLabel('Your Final Message')
@@ -167,7 +166,7 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         // Voting buttons
-        if (interaction.customId.startsWith('archive_vote_')) {
+        if (interaction.customId.startsWith('mafia_vote_')) {
             const voteParts = interaction.customId.split('_');
             const targetPlayerId = voteParts[3];
             
@@ -199,7 +198,7 @@ const handleArchiveInteraction = async (interaction) => {
         }
 
         // Spectate button
-        if (interaction.customId.startsWith('archive_spectate_')) {
+        if (interaction.customId.startsWith('mafia_spectate_')) {
             if (!game.thread) return interaction.reply({ content: 'Session not active yet.', flags: MessageFlags.Ephemeral });
             if (game.players.has(interaction.user.id)) return interaction.reply({ content: 'You are already playing!', flags: MessageFlags.Ephemeral });
             
@@ -211,31 +210,17 @@ const handleArchiveInteraction = async (interaction) => {
             }
         }
 
-        // Graveyard Living View
-        if (interaction.customId.startsWith('archive_graveL_')) {
-            const alive = game.getAlivePlayers();
-            const str = `🧍 **Living Roster (${alive.length} remaining):**\n` + alive.map(p => `• ${p.name}`).join('\n');
-            return interaction.reply({ content: str, flags: MessageFlags.Ephemeral });
-        }
-
-        // Graveyard Dead View
-        if (interaction.customId.startsWith('archive_graveD_')) {
-            const dead = Array.from(game.players.values()).filter(p => !p.alive);
-            const str = `💀 **Casualties & Roles (${dead.length} dead):**\n` + dead.map(p => `• ${p.name} - ${p.role ? p.role.name : 'Unknown'}`).join('\n');
-            return interaction.reply({ content: str, flags: MessageFlags.Ephemeral });
-        }
-
         // --- STAGNATION WATCHDOG ---
 
-        if (interaction.customId.startsWith('archive_stagnation_keep_')) {
+        if (interaction.customId.startsWith('mafia_stagnation_keep_')) {
             game.lastActivityAt = Date.now();
             game.stagnationNoticeSent = false;
             game.stagnationExpiresAt = null;
             return interaction.update({ content: '✅ **Sanctuary Maintained.** Protocol will continue monitoring for activity.', embeds: [], components: [] });
         }
 
-        if (interaction.customId.startsWith('archive_stagnation_disband_')) {
-            gameManager.endGame(game.hostId);
+        if (interaction.customId.startsWith('mafia_stagnation_disband_')) {
+            MafiaManager.endGame(game.hostId);
             return interaction.update({ content: '🗑️ **Sanctuary Disbanded.** This session has been removed from the records.', embeds: [], components: [] });
         }
     }
@@ -244,11 +229,11 @@ const handleArchiveInteraction = async (interaction) => {
     // MODAL SUBMITS
     // ═══════════════════════════════════════
     if (interaction.isModalSubmit()) {
-        if (interaction.customId.startsWith('archive_setwill_')) {
+        if (interaction.customId.startsWith('mafia_setwill_')) {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'Player biometrics not found.', flags: MessageFlags.Ephemeral });
             p.lastWill = interaction.fields.getTextInputValue('last_will_input').slice(0, 1000);
-            gameManager.saveState();
+            MafiaManager.saveState();
             return interaction.reply({ content: `✅ **Last Will Recorded.** It will be revealed upon your erasure.`, flags: MessageFlags.Ephemeral });
         }
         return;
@@ -259,30 +244,29 @@ const handleArchiveInteraction = async (interaction) => {
     // ═══════════════════════════════════════
     if (interaction.isStringSelectMenu()) {
 
-
         // Game Mode selector (settings)
-        if (interaction.customId.startsWith('archive_setmode_')) {
+        if (interaction.customId.startsWith('mafia_setmode_')) {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });
             game.settings.gameMode = interaction.values[0];
-            gameManager.hostPreferences.set(game.hostId, game.settings);
-            gameManager.saveState();
-            await interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game));
+            MafiaManager.hostPreferences.set(game.hostId, game.settings);
+            MafiaManager.saveState();
+            await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
             try {
                 const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../archive/ArchiveUI').buildLobbyPayload(game));
+                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
             } catch(e) {}
             return;
         }
 
         // Phase Category selector (settings step 1)
-        if (interaction.customId.startsWith('archive_setphase_cat_')) {
+        if (interaction.customId.startsWith('mafia_setphase_cat_')) {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });
             const cat = interaction.values[0];
-            return interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game, cat));
+            return interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game, cat));
         }
 
         // Phase Duration selector (settings step 2)
-        if (interaction.customId.startsWith('archive_setphase_val_')) {
+        if (interaction.customId.startsWith('mafia_setphase_val_')) {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });
             
             const valParts = interaction.customId.split('_');
@@ -294,18 +278,18 @@ const handleArchiveInteraction = async (interaction) => {
             else if (cat === 'night') game.settings.nightTime = val;
             else if (cat === 'prologue') game.settings.prologueTime = val;
 
-            gameManager.hostPreferences.set(game.hostId, game.settings);
-            gameManager.saveState();
-            await interaction.update(require('../archive/ArchiveUI').buildSettingsPayload(game, cat));
+            MafiaManager.hostPreferences.set(game.hostId, game.settings);
+            MafiaManager.saveState();
+            await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game, cat));
             try {
                 const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../archive/ArchiveUI').buildLobbyPayload(game));
+                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
             } catch(e) {}
             return;
         }
         
         // Night ability target selector (DM)
-        if (interaction.customId.startsWith('archive_night_target_')) {
+        if (interaction.customId.startsWith('mafia_night_target_')) {
             if (game.state !== 'NIGHT') return interaction.update({ content: 'The night has passed.', components: [] });
             const p = game.players.get(interaction.user.id);
             const targetId = interaction.values[0];
@@ -336,7 +320,7 @@ const handleArchiveInteraction = async (interaction) => {
 
         // ─── Lobby Terminal Actions ───
         const action = interaction.values[0];
-        const { buildLobbyPayload, buildActionHub } = require('../archive/ArchiveUI');
+        const { buildActionHub } = require('../mafia/MafiaUI');
         
         if (action === 'join') {
             if (game.addPlayer(interaction.user)) {
@@ -356,10 +340,10 @@ const handleArchiveInteraction = async (interaction) => {
         }
         else if (action === 'personal_stats') {
             await interaction.deferReply({ flags: 64 });
-            const archiveService = new (require('../services/archiveService'))();
-            const stats = await archiveService.getPlayerStats(interaction.user.id);
-            const { buildArchiveProfile } = require('../archive/ArchiveUI');
-            const profile = buildArchiveProfile(interaction.user, stats);
+            const mafiaService = require('../services/mafiaService');
+            const stats = await mafiaService.getPlayerStats(interaction.user.id);
+            const { buildMafiaProfile } = require('../mafia/MafiaUI');
+            const profile = buildMafiaProfile(interaction.user, stats);
             await interaction.editReply(profile);
         }
         else if (action === 'status') {
@@ -377,7 +361,7 @@ const handleArchiveInteraction = async (interaction) => {
             }
             
             await interaction.deferUpdate();
-            const payload = require('../archive/ArchiveUI').buildStartedLobbyPayload(game);
+            const payload = require('../mafia/MafiaUI').buildStartedLobbyPayload(game);
             await interaction.editReply(payload);
             await game.start(interaction);
         }
@@ -402,13 +386,7 @@ const handleArchiveInteraction = async (interaction) => {
         else if (action === 'disband') {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can disband the sanctuary.', flags: MessageFlags.Ephemeral });
             
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId).catch(() => null);
-                if (lobbyMsg) await lobbyMsg.delete().catch(() => null);
-            } catch (e) {}
-
-            gameManager.lobbies.delete(game.lobbyMessageId);
-            gameManager.saveState();
+            MafiaManager.endGame(game.hostId);
             
             return interaction.update({ content: '✅ **Sanctuary Disbanded.** This session has been removed from the records.', embeds: [], components: [] });
         }
@@ -416,14 +394,14 @@ const handleArchiveInteraction = async (interaction) => {
             if (interaction.user.id !== game.hostId) {
                 return interaction.reply({ content: 'Only the host can change settings.', flags: MessageFlags.Ephemeral });
             }
-            await interaction.reply(require('../archive/ArchiveUI').buildSettingsPayload(game));
+            await interaction.reply(require('../mafia/MafiaUI').buildSettingsPayload(game));
         }
         else if (action === 'last_will') {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'You must join the game first.', flags: MessageFlags.Ephemeral });
             
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-            const modal = new ModalBuilder().setCustomId(`archive_setwill_${lobbyId}`).setTitle('Compose Last Will');
+            const modal = new ModalBuilder().setCustomId(`mafia_setwill_${lobbyId}`).setTitle('Compose Last Will');
             const input = new TextInputBuilder()
                 .setCustomId('last_will_input')
                 .setLabel('Your Final Message')
@@ -438,4 +416,4 @@ const handleArchiveInteraction = async (interaction) => {
     }
 };
 
-module.exports = { handleArchiveInteraction };
+module.exports = { handleMafiaInteraction };

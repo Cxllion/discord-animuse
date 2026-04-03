@@ -24,6 +24,8 @@ const parseTime = (str) => {
 };
 
 module.exports = {
+    category: 'moderation',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('mute')
         .setDescription('Timeout a user for a specified duration.')

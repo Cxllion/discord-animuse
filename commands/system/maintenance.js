@@ -3,6 +3,8 @@ const statusManager = require('../../utils/core/statusManager');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'system',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('maintenance')
         .setDescription('Toggle the Library Maintenance mode.')

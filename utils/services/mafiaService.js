@@ -1,7 +1,7 @@
 const supabase = require('../core/supabaseClient');
 const logger = require('../core/logger');
 
-class ArchiveService {
+class MafiaService {
     /**
      * Records a win or loss for a list of players.
      * @param {string[]} userIds Array of Discord user IDs
@@ -18,13 +18,12 @@ class ArchiveService {
                     .eq('user_id', userId)
                     .single();
 
-                if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows found"
-                    logger.error(`Failed to fetch stats for ${userId}: ${error.message}`, 'ArchiveService');
+                if (error && error.code !== 'PGRST116') { 
+                    logger.error(`Failed to fetch stats for ${userId}: ${error.message}`, 'MafiaService');
                     continue;
                 }
 
                 if (!data) {
-                    // Create new record
                     await supabase.from('archive_stats').insert({
                         user_id: userId,
                         wins: isWin ? 1 : 0,
@@ -33,7 +32,6 @@ class ArchiveService {
                         last_played: new Date().toISOString()
                     });
                 } else {
-                    // Update existing record
                     await supabase.from('archive_stats').update({
                         wins: isWin ? data.wins + 1 : data.wins,
                         losses: isWin ? data.losses : data.losses + 1,
@@ -42,9 +40,9 @@ class ArchiveService {
                     }).eq('user_id', userId);
                 }
             }
-            logger.info(`Recorded match results (${isWin ? 'Win' : 'Loss'}) for ${userIds.length} players.`, 'ArchiveService');
+            logger.info(`Recorded match results (${isWin ? 'Win' : 'Loss'}) for ${userIds.length} players.`, 'MafiaService');
         } catch (e) {
-            logger.error(`Archive statistics update failed: ${e.message}`, 'ArchiveService');
+            logger.error(`Mafia statistics update failed: ${e.message}`, 'MafiaService');
         }
     }
 
@@ -64,4 +62,4 @@ class ArchiveService {
     }
 }
 
-module.exports = new ArchiveService();
+module.exports = new MafiaService();

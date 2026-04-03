@@ -3,6 +3,8 @@ const { getRoleCategories, createRoleCategory, registerServerRole, unregisterSer
 const { displayRoleDashboard } = require('../../utils/handlers/roleDashboard');
 
 module.exports = {
+    category: 'admin',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('role')
         .setDescription('Advanced server role management tool.')

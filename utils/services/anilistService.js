@@ -22,6 +22,12 @@ let isAniListMaintenance = false;
 let lastMaintenanceLog = 0;
 const MAINTENANCE_COOLDOWN = 10 * 60 * 1000; // 10 minutes
 
+// --- CIRCUIT BREAKER METRICS ---
+let consecutiveFailures = 0;
+const FAILURE_THRESHOLD = 5; // Shut down after 5 consecutive failures
+const CIRCUIT_BREAKER_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+let lastCircuitTrip = 0;
+
 /**
  * Helper function to make GraphQL requests to AniList
  * @param {string} query
@@ -29,12 +35,15 @@ const MAINTENANCE_COOLDOWN = 10 * 60 * 1000; // 10 minutes
  * @returns {Promise<any>}
  */
 const queryAnilist = async (query, variables = {}, retries = 3) => {
-    // 1. Maintenance Silencing Guard
-    if (isAniListMaintenance) {
-        if (Date.now() - lastMaintenanceLog < MAINTENANCE_COOLDOWN) {
-            throw new Error('AL_MAINTENANCE');
+    // 1. Maintenance & Circuit Breaker Guard
+    const now = Date.now();
+    if (isAniListMaintenance || (consecutiveFailures >= FAILURE_THRESHOLD && now - lastCircuitTrip < CIRCUIT_BREAKER_COOLDOWN)) {
+        if (now - lastMaintenanceLog >= MAINTENANCE_COOLDOWN || (consecutiveFailures >= FAILURE_THRESHOLD && now - lastCircuitTrip >= CIRCUIT_BREAKER_COOLDOWN)) {
+            // Reset and attempt recovery
+            isAniListMaintenance = false;
+            consecutiveFailures = 0;
         } else {
-            isAniListMaintenance = false; // Reset after cooldown
+            throw new Error('AL_MAINTENANCE');
         }
     }
 
@@ -45,8 +54,12 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
                 query,
                 variables,
             });
+            
+            // Success: Reset failures
+            consecutiveFailures = 0;
             return response.data.data;
         } catch (error) {
+            consecutiveFailures++;
             const status = error.response ? error.response.status : null;
             const aniErrors = error.response?.data?.errors;
             const errorMsg = aniErrors?.[0]?.message || "";
@@ -56,6 +69,13 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
                 isAniListMaintenance = true;
                 lastMaintenanceLog = Date.now();
                 logger.warn('⚠️ [Maintenance] AniList API is currently DISABLED. Silencing requests for 10 minutes.', 'AniList');
+                throw new Error('AL_MAINTENANCE');
+            }
+
+            // 3. Circuit Breaker Trip
+            if (consecutiveFailures >= FAILURE_THRESHOLD) {
+                lastCircuitTrip = Date.now();
+                logger.error(`🚨 [Circuit Breaker] Tripped after ${consecutiveFailures} consecutive AniList failures. Entering cooling period.`, null, 'AniList');
                 throw new Error('AL_MAINTENANCE');
             }
 
@@ -149,7 +169,7 @@ const searchMediaAutocomplete = async (search, type = 'ANIME') => {
     `;
 
     if (isAniListMaintenance && Date.now() - lastMaintenanceLog < MAINTENANCE_COOLDOWN) {
-        return [{ name: '⚠️ AniList API is currently in Maintenance.', value: 'maintenance' }];
+        return [{ name: '⚠️ [OFFLINE] AniList API is currently in Maintenance.', value: 'maintenance' }];
     }
 
     try {
@@ -168,7 +188,7 @@ const searchMediaAutocomplete = async (search, type = 'ANIME') => {
         return results;
     } catch (e) {
         if (e.message === 'AL_MAINTENANCE') {
-            return [{ name: '⚠️ AniList API is currently in Maintenance.', value: 'maintenance' }];
+            return [{ name: '⚠️ [OFFLINE] AniList API is currently in Maintenance.', value: 'maintenance' }];
         }
         return [];
     }

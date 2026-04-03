@@ -1,13 +1,13 @@
 const { Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const STATE_FILE = path.join(__dirname, 'archive_state.json');
+const STATE_FILE = path.join(__dirname, 'mafia_state.json');
 
-class ArchiveManager {
+class MafiaManager {
     constructor() {
         // Map of threadId -> Game instance
         this.games = new Collection();
-        // Map of lobby messageId -> Game instance (before starting)
+        // Map of hostId -> Game instance (lobbies)
         this.lobbies = new Collection();
         this.hostPreferences = new Map();
         this.saveMutex = false;
@@ -32,13 +32,13 @@ class ArchiveManager {
                 game.checkStagnation(client);
 
                 if (game.stagnationNoticeSent && game.stagnationExpiresAt && now > game.stagnationExpiresAt) {
-                    toDisband.push(game.threadId || hostId); 
+                    toDisband.push(hostId); 
                 }
             }
         }
 
         for (const id of toDisband) {
-            console.log(`[Archive] Auto-disbanding stagnant lobby (Key: ${id})`);
+            console.log(`[Mafia] Auto-disbanding stagnant lobby (Host: ${id})`);
             this.endGame(id);
         }
     }
@@ -65,7 +65,7 @@ class ArchiveManager {
     }
 
     async createGame(lobbyMessageId, hostUser, channel) {
-        const Game = require('./ArchiveGame');
+        const Game = require('./MafiaGame');
         const game = new Game(lobbyMessageId, hostUser);
         if (channel) game.channelId = channel.id;
         
@@ -91,7 +91,7 @@ class ArchiveManager {
                                 
                                 const row = new ActionRowBuilder().addComponents(
                                     new ButtonBuilder()
-                                        .setCustomId(`archive_here_${hostUser.id}_${uid}`) // Use hostId!
+                                        .setCustomId(`mafia_here_${hostUser.id}_${uid}`) 
                                         .setLabel("🙋 I'm here!")
                                         .setStyle(ButtonStyle.Success)
                                 );
@@ -115,7 +115,6 @@ class ArchiveManager {
     }
     
     getGameByLobby(id) {
-        // Now 'id' in our customIds will be the hostId for lobbies
         return this.lobbies.get(id);
     }
 
@@ -136,27 +135,25 @@ class ArchiveManager {
         return game;
     }
 
-    async endGame(threadId) {
-        const game = this.games.get(threadId);
+    async endGame(key) {
+        const game = this.games.get(key) || this.lobbies.get(key);
         if (game) {
-            const channelId = game.thread?.parentId || game.thread?.id; // Parent channel or actual channel
             const hostId = game.hostId;
-            const lobbyMsgId = game.lobbyMessageId;
+            const threadId = game.threadId;
             
+            // CLEAN DISCORD LOBBY IF IT EXISTS
+            if (game.state === 'LOBBY' && game.lobbyMessageId) {
+                try {
+                    const channel = this.client?.channels.cache.get(game.channelId);
+                    if (channel) {
+                        const msg = await channel.messages.fetch(game.lobbyMessageId).catch(() => null);
+                        if (msg) await msg.delete().catch(() => null);
+                    }
+                } catch(e) {}
+            }
+
             this.games.delete(threadId);
             this.lobbies.delete(hostId);
-            
-            // Check for next game queue
-            if (channelId && this.globalQueues.has(channelId)) {
-                const queue = this.globalQueues.get(channelId);
-                if (queue.size > 0) {
-                    // Logic to automatically trigger next lobby would go here if desired, 
-                    // but usually we wait for user to /mafia host or we auto-redeploy?
-                    // User said: "they'll be automatically added to the party and pinged"
-                    // This implies the bot should wait for the host to start a NEW lobby or we just create it.
-                }
-            }
-            
             this.saveState();
         }
     }
@@ -166,7 +163,6 @@ class ArchiveManager {
         this.saveMutex = true;
         
         try {
-            // Get all unique game instances from both lobbies and active games
             const allGames = Array.from(new Set([...this.lobbies.values(), ...this.games.values()]));
             const gamesArray = allGames.map(game => game.toJSON());
 
@@ -176,13 +172,14 @@ class ArchiveManager {
                 queues: Array.from(this.globalQueues.entries()).map(([k, v]) => [k, Array.from(v)])
             }));
         } catch (e) {
-            console.error('Archive State serialization failed:', e);
+            console.error('Mafia State serialization failed:', e);
         } finally {
             this.saveMutex = false;
         }
     }
 
     async loadState(client) {
+        this.client = client;
         if (!fs.existsSync(STATE_FILE)) return;
         try {
             const data = fs.readFileSync(STATE_FILE, 'utf8');
@@ -197,7 +194,7 @@ class ArchiveManager {
                 this.globalQueues = new Collection(payload.queues.map(([k, v]) => [k, new Set(v)]));
             }
             
-            const Game = require('./ArchiveGame');
+            const Game = require('./MafiaGame');
             for (const gData of gamesArray) {
                 const game = new Game(gData.lobbyMessageId, { id: gData.hostId });
                 game.fromJSON(gData);
@@ -217,8 +214,6 @@ class ArchiveManager {
                             game.thread = channel;
                             game.resumePhase();
                         } else {
-                            // Thread deleted? Let's keep it in lobbies at least, but maybe game is dead.
-                            // If channel is missing, the game can't really continue.
                             this.endGame(game.threadId);
                         }
                     } catch(e) {
@@ -226,12 +221,11 @@ class ArchiveManager {
                     }
                 }
             }
-            console.log(`[Archive] Restored ${this.lobbies.size} total game states.`);
+            console.log(`[Mafia] Restored ${this.lobbies.size} total game states.`);
         } catch (e) {
-            console.error('Failed to load archive state', e);
+            console.error('Failed to load mafia state', e);
         }
     }
 }
 
-// Export a singleton instance
-module.exports = new ArchiveManager();
+module.exports = new MafiaManager();

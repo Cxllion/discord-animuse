@@ -5,6 +5,8 @@ const { createMediaResponse } = require('../../utils/generators/mediaResponse');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'search',
+    dbRequired: false,
     cooldown: 8, // API calls
     data: new SlashCommandBuilder()
         .setName('search')
@@ -106,17 +108,8 @@ module.exports = {
             return await loader.stop({ embeds: [embed], components: [row] });
 
         } catch (error) {
-            logger.error(`Search Command Failure: query="${query}" type="${type}"`, error, 'SearchCommand');
-            
-            const embed = baseEmbed()
-                .setDescription('Pardon the intrusion, but the archives seem temporarily inaccessible. Please try again shortly.')
-                .setColor('#FF0000');
-            
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
-            } else {
-                await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
-            }
+            const { handleCommandError } = require('../../utils/core/errorHandler');
+            await handleCommandError(interaction, error, 'search');
         }
     },
 };

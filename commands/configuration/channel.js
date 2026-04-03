@@ -3,6 +3,8 @@ const { fetchConfig, upsertConfig } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'configuration',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('channel')
         .setDescription('Configure server channels for AniMuse features.')

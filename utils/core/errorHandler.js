@@ -20,6 +20,31 @@ const COLORS = {
 };
 
 /**
+ * Tips from the Animuse Librarian to make errors a bit cuter. ♡
+ */
+const LIBRARIAN_TIPS = [
+    "Even digital pages need to be dusted sometimes! ♡",
+    "The archives are vast, but I'll always find what you need. ✨",
+    "A quiet library is a happy library... but a little chatting is okay! 🌸",
+    "Don't worry, every record has a story, even the ones with errors. 🎀",
+    "Sorting through memories takes time. Thank you for your patience! 📖",
+    "The Grand Library is always expanding. Check back soon for new volumes! 🌟",
+    "Remember to take a break and sip some tea while I organize the shelves. 🍵",
+    "Oops! That volume seems to have been misplaced. Let me find it for you! 🔍",
+    "The ink is still drying on some of these new records! 🖋️",
+    "The archives resonate with your presence, Reader! ✨",
+    "A book is a dream that you hold in your hands. ♡",
+    "Shhh... even the data is sleeping in this wing. 🌙",
+    "Found a bookmark! It says: 'You are doing great, Reader!' 🔖",
+    "The more that you read, the more things you will know! 📚",
+    "Every error is just an unwritten chapter. ✨"
+];
+
+const getCuteLibrarianTip = () => {
+    return LIBRARIAN_TIPS[Math.floor(Math.random() * LIBRARIAN_TIPS.length)];
+};
+
+/**
  * Create a themed error embed
  * @param {string} title - Error title
  * @param {string} description - Error description
@@ -29,7 +54,11 @@ const COLORS = {
  */
 const createErrorEmbed = (title, description, color = CONFIG.COLORS.ERROR, options = {}) => {
     const embed = baseEmbed(title, description)
-        .setColor(color);
+        .setColor(color)
+        .setFooter({ 
+            text: `Archival Note: ${getCuteLibrarianTip()}`, 
+            iconURL: options.footerIcon || null 
+        });
 
     if (options.fields) {
         embed.addFields(options.fields);
@@ -48,8 +77,8 @@ const createCooldownEmbed = (seconds, commandName = '') => {
     const timeText = seconds === 1 ? '1 second' : `${seconds} seconds`;
 
     return createErrorEmbed(
-        '📚 Please Wait!',
-        `You're browsing the archives too quickly.\n\nTry **${commandName ? `\`/${commandName}\`` : 'this command'}** again in **${timeText}**.`,
+        '📚 Please Wait, Reader!',
+        `You're browsing the archives too quickly.\n\nTry **${commandName ? `\`/${commandName}\`` : 'this command'}** again in **${timeText}**. ♡`,
         CONFIG.COLORS.WARNING
     );
 };
@@ -64,8 +93,8 @@ const createBotPermissionEmbed = (missing) => {
     const suggestion = getPermissionSuggestion(missing);
 
     return createErrorEmbed(
-        '🔒 Missing Permissions',
-        `I need the following permissions to do that:\n\n${formatted}${suggestion}`,
+        '🔒 Restricted Wing',
+        `I need a few more archival keys (permissions) to do that:\n\n${formatted}\n\n${suggestion} ♡`,
         CONFIG.COLORS.ERROR
     );
 };
@@ -80,14 +109,14 @@ const createUserPermissionEmbed = (missing, requiredRole = null) => {
     let description;
 
     if (requiredRole) {
-        description = `This section of the library is restricted to staff.\n\n**Required role**: ${requiredRole}`;
+        description = `I'm sorry, but this section of the library is restricted to senior archivists.\n\n**Required role**: ${requiredRole} ♡`;
     } else {
         const formatted = missing.map(p => `• ${formatPermission(p)}`).join('\n');
-        description = `You need the following permissions to use this command:\n\n${formatted}`;
+        description = `You need a few more credentials to access this wing, Reader:\n\n${formatted} ♡`;
     }
 
     return createErrorEmbed(
-        '🚫 Access Denied',
+        '🚫 Entry Denied',
         description,
         CONFIG.COLORS.ERROR
     );
@@ -100,11 +129,11 @@ const createUserPermissionEmbed = (missing, requiredRole = null) => {
  */
 const createDatabaseErrorEmbed = (critical = false) => {
     const description = critical
-        ? 'A critical error occurred while accessing the library\'s records.\n\nPlease contact support if this persists.'
-        : 'The library\'s records are temporarily being reorganized.\n\nPlease try again in a moment.';
+        ? 'A critical error occurred while accessing the library\'s records. The ink has spilled everywhere! 🖋️\n\n**Please contact support while I clean this up.** ♡'
+        : 'The library\'s records are temporarily being reorganized by the archivists. ✨\n\n**Please try again in a moment.** ♡';
 
     return createErrorEmbed(
-        '📚 Archives Temporarily Unavailable',
+        '🗄️ [DATABASE OFFLINE] Archives Temporarily Sealed',
         description,
         CONFIG.COLORS.WARNING
     );
@@ -117,13 +146,13 @@ const createDatabaseErrorEmbed = (critical = false) => {
  * @returns {EmbedBuilder}
  */
 const createGeneralErrorEmbed = (message = null, errorCode = null) => {
-    const defaultMessage = 'An unexpected error occurred while processing your request.';
+    const defaultMessage = 'An unexpected error occurred while processing your request. Even the best archivists make mistakes! ♡';
     const description = message || defaultMessage;
 
     return createErrorEmbed(
-        '❌ Something Went Wrong',
-        errorCode ? `${description}\n\n**Error Code**: \`${errorCode}\`` : description,
-        CONFIG.COLORS.ERROR
+        '❌ [SYSTEM ERROR] Archival Hiccup',
+        errorCode ? `${description}\n\n**Support ID**: \`${errorCode}\` 🎀` : description,
+        CONFIG.COLORS.ERROR || COLORS.ERROR
     );
 };
 
@@ -134,8 +163,8 @@ const createGeneralErrorEmbed = (message = null, errorCode = null) => {
  */
 const createNotFoundEmbed = (itemType = 'item') => {
     return createErrorEmbed(
-        '📖 Not Found',
-        `That ${itemType} doesn't exist in our catalog.\n\nPlease check your input and try again.`,
+        '📖 Volume Not Found',
+        `I'm sorry, Reader, but that ${itemType} doesn't seem to exist in our catalog yet. 📚\n\nPlease check your spelling or try another title! ♡`,
         CONFIG.COLORS.WARNING
     );
 };
@@ -154,6 +183,12 @@ const handleCommandError = async (interaction, error, commandName) => {
     // Categorize error types
     if (error.message && error.message.includes('Missing Permissions')) {
         embed = createBotPermissionEmbed(['SendMessages', 'EmbedLinks']);
+    } else if (error.message === 'AL_MAINTENANCE') {
+        embed = createErrorEmbed(
+            '🅰️ [API OFFLINE] AniList Archives Unavailable',
+            'I have temporarily paused requests to AniList to protect your data. This usually means their servers are currently undergoing maintenance.\n\n**Please try this command again in a few minutes.** ♡',
+            CONFIG.COLORS.WARNING
+        );
     } else if (error.message && error.message.includes('database')) {
         embed = createDatabaseErrorEmbed(false);
     } else if (error.code === 50013) {
@@ -189,11 +224,11 @@ const handleCommandError = async (interaction, error, commandName) => {
                     )
                     .setColor(CONFIG.COLORS.ERROR);
 
-                // Get the error code from the user embed if it exists
+                // Get the support ID from the user embed if it exists
                 const userEmbed = embed.data;
-                if (userEmbed.description?.includes('Error Code')) {
+                if (userEmbed.description?.includes('**Support ID**')) {
                     const code = userEmbed.description.split('`').slice(-2, -1)[0];
-                    reportEmbed.addFields({ name: 'Error Code', value: `\`${code}\``, inline: true });
+                    reportEmbed.addFields({ name: 'Support ID', value: `\`${code}\``, inline: true });
                 }
 
                 await logger.reportToGuild(interaction.guild, config.logs_channel_id, reportEmbed);
@@ -213,8 +248,9 @@ const handleCommandError = async (interaction, error, commandName) => {
  */
 const handleInteractionError = async (interaction, error, customMessage = null) => {
     logger.error('Interaction Error:', error, 'ErrorHandler');
-
-    const embed = createGeneralErrorEmbed(customMessage || 'An error occurred while processing this interaction.');
+    
+    const errorCode = `INT_${interaction.customId?.slice(0, 5).toUpperCase() || 'UI'}_${Date.now().toString().slice(-6)}`;
+    const embed = createGeneralErrorEmbed(customMessage || 'An error occurred while processing this interaction.', errorCode);
 
     try {
         if (interaction.replied || interaction.deferred) {
@@ -242,6 +278,10 @@ const handleInteractionError = async (interaction, error, customMessage = null) 
                     )
                     .setColor(COLORS.ERROR)
                     .setTimestamp();
+
+                if (errorCode) {
+                    reportEmbed.addFields({ name: 'Support ID', value: `\`${errorCode}\``, inline: true });
+                }
 
                 await logger.reportToGuild(interaction.guild, config.logs_channel_id, reportEmbed);
             }

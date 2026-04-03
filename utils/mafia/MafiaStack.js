@@ -2,7 +2,7 @@ function resolveNightStack(game) {
     const alivePlayersList = game.getAlivePlayers();
 
     // Trigger test bots
-    const { handleBotNightActions } = require('./ArchiveBots');
+    const { handleBotNightActions } = require('./MafiaBots');
     handleBotNightActions(game);
 
     // Collect all actions from players
@@ -82,7 +82,6 @@ function resolveNightStack(game) {
                         target.role.faction = 'Revisions';
                         readings.push({ viewerId: target.id, message: `🩸 **You have been infected.** The Viral Rot has taken hold. You are now aligned with the **Revisions** (Infected). You win with them.` });
                         
-                        // Add to secret thread if it exists
                         if (game.archiveThreadId && !target.isBot) {
                             try {
                                 const mThread = game.thread.guild.channels.cache.get(game.archiveThreadId);

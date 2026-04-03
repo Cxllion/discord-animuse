@@ -6,7 +6,9 @@ const { generateProfileCard, getDominantColor } = require('../generators/profile
 const { getUserRank, getLevelProgress } = require('../services/leveling');
 const { getAniListProfile } = require('../services/anilistService');
 const { normalizeColor, resolveBannerUrl } = require('../core/visualUtils');
+const { handleInteractionError } = require('../core/errorHandler');
 const logger = require('../core/logger');
+const baseEmbed = require('../generators/baseEmbed');
 
 const BASIC_COLORS = {
     'Pink': '#FFACD1',
@@ -700,9 +702,10 @@ const showAvatarMenu = async (interaction) => {
 // --- HANDLERS ---
 
 const handleProfileInteraction = async (interaction) => {
-    const id = interaction.customId;
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
+    try {
+        const id = interaction.customId;
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
 
     if (id === 'profile_home') return showProfileDashboard(interaction);
 
@@ -998,6 +1001,9 @@ const handleProfileInteraction = async (interaction) => {
             await sendProfilePreview(interaction, undefined, autoColor);
         }
         return showProfileDashboard(interaction, true);
+    }
+    } catch (error) {
+        await handleInteractionError(interaction, error);
     }
 };
 

@@ -9,6 +9,7 @@ const {
     createBotPermissionEmbed,
     createUserPermissionEmbed,
     handleCommandError,
+    handleInteractionError,
     isUnknownInteraction
 } = require('../utils/core/errorHandler');
 
@@ -48,7 +49,9 @@ module.exports = {
                         flags: MessageFlags.Ephemeral
                     });
                 }
-            } catch (e) { }
+            } catch (e) { 
+                logger.debug(`Startup gate reply failed: ${e.message}`, 'Interaction');
+            }
             return;
         }
 
@@ -59,7 +62,7 @@ module.exports = {
             if (interaction.inGuild()) {
                 const testerRoleId = process.env.TESTER_ROLE_ID;
                 isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
-            } else if (interaction.customId?.startsWith('archive_')) {
+            } else if (interaction.customId?.startsWith('archive_') || interaction.customId?.startsWith('mafia_')) {
                 // Always allow Archive game DM interactions
                 isTester = true;
             }
@@ -75,12 +78,12 @@ module.exports = {
                             flags: MessageFlags.Ephemeral
                         });
                     }
-                } catch (e) { }
+                } catch (e) { 
+                    logger.debug(`Test bot restriction reply failed: ${e.message}`, 'Interaction');
+                }
                 return;
             }
         }
-
-
 
         // 1. Slash Commands
         if (interaction.isChatInputCommand()) {
@@ -91,7 +94,10 @@ module.exports = {
                 // Check Offline Mode for DB-reliant commands
                 if (interaction.client.isOfflineMode && command.dbRequired !== false) {
                     return await interaction.reply({
-                        embeds: [statusManager.createMaintenanceEmbed().setDescription('⚠️ **The Library is currently sealed.** (Database Offline)\nCommands requiring library records cannot be executed at this time.')],
+                        embeds: [statusManager.createMaintenanceEmbed()
+                            .setTitle('🗄️ [DATABASE OFFLINE] Archives Sealed')
+                            .setDescription('**The library database is currently unreachable.**\n\nCommands requiring access to server records (like Leveling, Config, or Profiles) cannot be used at this time. Please try again later. ♡')
+                        ],
                         flags: MessageFlags.Ephemeral
                     });
                 }
@@ -159,21 +165,8 @@ module.exports = {
                 }
             } catch (error) {
                 if (isUnknownInteraction(error)) return;
-
-                logger.error('Interaction handling error:', error, 'Interaction');
-
-                try {
-                    const payload = { content: '❌ An error occurred while processing this request.', flags: MessageFlags.Ephemeral };
-                    if (interaction.isRepliable()) {
-                        if (!interaction.replied && !interaction.deferred) {
-                            await interaction.reply(payload).catch(() => {});
-                        } else {
-                            await interaction.followUp(payload).catch(() => {});
-                        }
-                    }
-                } catch (e) { }
+                await handleInteractionError(interaction, error);
             }
         }
     },
 };
-

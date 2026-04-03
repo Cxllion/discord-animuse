@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 module.exports = {
+    category: 'utility',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('react')
         .setDescription('Make the bot react to a message.')

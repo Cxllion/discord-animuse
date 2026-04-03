@@ -58,6 +58,7 @@ const loadEvents = (client) => {
     }
 
     const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+    let totalLoaded = 0;
 
     for (const file of eventFiles) {
         const filePath = path.join(eventsPath, file);
@@ -71,12 +72,13 @@ const loadEvents = (client) => {
                 client.on(eventName, (...args) => event.execute(...args));
             }
             logger.debug(`Loaded event: ${eventName}`, 'Loader');
+            totalLoaded++;
         } catch (e) {
             logger.error(`Failed to load event ${file}:`, e, 'Loader');
         }
     }
     
-    logger.info(`Successfully bound ${eventFiles.length} runtime events.`, 'Loader');
+    logger.info(`Successfully bound ${totalLoaded} runtime events.`, 'Loader');
 };
 
 module.exports = { loadCommands, loadEvents };

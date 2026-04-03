@@ -4,6 +4,8 @@ const { unlinkAnilistAccount, getLinkedAnilist } = require('../../utils/core/dat
 const logger = require('../../utils/core/logger');
 
 module.exports = {
+    category: 'social',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('unlink')
         .setDescription('Unlink your AniList account from your Discord profile.'),

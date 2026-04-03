@@ -17,6 +17,8 @@ const { getDynamicUserTitle } = require('../../utils/core/userMeta');
 const { resolveBannerUrl } = require('../../utils/core/visualUtils');
 
 module.exports = {
+    category: 'social',
+    dbRequired: true,
     cooldown: 10, // Canvas generation
     data: new SlashCommandBuilder()
         .setName('profile')

@@ -5,6 +5,8 @@ const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 
 module.exports = {
+    category: 'anime',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('track')
         .setDescription('Manage your personal anime airing notifications.')

@@ -2,6 +2,8 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = re
 const baseEmbed = require('../../utils/generators/baseEmbed');
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('invite')
         .setDescription('🔗 Get the bot invite link and support server'),

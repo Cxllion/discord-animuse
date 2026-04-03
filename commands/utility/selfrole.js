@@ -3,6 +3,8 @@ const { upsertConfig } = require('../../utils/core/database');
 const { renderBoutique } = require('../../utils/handlers/boutiqueHandler');
 
 module.exports = {
+    category: 'utility',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('selfrole')
         .setDescription('Manage the Master Role Boutique hub.')

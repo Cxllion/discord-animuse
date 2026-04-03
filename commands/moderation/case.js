@@ -1,3 +1,4 @@
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
@@ -5,6 +6,8 @@ const { getModerationLogs } = require('../../utils/core/database');
 const moment = require('moment');
 
 module.exports = {
+    category: 'moderation',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('case')
         .setDescription('View moderation history for a user.')

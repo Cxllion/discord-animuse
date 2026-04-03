@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { fetchConfig } = require('../utils/core/database');
+const { fetchConfig, pulseChannelActivity } = require('../utils/core/database');
 const baseEmbed = require('../utils/generators/baseEmbed');
 const logger = require('../utils/core/logger');
 const { getDynamicUserTitle } = require('../utils/core/userMeta');
@@ -14,11 +14,11 @@ module.exports = {
         // But the Activity Pulse is allowed for live-dev testing
         const isSelfTest = message.client.isTestBot;
 
-        // Fetch config (Note: In production, caching this is recommended to avoid DB spam)
+        // Fetch config (Note: FetchConfig has its own 5m in-memory cache)
         const config = await fetchConfig(message.guild.id);
         
         // --- Activity Pulse (For Hybrid Sorting) ---
-        const { pulseChannelActivity } = require('../utils/core/database');
+        // Implementation: pulseChannelActivity has a 5m per-channel cooldown
         await pulseChannelActivity(message.guild.id, message.channel.id);
 
         if (!config) return; // DB error or fresh guild
@@ -102,8 +102,8 @@ module.exports = {
             return;
         }
 
-        // --- Leveling Hook ---
-        if (!isSelfTest && config.leveling_enabled !== false) {
+        // --- Levelling & Rank Hook ---
+        if (!isSelfTest) {
             const { addXp } = require('../utils/services/leveling');
             await addXp(message.author.id, message.guild.id, message.member, message);
         }
@@ -138,7 +138,7 @@ module.exports = {
         }
 
         // --- Archive Lobby Bumping ---
-        const gameManager = require('../utils/archive/ArchiveManager');
+        const gameManager = require('../utils/mafia/MafiaManager');
         const lobby = gameManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
         if (lobby) {
             lobby.scheduleBump(message.channel);

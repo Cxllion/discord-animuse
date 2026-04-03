@@ -1,21 +1,50 @@
 const supabase = require('../core/supabaseClient');
 const logger = require('../core/logger');
 
+// --- Caching Infrastructure ---
+const categoriesCache = new Map();
+const serverRolesCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // --- Role Categories ---
 const getRoleCategories = async (guildId) => {
+    // Cache Check
+    if (categoriesCache.has(guildId)) {
+        const { data, timestamp } = categoriesCache.get(guildId);
+        if (Date.now() - timestamp < CACHE_TTL) return data;
+        categoriesCache.delete(guildId);
+    }
+
     if (!supabase) return [];
-    const { data } = await supabase.from('role_categories').select('*').eq('guild_id', guildId).order('created_at', { ascending: true });
+    
+    const { data, error } = await supabase
+        .from('role_categories')
+        .select('*')
+        .eq('guild_id', guildId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        logger.error(`[RoleService] Error fetching categories for ${guildId}:`, error);
+        return [];
+    }
+
+    categoriesCache.set(guildId, { data: data || [], timestamp: Date.now() });
     return data || [];
 };
 
 const createRoleCategory = async (guildId, name) => {
     if (!supabase) return null;
-    return await supabase.from('role_categories').insert({ guild_id: guildId, name }).select().single();
+    const res = await supabase.from('role_categories').insert({ guild_id: guildId, name }).select().single();
+    categoriesCache.delete(guildId); // Invalidate
+    return res;
 };
 
 const deleteRoleCategory = async (categoryId) => {
     if (!supabase) return;
+    // We don't have guildId here easily, so we flush the whole cache or just ignore (it will expire in 5m)
+    // For perfection: we should ideally know the guildId.
     await supabase.from('role_categories').delete().eq('id', categoryId);
+    categoriesCache.clear(); // Safe bet for global deletion
 };
 
 const seedRoleCategories = async (guildId) => {
@@ -32,7 +61,7 @@ const seedRoleCategories = async (guildId) => {
         'Extra'
     ];
     
-    const existing = await getRoleCategories(guildId);
+    const [existing] = await Promise.all([getRoleCategories(guildId)]);
     const existingNames = existing.map(c => c.name);
     
     const toInsert = defaults.filter(name => !existingNames.includes(name)).map(name => ({ guild_id: guildId, name }));
@@ -40,29 +69,56 @@ const seedRoleCategories = async (guildId) => {
     if (toInsert.length > 0) {
         await supabase.from('role_categories').insert(toInsert);
     }
+    
+    categoriesCache.delete(guildId); // Invalidate
     return await getRoleCategories(guildId);
 };
 
 // --- Server Roles ---
 const getServerRoles = async (guildId) => {
+    // Cache Check
+    if (serverRolesCache.has(guildId)) {
+        const { data, timestamp } = serverRolesCache.get(guildId);
+        if (Date.now() - timestamp < CACHE_TTL) return data;
+        serverRolesCache.delete(guildId);
+    }
+
     if (!supabase) return [];
-    const { data } = await supabase.from('server_roles').select('*, category:role_categories(*)').eq('guild_id', guildId);
+    
+    const { data, error } = await supabase
+        .from('server_roles')
+        .select('*, category:role_categories(*)')
+        .eq('guild_id', guildId);
+
+    if (error) {
+        logger.error(`[RoleService] Error fetching server roles for ${guildId}:`, error);
+        return [];
+    }
+
+    serverRolesCache.set(guildId, { data: data || [], timestamp: Date.now() });
     return data || [];
 };
 
 const registerServerRole = async (guildId, roleId, categoryId = null) => {
     if (!supabase) return;
-    return await supabase.from('server_roles').upsert({ role_id: roleId, guild_id: guildId, category_id: categoryId });
+    const res = await supabase.from('server_roles').upsert({ role_id: roleId, guild_id: guildId, category_id: categoryId });
+    serverRolesCache.delete(guildId); // Invalidate
+    return res;
 };
 
 const registerServerRoles = async (records) => {
     if (!supabase || !records.length) return;
-    return await supabase.from('server_roles').upsert(records);
+    const res = await supabase.from('server_roles').upsert(records);
+    // Invalidate all involved guilds (usually just one)
+    const guildIds = [...new Set(records.map(r => r.guild_id))];
+    guildIds.forEach(id => serverRolesCache.delete(id));
+    return res;
 };
 
 const unregisterServerRole = async (roleId) => {
     if (!supabase) return;
     await supabase.from('server_roles').delete().eq('role_id', roleId);
+    serverRolesCache.clear(); // Safe bet for global role removal
 };
 
 // --- Level Roles ---

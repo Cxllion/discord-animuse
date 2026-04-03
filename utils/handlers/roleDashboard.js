@@ -63,12 +63,23 @@ const safeUpdate = async (i, options) => {
     }
 };
 
+const applyLibrarianBranding = (embed, i) => {
+    return embed
+        .setAuthor({ 
+            name: `Librarian: ${i.user.tag}`, 
+            iconURL: i.user.displayAvatarURL({ extension: 'png' }) 
+        })
+        .setThumbnail(i.guild.iconURL({ extension: 'png' }))
+        .setFooter({ text: `AniMuse Hub • ${i.guild.name}` })
+        .setTimestamp();
+};
+
 const getNavigationRow = (i, current = null) => {
     const options = [
         { label: 'Library Home', description: 'Return to the main management hub.', value: 'opt_refresh', emoji: EMOJIS.DASHBOARD },
         { label: 'Auto-Roles', description: 'Member, Bot, and status roles.', value: 'opt_autoroles', emoji: '🤖' },
         { label: 'Category Manager', description: 'Organize roles into group folders.', value: 'opt_categories', emoji: '🗂️' },
-        { label: 'Level Rewards', description: 'Manage milestone-based role rewards.', value: 'opt_levels', emoji: '📈' },
+        { label: 'Levelling & Rank', description: 'Manage experience, archives, and rewards.', value: 'opt_levels', emoji: '📈' },
         { label: 'Color Catalog', description: 'Deploy curated premium color shades.', value: 'opt_colors', emoji: '🎨' },
         { label: 'Channel Architect', description: 'Zone management and feature binding.', value: 'opt_channels', emoji: '🏗️' },
         { label: 'Media & Airing', description: 'Airing alerts and gallery settings.', value: 'opt_media', emoji: EMOJIS.MEDIA },
@@ -102,24 +113,31 @@ const getBackRow = (customId = 'dash_home', label = 'Back to Hub') => {
 };
 
 const displayRoleDashboard = async (interaction, isUpdate = false) => {
-    const embed = baseEmbed()
+    const guild = interaction.guild;
+    const roles = guild.roles.cache.size;
+    const members = guild.memberCount;
+    const categories = (await getRoleCategories(guild.id)).length;
+    const latency = interaction.client.ws.ping;
+
+    const embed = applyLibrarianBranding(baseEmbed(), interaction)
         .setTitle('AniMuse Library Dashboard')
-        .setDescription('Welcome, Librarian. Manage the server architecture and bot configurations from this central hub.\n\n**Select a wing below to begin auditing or configuring.**')
+        .setDescription('Welcome, Librarian. Manage the server architecture and bot configurations from this central hub.')
         .addFields(
-            { name: '🤖 Auto-Roles', value: 'Setup Member, Bot, and status roles.', inline: true },
-            { name: '🗂️ Categories', value: 'Organize roles into group folders.', inline: true },
-            { name: '📈 Level Rewards', value: 'Manage milestone-based role rewards.', inline: true },
-            { name: '🏗️ Infrastructure', value: 'Channels, Sorting, and Ghost Scans.', inline: true },
-            { name: '📐 Hierarchy', value: 'Purge roles and re-sort hierarchy.', inline: true },
-            { name: '📊 Metrics', value: 'Monitor bot health and server stats.', inline: true }
+            { name: '🏛️ Library Overview', value: `> 👥 Members: **${members}**\n> 🎭 Roles: **${roles}**\n> 🗂️ Categories: **${categories}**`, inline: false },
+            { name: '🛰️ System Health', value: `> 📡 Pulse (Ping): **${latency}ms**\n> 🟢 Status: **Online**`, inline: true }
         );
 
-    const row = getNavigationRow(interaction);
+    const navRow = getNavigationRow(interaction);
+    const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('opt_refresh').setLabel('Refresh Hub').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
+        new ButtonBuilder().setCustomId('organize_perform').setLabel('Quick Organize').setStyle(ButtonStyle.Success).setEmoji('📐'),
+        new ButtonBuilder().setCustomId('opt_insight').setLabel('System Pulse').setStyle(ButtonStyle.Primary).setEmoji('📊')
+    );
 
     if (isUpdate) {
-        await safeUpdate(interaction, { embeds: [embed], components: [row] });
+        await safeUpdate(interaction, { embeds: [embed], components: [navRow, actionRow] });
     } else {
-        await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [embed], components: [navRow, actionRow], flags: MessageFlags.Ephemeral });
     }
 };
 
@@ -131,12 +149,22 @@ const handleDashboardInteraction = async (i) => {
             if (i.customId === 'level_channel_select') {
                 const channelId = i.values[0];
                 await upsertConfig(i.guild.id, { level_up_channel_id: channelId });
-                return handleLevels(i);
+                return handleLevelSettings(i);
+            }
+            if (i.customId === 'level_filter_channels') {
+                await upsertConfig(i.guild.id, { leveling_channels: i.values });
+                return handleLevelSettings(i);
             }
         }
         if (i.isStringSelectMenu()) {
             if (i.customId === 'role_dash_menu') {
                 const choice = i.values[0];
+                if (choice === 'opt_refresh') return await displayRoleDashboard(i, true);
+                if (choice === 'opt_flush_cache') {
+                    const { clearConfigCache } = require('../services/guildConfigService');
+                    clearConfigCache();
+                    return await handleBotInsight(i);
+                }
                 if (choice === 'opt_autoroles' || choice === 'opt_roles') return handleAutoRoles(i);
                 if (choice === 'opt_categories') return handleCategories(i);
                 if (choice === 'opt_levels') return handleLevels(i);
@@ -146,7 +174,6 @@ const handleDashboardInteraction = async (i) => {
                 if (choice === 'opt_insight') return handleBotInsight(i);
                 if (choice === 'opt_admin') return handleAdminWing(i);
                 if (choice === 'opt_media') return handleMediaAiring(i);
-                if (choice === 'opt_refresh') return await displayRoleDashboard(i, true);
                 if (choice === 'opt_channels') {
                     const { displayChannelDashboard } = require('./channelDashboard');
                     return displayChannelDashboard(i, true);
@@ -203,8 +230,42 @@ const handleDashboardInteraction = async (i) => {
             if (i.customId === 'level_deploy_standard') return executeLevelDeployment(i);
             if (i.customId === 'level_toggle') {
                 const config = await fetchConfig(i.guild.id);
-                await upsertConfig(i.guild.id, { leveling_enabled: !config.leveling_enabled });
+                await upsertConfig(i.guild.id, { xp_enabled: config.xp_enabled === false });
                 return handleLevels(i);
+            }
+            if (i.customId === 'level_wing_settings') return handleLevelSettings(i);
+            if (i.customId === 'level_wing_milestones') return handleLevelMilestones(i);
+            if (i.customId === 'level_wing_analytics') return handleLevelAnalytics(i);
+            if (i.customId === 'level_mode_toggle') {
+                const config = await fetchConfig(i.guild.id);
+                const newMode = (config.leveling_mode || 'BLACKLIST') === 'BLACKLIST' ? 'WHITELIST' : 'BLACKLIST';
+                await upsertConfig(i.guild.id, { leveling_mode: newMode });
+                return handleLevelSettings(i);
+            }
+            if (i.customId === 'level_msg_modal') {
+                const config = await fetchConfig(i.guild.id);
+                const modal = new ModalBuilder().setCustomId('modal_level_msg').setTitle('Level Up Message');
+                const msgInput = new TextInputBuilder()
+                    .setCustomId('level_msg')
+                    .setLabel("Message ({user}, {level}, {tier}, {title})")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('Enter your custom ascension message...')
+                    .setValue(config.xp_level_up_message || '')
+                    .setRequired(false);
+                modal.addComponents(new ActionRowBuilder().addComponents(msgInput));
+                return i.showModal(modal);
+            }
+            if (i.customId === 'level_emoji_modal') {
+                const config = await fetchConfig(i.guild.id);
+                const modal = new ModalBuilder().setCustomId('modal_level_emoji').setTitle('Level Up Emoji');
+                const emojiInput = new TextInputBuilder()
+                    .setCustomId('level_emoji')
+                    .setLabel("Reaction Emoji (✨, :star:, etc.)")
+                    .setStyle(TextInputStyle.Short)
+                    .setValue(config.xp_level_up_emoji || '✨')
+                    .setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(emojiInput));
+                return i.showModal(modal);
             }
             
             if (i.customId === 'cat_create') {
@@ -279,6 +340,16 @@ const handleDashboardInteraction = async (i) => {
                 const row = new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('level_role_bind_select').setPlaceholder(`Select Role for Level ${lvlNum}`));
                 return i.reply({ content: `Select role for **Level ${lvlNum}**:`, components: [row], flags: MessageFlags.Ephemeral }).catch(() => null);
             }
+            if (i.customId === 'modal_level_msg') {
+                const msg = i.fields.getTextInputValue('level_msg');
+                await upsertConfig(i.guild.id, { xp_level_up_message: msg || null });
+                return handleLevelSettings(i);
+            }
+            if (i.customId === 'modal_level_emoji') {
+                const emoji = i.fields.getTextInputValue('level_emoji');
+                await upsertConfig(i.guild.id, { xp_level_up_emoji: emoji });
+                return handleLevelSettings(i);
+            }
         }
     } catch (e) {
         if (e.code === 10062 || e.code === 40060) return;
@@ -288,19 +359,18 @@ const handleDashboardInteraction = async (i) => {
 
 const handleAutoRoles = async (i) => {
     const config = await fetchConfig(i.guild.id);
-    const memberRole = config.member_role_id ? `<@&${config.member_role_id}>` : '`Not Set`';
-    const botRole = config.bot_role_id ? `<@&${config.bot_role_id}>` : '`Not Set`';
-    const boosterRole = config.booster_role_id ? `<@&${config.booster_role_id}>` : '`Not Set (Auto-Detect)`';
-    const premiumRole = config.premium_role_id ? `<@&${config.premium_role_id}>` : '`Not Set (Seraphic Muse)`';
-    
-    const embed = baseEmbed()
-        .setTitle('🤖 Auto-Roles & Status Configuration')
-        .setDescription(`Assign specialized roles automatically as members traverse the Library gates.`)
+    const { member_role_id, bot_role_id, booster_role_id, premium_role_id } = config;
+
+    const check = (id) => id ? (i.guild.roles.cache.has(id) ? `<@&${id}>` : `⚠️ **Invalid ID** (\`${id}\`)`) : '*Not Assigned*';
+
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('🤖 Auto-Role Protocol')
+        .setDescription('Configure persistent roles that define the identity and structure of your library membership.')
         .addFields(
-            { name: '👥 Member', value: memberRole, inline: true },
-            { name: '🤖 Bot', value: botRole, inline: true },
-            { name: '💎 Booster', value: boosterRole, inline: true },
-            { name: '✨ Seraphic', value: premiumRole, inline: true }
+            { name: '👥 Member', value: check(member_role_id), inline: true },
+            { name: '🤖 Bot', value: check(bot_role_id), inline: true },
+            { name: '💎 Booster', value: check(booster_role_id), inline: true },
+            { name: '✨ Seraphic', value: check(premium_role_id), inline: true }
         );
 
     const rows = [
@@ -383,11 +453,11 @@ const handleCategories = async (i) => {
     let desc = 'Organize your server records into logical wings for easy identification and menu population.\n\n**Current Vitality:**\n';
     categories.forEach(c => {
         const catRoles = sRoles.filter(r => r.category_id === c.id);
-        desc += `◈ **${c.name}**: \`${catRoles.length}\` volumes\n`;
+        desc += `>> **${c.name}**: \`${catRoles.length}\` volumes registered.\n`;
     });
 
-    const embed = baseEmbed()
-        .setTitle('🗂️ Category Management')
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('🗂️ Role Category Repository')
         .setDescription(desc);
 
     const select = new StringSelectMenuBuilder()
@@ -412,9 +482,14 @@ const handleCategoryRoles = async (i, categoryId) => {
     if (!cat) return handleCategories(i);
     const sRoles = await getServerRoles(i.guild.id);
     const catRoles = sRoles.filter(r => r.category_id === cat.id);
-    const mentions = catRoles.length ? catRoles.map(r => `<@&${r.role_id}>`).join(', ') : '*Empty*';
     
-    const embed = baseEmbed()
+    const mentions = catRoles.length ? catRoles.map(cr => {
+        const role = i.guild.roles.cache.get(cr.role_id);
+        if (!role) return `⚠️ \`${cr.role_id}\``;
+        return `<@&${cr.role_id}> (\`${role.hexColor}\`)`;
+    }).join('\n') : '*Empty*';
+    
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle(`Category Wing: ${cat.name}`)
         .setDescription(`**Registered Records:**\n${mentions}`)
         .setFooter({ text: 'Hierarchy Logic: Bottom categories appear highest in sorting.' });
@@ -436,7 +511,7 @@ const handleCategoryRoles = async (i, categoryId) => {
             return {
                 label: role ? role.name : `Unknown Role (${cr.role_id})`,
                 value: cr.role_id,
-                description: 'Remove from this Category.'
+                description: role ? `Hex: ${role.hexColor}` : 'ID missing from Discord cache.'
             };
         }).slice(0, 25);
 
@@ -455,39 +530,101 @@ const handleCategoryRoles = async (i, categoryId) => {
 
 const handleLevels = async (i) => {
     const config = await fetchConfig(i.guild.id);
-    const lvls = await getLevelRoles(i.guild.id);
-    const levelingEnabled = config.leveling_enabled !== false;
+    const levelingEnabled = config.xp_enabled !== false;
 
-    let desc = `**Pulse Status**: ${levelingEnabled ? '✅ Active' : '❌ Suspended'}\n`;
-    desc += `**Announcements**: 📍 Localized\n\n`;
-    desc += '**Milestone Records:**\n';
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('📈 Levelling & Rank Archives')
+        .setDescription(`Manage how users ascend through the Library's knowledge tiers.\n\n**Current Vitality:** ${levelingEnabled ? '✅ ACTIVE' : '❌ SUSPENDED'}\n**Activity Filtering**: ${config.leveling_mode || 'BLACKLIST'}\n**Tracked Channels**: ${config.leveling_channels?.length || 0} locations`);
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('level_wing_settings').setLabel('⚙️ Settings').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('level_wing_milestones').setLabel('🎭 Milestones').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('level_wing_analytics').setLabel('📊 Analytics').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('level_toggle').setLabel(levelingEnabled ? 'Pause Tracking' : 'Resume Tracking').setStyle(levelingEnabled ? ButtonStyle.Danger : ButtonStyle.Success)
+    );
+
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_levels'), row, getBackRow()] });
+};
+
+const handleLevelSettings = async (i) => {
+    const config = await fetchConfig(i.guild.id);
+    const mode = config.leveling_mode || 'BLACKLIST';
     
-    if (!lvls.length) desc += '*No bindings established.*';
-    else lvls.forEach(l => { desc += `Lvl \`${l.level}\` ➔ <@&${l.role_id}>\n`; });
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('⚙️ Levelling Architect: Settings')
+        .setDescription(`Configure your announcement policies and experience filters.\n\n` +
+            `**Announcement Hub**: ${config.level_up_channel_id ? `<#${config.level_up_channel_id}>` : '*Current Channel*'}\n` +
+            `**Level Up Emoji**: ${config.xp_level_up_emoji || '✨'}\n` +
+            `**Filter Mode**: **${mode}**\n` +
+            `**Custom Message**: ${config.xp_level_up_message ? '`Configured`' : '*Default Presets*'}`);
 
-    const embed = baseEmbed()
-        .setTitle('📈 Level Rewards & Milestones')
+    const rows = [
+        new ActionRowBuilder().addComponents(
+            new ChannelSelectMenuBuilder().setCustomId('level_channel_select').setPlaceholder('Select Announcement Hub...').setChannelTypes(ChannelType.GuildText)
+        ),
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('level_mode_toggle').setLabel(`Mode: ${mode}`).setStyle(ButtonStyle.Primary).setEmoji('🔄'),
+            new ButtonBuilder().setCustomId('level_msg_modal').setLabel('Update Message').setStyle(ButtonStyle.Secondary).setEmoji('📝'),
+            new ButtonBuilder().setCustomId('level_emoji_modal').setLabel('Set Emoji').setStyle(ButtonStyle.Secondary).setEmoji('🎭')
+        ),
+        new ActionRowBuilder().addComponents(
+            new ChannelSelectMenuBuilder().setCustomId('level_filter_channels').setPlaceholder(`Manage ${mode} Channels...`).setChannelTypes(ChannelType.GuildText).setMinValues(0).setMaxValues(10)
+        ),
+        getBackRow('opt_levels', 'Back to Levelling Hub')
+    ];
+
+    await safeUpdate(i, { embeds: [embed], components: rows });
+};
+
+const handleLevelAnalytics = async (i) => {
+    const { getLevelingStats } = require('../services/leveling');
+    const stats = await getLevelingStats(i.guild.id);
+
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('📊 Levelling & Activity Analytics')
+        .setDescription(`High-level oversight of global knowledge accumulation within **${i.guild.name}**.`)
+        .addFields(
+            { name: '✨ Total Server XP', value: `\`${stats.totalXp.toLocaleString()}\``, inline: true },
+            { name: '👥 Active Levelers', value: `\`${stats.activeUsers}\``, inline: true },
+            { name: '🎓 Avg Server Level', value: `\`${stats.avgLevel.toFixed(1)}\``, inline: true }
+        );
+
+    await safeUpdate(i, { embeds: [embed], components: [getBackRow('opt_levels', 'Back to Levelling Hub')] });
+};
+
+const handleLevelMilestones = async (i) => {
+    const lvls = await getLevelRoles(i.guild.id);
+    
+    let desc = '**Milestone Records:**\nExperience tiers that automatically grant specialized Muse roles.\n\n';
+    if (!lvls.length) desc += '*No bindings established.*';
+    else lvls.forEach(l => { 
+        const role = i.guild.roles.cache.get(l.role_id);
+        const color = role ? ` (\`${role.hexColor}\`)` : '';
+        desc += `◈ **Level ${l.level.toString().padStart(2, '0')}** ➔ <@&${l.role_id}>${color}\n`; 
+    });
+
+    const embed = applyLibrarianBranding(baseEmbed(), i)
+        .setTitle('🎭 Milestone Rewards & Tiers')
         .setDescription(desc);
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('level_role_add').setLabel('Bind Level').setStyle(ButtonStyle.Success).setEmoji('➕'),
-        new ButtonBuilder().setCustomId('level_deploy_standard').setLabel('Deploy Tiers').setStyle(ButtonStyle.Primary).setEmoji('✨'),
-        new ButtonBuilder().setCustomId('level_toggle').setLabel(levelingEnabled ? 'Pause Tracking' : 'Resume Tracking').setStyle(levelingEnabled ? ButtonStyle.Danger : ButtonStyle.Success).setEmoji(levelingEnabled ? '⏸️' : '▶️'),
-        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('level_deploy_standard').setLabel('Deploy Tiers').setStyle(ButtonStyle.Primary).setEmoji('✨')
     );
 
-    const rows = [getNavigationRow(i, 'opt_levels'), row];
-
+    const rows = [row];
     if (lvls.length) {
         const delRow = new ActionRowBuilder();
-        lvls.slice(0, 5).forEach(l => delRow.addComponents(new ButtonBuilder().setCustomId(`level_role_del_${l.level}`).setLabel(`Del Lvl ${l.level}`).setStyle(ButtonStyle.Danger)));
+        lvls.slice(0, 5).forEach(l => delRow.addComponents(new ButtonBuilder().setCustomId(`level_role_del_${l.level}`).setLabel(`Del ${l.level}`).setStyle(ButtonStyle.Danger)));
         rows.push(delRow);
     }
+    rows.push(getBackRow('opt_levels', 'Back to Levelling Hub'));
+
     await safeUpdate(i, { embeds: [embed], components: rows });
 };
 
 const handlePurge = async (i) => {
-    const embed = baseEmbed()
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('🧹 Server Purge Utility')
         .setDescription('Identify and dispose of undocumented "ghost" roles that do not belong to any library category or core system Feature.\n\n⚠️ **Warning**: Always run a **Dry Run** to inspect the target list before execution.')
         .setColor('#ED4245');
@@ -613,7 +750,7 @@ const executePurge = async (i) => {
 };
 
 const handleOrganizeMenu = async (i) => {
-    const embed = baseEmbed()
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('📏 Role Organizing & Hierarchy')
         .setDescription('Automatically sort the server\'s role hierarchy based on the designated category order. This ensures a clean, predictable Sidebar experience.');
 
@@ -1230,38 +1367,51 @@ const handleBotInsight = async (i) => {
     const minutes = Math.floor((uptime % 3600) / 60);
     const uptimeStr = `${days}d ${hours}h ${minutes}m`;
 
-    const memory = process.memoryUsage().heapUsed / 1024 / 1024;
+    const memory = process.memoryUsage();
+    const heapUsed = (memory.heapUsed / 1024 / 1024).toFixed(2);
+    const heapTotal = (memory.heapTotal / 1024 / 1024).toFixed(2);
+    const rss = (memory.rss / 1024 / 1024).toFixed(2);
     const latency = i.client.ws.ping;
 
-    const embed = baseEmbed()
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('📊 Library Analytics & Pulse')
         .setDescription('Current operational metrics and system vitality.')
         .addFields(
             { name: '🕰️ Library Uptime', value: `\`${uptimeStr}\``, inline: true },
             { name: '🛰️ Heartbeat (Ping)', value: `\`${latency}ms\``, inline: true },
-            { name: '🧠 Knowledge Core (RAM)', value: `\`${memory.toFixed(2)} MB\``, inline: true },
+            { name: '🛠️ Environment', value: `\`${process.env.NODE_ENV || 'Production'}\``, inline: true },
+            { name: '🧠 Core (Heap Used)', value: `\`${heapUsed} MB\``, inline: true },
+            { name: '🧬 Memory (Heap Tot)', value: `\`${heapTotal} MB\``, inline: true },
+            { name: '📦 RSS (Resident)', value: `\`${rss} MB\``, inline: true },
             { name: '🏛️ Registered Guilds', value: `\`${i.client.guilds.cache.size}\``, inline: true },
-            { name: '📚 Total Volumes', value: `\`${i.client.commands.size}\``, inline: true },
-            { name: '🛠️ Environment', value: `\`${process.env.NODE_ENV || 'Production'}\``, inline: true }
+            { name: '📚 Total Volumes', value: `\`${i.client.commands.size}\``, inline: true }
         );
 
-    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_insight')] });
+    const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('opt_flush_cache').setLabel('Flush Library Cache').setStyle(ButtonStyle.Danger).setEmoji('🧹'),
+        new ButtonBuilder().setCustomId('dash_home').setLabel('Home').setStyle(ButtonStyle.Secondary)
+    );
+
+    await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_insight'), actionRow] });
 };
 
 const handleAdminWing = async (i) => {
     await i.deferUpdate().catch(() => null);
     const guild = i.guild;
     const bans = await guild.bans.fetch({ limit: 5 }).catch(() => null);
-    const invites = await guild.invites.fetch({ limit: 5 }).catch(() => null);
-    const emojis = guild.emojis.cache.size;
+    const invites = await guild.invites.fetch({ limit: 3 }).catch(() => null);
+    const emojis = guild.emojis.cache;
 
-    const embed = baseEmbed()
+    const topEmojis = Array.from(emojis.values()).slice(0, 5).map(e => `<:${e.name}:${e.id}>`).join(' ') || '*None*';
+
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('🔨 Administrative Annex')
         .setDescription('Overview of the server\'s administrative state.')
         .addFields(
-            { name: '😀 Total Emojis', value: `\`${emojis}\``, inline: true },
+            { name: '😀 Emoji Asset Count', value: `\`${emojis.size}\``, inline: true },
             { name: '📨 Active Invites', value: `\`${invites ? invites.size : '?'}\``, inline: true },
-            { name: '🔨 Recent Bans', value: bans && bans.size > 0 ? bans.map(b => b.user.username).join(', ').slice(0, 100) : '*No recent bans.*', inline: false }
+            { name: '🔨 Recent Bans', value: bans && bans.size > 0 ? bans.map(b => b.user.username).join(', ').slice(0, 100) : '*No recent bans.*', inline: false },
+            { name: '💎 Showcase', value: topEmojis, inline: false }
         );
 
     await safeUpdate(i, { embeds: [embed], components: [getNavigationRow(i, 'opt_admin')] });
@@ -1269,12 +1419,26 @@ const handleAdminWing = async (i) => {
 
 const handleMediaAiring = async (i) => {
     const config = await fetchConfig(i.guild.id);
-    const embed = baseEmbed()
+    const me = i.guild.members.me;
+
+    const checkPerms = async (cid) => {
+        if (!cid) return '⚪ *Not Assigned*';
+        const ch = await i.guild.channels.fetch(cid).catch(() => null);
+        if (!ch) return '🔴 *Missing Channel*';
+        const p = ch.permissionsFor(me);
+        if (p.has(['SendMessages', 'EmbedLinks', 'AttachFiles'])) return `🟢 <#${cid}>`;
+        return `🟠 <#${cid}> (Lacks Perms)`;
+    };
+
+    const airingStatus = await checkPerms(config.airing_channel_id);
+    const activityStatus = await checkPerms(config.activity_channel_id);
+
+    const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('📡 Media & Airing Systems')
         .setDescription('Configure how AniMuse monitors and broadcasts media updates.')
         .addFields(
-            { name: '📢 Airing Alerts', value: config.airing_channel_id ? `<#${config.airing_channel_id}>` : '*Not Assigned*', inline: true },
-            { name: '🔔 Activity Feed', value: config.activity_channel_id ? `<#${config.activity_channel_id}>` : '*Not Assigned*', inline: true },
+            { name: '📢 Airing Alerts', value: airingStatus, inline: true },
+            { name: '🔔 Activity Feed', value: activityStatus, inline: true },
             { name: '📸 Gallery Wing', value: config.gallery_channel_ids?.length ? `${config.gallery_channel_ids.length} Channels Linked` : '*None Assigned*', inline: true }
         );
 

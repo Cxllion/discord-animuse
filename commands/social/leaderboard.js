@@ -5,6 +5,8 @@ const { getUserBannerConfig, getUserColor, getBulkUserAvatarConfig } = require('
 const { getAnilistUser } = require('../../utils/services/anilistService');
 
 module.exports = {
+    category: 'social',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('leaderboard')
         .setDescription('View the High Council of Scholars.'),

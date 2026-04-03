@@ -7,6 +7,8 @@ const baseEmbed = require('../../utils/generators/baseEmbed');
  * Wordle Command: Entry point for starting a Wordle game session.
  */
 module.exports = {
+    category: 'fun',
+    dbRequired: true,
     cooldown: 15, // 15 seconds cooldown to prevent API spam
     data: new SlashCommandBuilder()
         .setName('wordle')

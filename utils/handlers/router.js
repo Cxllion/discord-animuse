@@ -7,7 +7,7 @@ const { handleChannelDashboardInteraction } = require('./channelDashboard');
 const { handleMuseBureauInteraction } = require('./museBureau');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
 const { handleDashboardInteraction } = require('./roleDashboard');
-const { handleArchiveInteraction } = require('./archiveHandler');
+const { handleMafiaInteraction } = require('./mafiaHandler');
 const { handleWordleInteraction, handleWordleModals } = require('./wordleHandlers');
 const logger = require('../core/logger');
 const { MessageFlags, EmbedBuilder } = require('discord.js');
@@ -76,9 +76,9 @@ const routeInteraction = async (interaction) => {
             return true;
         }
 
-        // 8. Archive System
-        if (customId.startsWith('archive_')) {
-            await handleArchiveInteraction(interaction);
+        // 8. Mafia System
+        if (customId.startsWith('mafia_') || customId.startsWith('archive_')) {
+            await handleMafiaInteraction(interaction);
             return true;
         }
 
@@ -98,25 +98,8 @@ const routeInteraction = async (interaction) => {
         return false;
     } catch (error) {
         if (isUnknownInteraction(error)) return true;
-        logger.error(`[Router] Error routing interaction ${customId}:`, error);
-        
-        // Final attempt at safety - Don't let a "reply to error" crash the process
-        try {
-            if (interaction.isRepliable()) {
-                const payload = { 
-                    content: '🛑 **Internal Error:** An issue occurred while processing this interaction.', 
-                    flags: MessageFlags.Ephemeral 
-                };
-                
-                if (interaction.replied || interaction.deferred) {
-                    try { await interaction.followUp(payload); } catch(e) {}
-                } else {
-                    try { await interaction.reply(payload); } catch(e) {}
-                }
-            }
-        } catch (secondaryError) {
-            // Silence of the archives - nothing more can be done
-        }
+        const { handleInteractionError } = require('../core/errorHandler');
+        await handleInteractionError(interaction, error);
         return true;
     }
 };

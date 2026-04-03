@@ -18,11 +18,12 @@ module.exports = {
 
         // ── Dynamic Presence Rotation ─────────────────────────────────────────
         const activities = [
-            { name: 'the Library Archives...', type: 3 }, // WATCHING
-            { name: 'AniList Airing Ticker...', type: 3 },
-            { name: 'the rustle of digital pages...', type: 2 }, // LISTENING
-            { name: 'Categorizing new memories...', type: 0 }, // PLAYING
-            { name: 'vibrant HUD statistics...', type: 3 }
+            { name: 'over the Library Archives... 📚', type: 3 }, // WATCHING
+            { name: 'the AniList Airing Ticker... 📡', type: 3 },
+            { name: 'the rustle of digital pages... 📖', type: 2 }, // LISTENING
+            { name: 'Categorizing new memories... ✨', type: 0 }, // PLAYING
+            { name: 'vibrant HUD statistics... 📊', type: 3 },
+            { name: 'for new Readers to arrive... ♡', type: 3 }
         ];
 
         let activityIndex = 0;
@@ -53,14 +54,10 @@ module.exports = {
 
         client.isSystemsGo = true;
 
-        if (!client.isTestBot) {
-            try {
-                require('../utils/archive/ArchiveManager').loadState(client);
-            } catch (e) {
-                logger.error('Failed to load archive state:', e);
-            }
-        } else {
-            logger.info('Test bot detected. Global game state restoration skipped.', 'System');
+        try {
+            require('../utils/mafia/MafiaManager').loadState(client);
+        } catch (e) {
+            logger.error('Failed to load mafia state:', e);
         }
 
         // ── Start Component Task Schedulers ─────────────────────────────────────────

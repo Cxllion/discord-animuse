@@ -7,15 +7,13 @@ function handleBotNightActions(game) {
 
         let possible = [];
         
-        // Smarter Targeting Logic
         if (bot.role.faction === 'Revisions') {
             possible = alivePlayers.filter(p => !p.role || p.role.faction !== 'Revisions');
         } else if (bot.role.faction === 'Archivists') {
             if (bot.role.name === 'The Conservator') {
-                // 30% chance to self-protect
                 if (Math.random() < 0.3) {
                     bot.nightActionTarget = bot.id;
-                    console.log(`[ARCHIVE-AI] ${bot.name} (${bot.role.name}) self-protected.`);
+                    console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) self-protected.`);
                     continue;
                 }
                 possible = alivePlayers.filter(p => p.id !== bot.id);
@@ -29,7 +27,7 @@ function handleBotNightActions(game) {
         if (possible.length > 0 && !bot.nightActionTarget) {
             const target = possible[Math.floor(Math.random() * possible.length)];
             bot.nightActionTarget = target.id;
-            console.log(`[ARCHIVE-AI] ${bot.name} (${bot.role.name}) targeted ${target.name}.`);
+            console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) targeted ${target.name}.`);
         }
     }
 }
@@ -49,18 +47,14 @@ function handleBotDayVoting(game) {
             }
         });
 
-        // Find the most voted target by human survivors
         const sortedHumans = Object.entries(humanTallies).sort((a,b) => b[1] - a[1]);
         const bestHumanLedTargetId = sortedHumans[0]?.[0];
 
         let targetId = null;
 
-        // Scenario 1: Follow the human majority
         if (bestHumanLedTargetId) {
             targetId = bestHumanLedTargetId;
         } 
-        // Scenario 2: Global bandwagon (including other bots who might have voted if we were looping)
-        // Note: Since this is called in a loop, later bots might see earlier bots' votes
         else {
             const totalTallies = {};
             alivePlayers.forEach(p => {
@@ -69,7 +63,6 @@ function handleBotDayVoting(game) {
             targetId = Object.entries(totalTallies).sort((a,b) => b[1] - a[1])[0]?.[0];
         }
 
-        // Fallback: Random (avoiding self and biological conflicts)
         if (!targetId) {
             if (Math.random() < 0.1) {
                 targetId = 'skip';
@@ -81,7 +74,7 @@ function handleBotDayVoting(game) {
 
         if (targetId && targetId !== bot.id) {
             bot.voteTarget = targetId;
-            console.log(`[ARCHIVE-AI] ${bot.name} (Bot) finalized vote for: ${targetId}`);
+            console.log(`[MAFIA-AI] ${bot.name} (Bot) finalized vote for: ${targetId}`);
         }
     }
 }
@@ -94,7 +87,6 @@ async function handleBotDaySpeech(game) {
     
     const lastNight = game.dayCount - 1; 
 
-    // Fetch or create a webhook for the channel
     let archiveWebhook = null;
     try {
         const webhooks = await game.thread.parent.fetchWebhooks();
@@ -106,13 +98,12 @@ async function handleBotDaySpeech(game) {
             });
         }
     } catch (e) {
-        console.error('[ARCHIVE-AI] Could not setup webhook for bot speech:', e);
+        console.error('[MAFIA-AI] Could not setup webhook for bot speech:', e);
     }
     
     for (const bot of aliveBots) {
         if (!bot.alive || !bot.role) continue;
         
-        // 80% chance to speak if they have something to say
         if (Math.random() > 0.8) continue;
         
         let message = null;

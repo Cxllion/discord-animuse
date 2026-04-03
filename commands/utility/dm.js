@@ -3,6 +3,8 @@ const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 
 module.exports = {
+    category: 'utility',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('dm')
         .setDescription('Send a direct message to a user as the bot.')

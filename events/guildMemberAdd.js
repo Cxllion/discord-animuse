@@ -1,6 +1,7 @@
 const { Events, EmbedBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { fetchConfig } = require('../utils/core/database');
 const { generateWelcomeCard } = require('../utils/generators/welcomeGenerator');
+const { generateLogEmbed } = require('../utils/generators/logEmbed');
 const logger = require('../utils/core/logger');
 
 module.exports = {
@@ -119,6 +120,27 @@ module.exports = {
             } else {
                 if (!role) logger.warn(`Configured Member Role ${roleId} not found in ${guild.name}.`, 'AutoRole');
                 else logger.warn(`Cannot assign role ${role.name}. Check hierarchy/permissions.`, 'AutoRole');
+            }
+        }
+
+        // --- STAGE 4: ARCHIVAL LOGGING (ARRIVAL) ---
+        if (config.logs_channel_id) {
+            const logChannel = guild.channels.cache.get(config.logs_channel_id);
+            if (logChannel) {
+                const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24));
+                const embed = generateLogEmbed(
+                    'Archivist Arrival',
+                    `A new scholar, **${member.user.tag}**, has entered the archives.`,
+                    'INFO',
+                    { name: member.user.tag, iconURL: member.user.displayAvatarURL() }
+                )
+                .addFields(
+                    { name: 'User ID', value: `\`${member.id}\``, inline: true },
+                    { name: 'Account Age', value: `\`${accountAge} days\``, inline: true },
+                    { name: 'Member Count', value: `\`${guild.memberCount}\``, inline: true }
+                );
+
+                await logChannel.send({ embeds: [embed] }).catch(() => {});
             }
         }
     },

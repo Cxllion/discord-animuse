@@ -1,6 +1,7 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const { getMediaById, getMediaByIds } = require('../services/anilistService');
 const { getUserTrackedAnime, removeTracker, addTracker, getGuildTrackers } = require('../core/database');
+const { handleInteractionError } = require('../core/errorHandler');
 const baseEmbed = require('../generators/baseEmbed');
 const logger = require('../core/logger');
 
@@ -184,92 +185,91 @@ const renderUserDetailView = async (guild, moderatorId, targetUserId) => {
  * Global Handler for Tracking Interactions
  */
 const handleTrackInteraction = async (interaction) => {
-    const { customId, user, guild } = interaction;
-    
-    // --- 1. "Track Anime" Button (from Search Results) ---
-    if (customId.startsWith('track_anime_')) {
-        try {
-            if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
-        } catch (e) { return; }
+    try {
+        const { customId, user, guild } = interaction;
+        
+        // --- 1. "Track Anime" Button (from Search Results) ---
+        if (customId.startsWith('track_anime_')) {
+            try {
+                if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+            } catch (e) { return; }
 
-        const animeId = parseInt(customId.replace('track_anime_', ''));
-        if (isNaN(animeId)) return;
+            const animeId = parseInt(customId.replace('track_anime_', ''));
+            if (isNaN(animeId)) return;
 
-        try {
-            const media = await getMediaById(animeId);
-            if (!media) {
-                return await interaction.followUp({ content: '❌ Misplaced Record: I could not retrieve details for this series.', flags: MessageFlags.Ephemeral });
+            try {
+                const media = await getMediaById(animeId);
+                if (!media) {
+                    return await interaction.followUp({ content: '❌ Misplaced Record: I could not retrieve details for this series.', flags: MessageFlags.Ephemeral });
+                }
+
+                const title = media.title.english || media.title.romaji;
+                const res = await addTracker(guild.id, user.id, animeId, title);
+
+                if (res.error) {
+                    return await interaction.followUp({ content: '❌ Ink Spill: I failed to inscribe this tracking request.', flags: MessageFlags.Ephemeral });
+                }
+
+                await interaction.followUp({ 
+                    content: `📖 **Observation Logged**\n\nI shall now monitor the airwaves for **${title}** and notify you immediately upon any new transmissions.`, 
+                    flags: MessageFlags.Ephemeral 
+                });
+            } catch (e) {
+                logger.error('Track Interaction Error (Button):', e, 'TrackHandlers');
+                await handleInteractionError(interaction, e);
             }
+            return;
+        }
 
-            const title = media.title.english || media.title.romaji;
-            const res = await addTracker(guild.id, user.id, animeId, title);
+        // --- 2. Track interactions ---
+        const parts = customId.split('_');
+        const action = parts[1];
+        const subAction = parts[2];
+        const controllerId = parts[3]; 
 
-            if (res.error) {
-                return await interaction.followUp({ content: '❌ Ink Spill: I failed to inscribe this tracking request.', flags: MessageFlags.Ephemeral });
-            }
-
-            await interaction.followUp({ 
-                content: `📖 **Observation Logged**\n\nI shall now monitor the airwaves for **${title}** and notify you immediately upon any new transmissions.`, 
+        if (user.id !== controllerId) {
+            return interaction.reply({ 
+                content: '🔒 **Archival Restriction**\n\nThis interface is currently restricted to the patron who originally requested these records. Please initiate your own archival request, Reader.', 
                 flags: MessageFlags.Ephemeral 
             });
-        } catch (e) {
-            logger.error('Track Interaction Error (Button):', e, 'TrackHandlers');
         }
-        return;
-    }
 
-    // --- 2. Track interactions ---
-    const parts = customId.split('_');
-    const system = parts[0]; // 'track'
-    const action = parts[1];
-    const subAction = parts[2]; // e.g. 'select', 'prev', 'next', 'back' (if action is 'view')
-    
-    // Determine the owner/moderator who is controlling this UI
-    // For standard track list: track_untrack_select_USERID
-    // For mod track view: track_view_select_MODID
-    const controllerId = parts[action === 'view' ? 3 : 3]; 
-
-    if (user.id !== controllerId) {
-        return interaction.reply({ 
-            content: '🔒 This interface is restricted to the archivist who requested it.', 
-            flags: MessageFlags.Ephemeral 
-        });
-    }
-
-    // A. Standard Personal List Interactions
-    if (action === 'untrack') {
-        const animeId = parseInt(interaction.values[0]);
-        await removeTracker(guild.id, user.id, animeId);
-        const payload = await renderTrackList(guild.id, user.id, 0); 
-        return interaction.update(payload);
-    }
-
-    if (action === 'prev' || action === 'next') {
-        const page = parseInt(parts[4]);
-        const payload = await renderTrackList(guild.id, user.id, page);
-        return interaction.update(payload);
-    }
-
-    // B. Moderator View Interactions
-    if (action === 'view') {
-        if (subAction === 'select') {
-            const targetUserId = interaction.values[0];
-            const payload = await renderUserDetailView(guild, user.id, targetUserId);
+        // A. Standard Personal List Interactions
+        if (action === 'untrack') {
+            const animeId = parseInt(interaction.values[0]);
+            await removeTracker(guild.id, user.id, animeId);
+            const payload = await renderTrackList(guild.id, user.id, 0); 
             return interaction.update(payload);
         }
 
-        if (subAction === 'back') {
-            const payload = await renderGuildTrackView(guild, user.id, 0);
-            return interaction.update(payload);
-        }
-
-        if (subAction === 'prev' || subAction === 'next') {
+        if (action === 'prev' || action === 'next') {
             const page = parseInt(parts[4]);
-            const payload = await renderGuildTrackView(guild, user.id, page);
+            const payload = await renderTrackList(guild.id, user.id, page);
             return interaction.update(payload);
         }
+
+        // B. Moderator View Interactions
+        if (action === 'view') {
+            if (subAction === 'select') {
+                const targetUserId = interaction.values[0];
+                const payload = await renderUserDetailView(guild, user.id, targetUserId);
+                return interaction.update(payload);
+            }
+
+            if (subAction === 'back') {
+                const payload = await renderGuildTrackView(guild, user.id, 0);
+                return interaction.update(payload);
+            }
+
+            if (subAction === 'prev' || subAction === 'next') {
+                const page = parseInt(parts[4]);
+                const payload = await renderGuildTrackView(guild, user.id, page);
+                return interaction.update(payload);
+            }
+        }
+    } catch (error) {
+        await handleInteractionError(interaction, error);
     }
 };
 
 module.exports = { renderTrackList, renderGuildTrackView, handleTrackInteraction };
-

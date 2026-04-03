@@ -4,6 +4,7 @@ const baseEmbed = require('../../utils/generators/baseEmbed');
 const supabase = require('../../utils/core/supabaseClient');
 const { getGlobalTrackCount } = require('../../utils/services/animeTrackerService');
 const { getGlobalBingoCount } = require('../../utils/services/bingoService');
+const { getCuteLibrarianTip } = require('../../utils/core/errorHandler');
 
 /**
  * Formats seconds into a human-readable string (Days, Hours, Minutes, Seconds)
@@ -25,6 +26,8 @@ const formatUptime = (seconds) => {
 };
 
 module.exports = {
+    category: 'general',
+    dbRequired: false,
     data: new SlashCommandBuilder()
         .setName('status')
         .setDescription('View the live heartrate and status of the library archives.'),
@@ -61,17 +64,19 @@ module.exports = {
         const trackedCount = await getGlobalTrackCount();
         const bingoCount = await getGlobalBingoCount();
 
-        const embed = baseEmbed('📖 Library Health Report', `Diagnostic overview for **AniMuse** ${interaction.client.isTestBot ? '(Test Lib)' : '(Global Lib)'}`, interaction.client.user.displayAvatarURL())
+        const embed = baseEmbed()
+            .setTitle('📖 System Diagnostic Complete')
+            .setDescription('The archives are responsive and the dust has been cleared. ♡')
             .addFields(
-                { name: '📡 Connection', value: `${pingIcon} **${ping}ms** (WS)`, inline: true },
-                { name: '💾 Memory', value: `💬 **${heapUsed}MB** / **${rss}MB** RSS`, inline: true },
-                { name: '📚 Archives (DB)', value: `${dbStatus === '🟢 Operational' ? '🟢' : '🔴'} **${dbLatency}ms**`, inline: true },
-                { name: '📦 Volume', value: `📈 **${trackedCount}** Tracks • **${bingoCount}** Cards`, inline: true },
-                { name: '🕒 Uptime', value: `⏳ **${formatUptime(process.uptime())}**`, inline: true },
-                { name: '⚙️ Platform', value: `📦 **v${require('../../package.json').version}** • Node **${process.version}**`, inline: true },
-                { name: '💎 Cluster', value: `💠 Shard **${shardId}/${totalShards}**`, inline: true }
+                { name: 'Connection', value: `${pingIcon} ${ping}ms`, inline: true },
+                { name: 'Database', value: `${dbStatus} (${dbLatency}ms)`, inline: true },
+                { name: 'Memory Usage', value: `Heap: ${heapUsed}MB / RSS: ${rss}MB`, inline: false },
+                { name: 'Library Volume', value: `Tracked: ${trackedCount} | Bingo: ${bingoCount}`, inline: false },
+                { name: 'System Uptime', value: formatUptime(process.uptime()), inline: true },
+                { name: 'Shard Status', value: `Shard ${shardId}/${totalShards}`, inline: true }
             )
-            .setColor(dbStatus === '🟢 Operational' ? '#FFACD1' : '#E57373');
+            .setColor(dbStatus === '🟢 Operational' ? '#FFACD1' : '#E57373')
+            .setFooter({ text: `Archival Note: ${getCuteLibrarianTip()} ♡` });
 
         await interaction.editReply({ embeds: [embed] });
     },

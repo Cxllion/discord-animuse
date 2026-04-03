@@ -8,16 +8,18 @@ const {
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const CONFIG = require('../../utils/config');
 
-const gameManager = require('../../utils/archive/ArchiveManager');
-const { buildLobbyPayload } = require('../../utils/archive/ArchiveUI');
+const MafiaManager = require('../../utils/mafia/MafiaManager');
+const MafiaUI = require('../../utils/mafia/MafiaUI');
 
 module.exports = {
+    category: 'fun',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('mafia')
         .setDescription('Enter the Final Library and protect humanity\'s last records from the Viral Rot.')
         .addSubcommand(sub =>
             sub.setName('host')
-                .setDescription('Start a new game lobby in this channel.')
+                .setDescription('Start a new mafia lobby in this channel.')
         )
         .addSubcommand(sub =>
             sub.setName('status')
@@ -51,17 +53,31 @@ module.exports = {
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
         
+        // 1. HELP: Works regardless of active session
+        if (subcommand === 'help') {
+            const payload = MafiaUI.buildSurvivalGuide();
+            return interaction.reply(payload);
+        }
+
+        // 2. STATS: Works regardless of active session
+        if (subcommand === 'stats') {
+            await interaction.deferReply({ flags: 64 });
+            const mafiaService = require('../../utils/services/mafiaService');
+            const stats = await mafiaService.getPlayerStats(interaction.user.id);
+            const profile = MafiaUI.buildMafiaProfile(interaction.user, stats);
+            return interaction.editReply({ embeds: profile.embeds });
+        }
+
         if (subcommand === 'host') {
             await interaction.deferReply();
             
-            // 1. Global Session Check: Only one session (Lobby or Game) bot-wide.
-            const totalLobbies = gameManager.lobbies.size;
-            const totalGames = gameManager.games.size;
+            // Global Session Check: Only one session (Lobby or Game) bot-wide.
+            const totalLobbies = MafiaManager.lobbies.size;
+            const totalGames = MafiaManager.games.size;
 
             if (totalLobbies > 0 || totalGames > 0) {
-                // If there's an ongoing session, verify if the current user is the host
-                const existingLobby = gameManager.getLobbyByHost(interaction.user.id);
-                const existingGame = Array.from(gameManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
+                const existingLobby = MafiaManager.getLobbyByHost(interaction.user.id);
+                const existingGame = Array.from(MafiaManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
 
                 if (existingLobby) {
                     await existingLobby.bumpLobby(interaction.channel);
@@ -71,41 +87,28 @@ module.exports = {
                 }
 
                 if (existingGame) {
-                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Archive Session in another thread. Finish that session first.' });
+                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Mafia Session in another thread. Finish that session first.' });
                 }
 
-                // If some OTHER user is hosting
                 return interaction.editReply({ 
-                    content: '❌ **Bot Capacity Reached.** Another Archive Session is currently underway in the archives. Only one session can be supported at a time to ensure community spirit.' 
+                    content: '❌ **Bot Capacity Reached.** Another Mafia Session is currently underway. Only one session can be supported at a time across the entire Sanctuary.' 
                 });
             }
 
-            // Placeholder msg to get ID
             const msg = await interaction.editReply('Sealing the Final Library gates...');
-            
-            const game = await gameManager.createGame(msg.id, interaction.user, interaction.channel);
-            
-            const payload = buildLobbyPayload(game);
+            const game = await MafiaManager.createGame(msg.id, interaction.user, interaction.channel);
+            const payload = MafiaUI.buildLobbyPayload(game);
             
             await interaction.editReply({ content: '', ...payload });
             return;
         }
 
-        // --- OUT-OF-GAME COMMANDS ---
-
-        if (subcommand === 'help') {
-            const { buildSurvivalGuide } = require('../../utils/archive/ArchiveUI');
-            const payload = buildSurvivalGuide();
-            // Help requires ephemeral response if we want it private, but let's just make it ephemeral
-            return interaction.reply(payload);
-        }
-
-        const game = gameManager.getGameByThread(interaction.channelId) || gameManager.getGameByLobby(interaction.channelId);
+        const game = MafiaManager.getGameByThread(interaction.channelId) || MafiaManager.getGameByLobby(interaction.channelId);
         
         if (subcommand === 'status' || subcommand === 'role' || subcommand === 'will') {
             if (!game || game.state === 'GAME_OVER') {
                 return interaction.reply({ 
-                    content: '📜 **Archival Error**: No active archive session found in this thread.', 
+                    content: '📜 **Archival Error**: No active mafia session found in this thread.', 
                     flags: MessageFlags.Ephemeral 
                 });
             }
@@ -149,7 +152,7 @@ module.exports = {
                 if (!player) return interaction.reply({ content: 'You are not a participant in this session.', flags: MessageFlags.Ephemeral });
 
                 const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-                const modal = new ModalBuilder().setCustomId(`archive_setwill_${game.lobbyMessageId}`).setTitle('Compose Last Will');
+                const modal = new ModalBuilder().setCustomId(`mafia_setwill_${game.lobbyMessageId}`).setTitle('Compose Last Will');
                 const input = new TextInputBuilder()
                     .setCustomId('last_will_input')
                     .setLabel('Your Final Message')
@@ -164,34 +167,18 @@ module.exports = {
         }
 
         // --- ADMIN COMMANDS ---
-
         if (!interaction.member?.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: '📜 This section of the archives is restricted to administrators.', flags: MessageFlags.Ephemeral });
         }
 
         if (!game) {
-            return interaction.reply({ content: 'No active archive session found in this thread.', flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: 'No active mafia session found in this thread.', flags: MessageFlags.Ephemeral });
         }
 
         if (subcommand === 'end') {
-            game.state = 'GAME_OVER';
-            if (game.activeTimer) {
-                clearTimeout(game.activeTimer);
-            }
-            
-            if (game.thread) {
-                try {
-                    await game.thread.send('⏹️ **The game has been forcefully terminated by an administrator.**');
-                    await game.thread.setLocked(true, 'Force ended');
-                    await game.thread.setArchived(true, 'Force ended');
-                } catch (e) {
-                    console.error('Failed to notify thread closure', e);
-                }
-            }
-            
-            gameManager.endGame(game.threadId || game.lobbyMessageId);
-            
-            await interaction.reply({ content: 'Game forcefully ended and removed from memory.', flags: MessageFlags.Ephemeral });
+            await interaction.deferReply({ flags: 64 });
+            MafiaManager.endGame(game.threadId || game.lobbyMessageId);
+            await interaction.editReply({ content: '✅ **Sanctuary Purged.** The session has been forcefully terminated and records erased.' });
         } else if (subcommand === 'skip') {
             if (game.state === 'GAME_OVER') {
                 return interaction.reply({ content: 'Game is already over.', flags: MessageFlags.Ephemeral });
@@ -210,14 +197,6 @@ module.exports = {
                 default: 
                     await interaction.followUp({ content: `Cannot skip phase: ${game.state}`, flags: MessageFlags.Ephemeral });
             }
-        } else if (subcommand === 'stats') {
-            await interaction.deferReply();
-            const archiveService = new (require('../../utils/services/archiveService'))();
-            const stats = await archiveService.getPlayerStats(interaction.user.id);
-            const { buildArchiveProfile } = require('../../utils/archive/ArchiveUI');
-            const profile = buildArchiveProfile(interaction.user, stats);
-            // buildArchiveProfile uses flags: 64, but editReply doesn't support flags natively unless initialized with it, which we didn't deferReply(hidden). But discord allows embeds.
-            await interaction.editReply({ embeds: profile.embeds });
         }
     }
 };

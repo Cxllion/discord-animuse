@@ -5,6 +5,8 @@ const { handleCommandError } = require('../../utils/core/errorHandler');
 const { logAction } = require('../../utils/handlers/moderationLogger');
 
 module.exports = {
+    category: 'moderation',
+    dbRequired: true,
     data: new SlashCommandBuilder()
         .setName('warn')
         .setDescription('Issue a formal warning to a user.')

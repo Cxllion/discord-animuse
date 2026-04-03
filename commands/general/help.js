@@ -8,6 +8,8 @@ module.exports = {
         .addStringOption(option => 
             option.setName('command')
                 .setDescription('View detailed information about a specific command.')),
+    category: 'general',
+    dbRequired: false,
     async execute(interaction) {
         const { client, options: interactionOptions, member } = interaction;
         const commandQuery = interactionOptions.getString('command');

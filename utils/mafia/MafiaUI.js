@@ -3,7 +3,7 @@ const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
 
 function buildLobbyPayload(game) {
-    const embed = baseEmbed('📚 The Final Library | Sanctuary Lobby', null, null)
+    const embed = baseEmbed('📚 The Final Library | Mafia Lobby', null, null)
         .setColor('#8B5CF6') 
         .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivors:** ${game.players.size}/15 (Min: 4)`)
         .setFooter({ text: 'The world is ending. The library must endure.' })
@@ -23,8 +23,8 @@ function buildLobbyPayload(game) {
     );
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_access_${game.hostId}`).setLabel('📋 Access').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`archive_help_general_${game.hostId}`).setLabel('❓ Guide').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`mafia_access_${game.hostId}`).setLabel('📋 Access').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mafia_help_general_${game.hostId}`).setLabel('❓ Guide').setStyle(ButtonStyle.Secondary)
     );
 
     return { embeds: [embed], components: [row] };
@@ -59,7 +59,7 @@ function buildActionHub(game, user) {
 
     const rows = [];
     const dropdown = new StringSelectMenuBuilder()
-        .setCustomId(`archive_lobby_${game.hostId}`)
+        .setCustomId(`mafia_lobby_${game.hostId}`)
         .setPlaceholder('📜 Select a Command...')
         .addOptions(options);
 
@@ -68,11 +68,11 @@ function buildActionHub(game, user) {
     if (!isHost) {
         const button = new ButtonBuilder();
         if (!isPlayer) {
-            button.setCustomId(`archive_join_${game.hostId}`)
+            button.setCustomId(`mafia_join_${game.hostId}`)
                 .setLabel('📥 Join Sanctuary')
                 .setStyle(ButtonStyle.Primary);
         } else {
-            button.setCustomId(`archive_leave_${game.hostId}`)
+            button.setCustomId(`mafia_leave_${game.hostId}`)
                 .setLabel('📤 Leave Sanctuary')
                 .setStyle(ButtonStyle.Danger);
         }
@@ -97,7 +97,7 @@ function buildSurvivalGuide(page = 'intro') {
     const embed = baseEmbed(null, null, null).setColor('#F59E0B');
 
     const menu = new StringSelectMenuBuilder()
-        .setCustomId('archive_help_menu')
+        .setCustomId('mafia_help_menu')
         .setPlaceholder('Navigate Survival Guide...')
         .addOptions([
             { label: 'Rules & Phases', value: 'intro', emoji: '📖' },
@@ -106,7 +106,6 @@ function buildSurvivalGuide(page = 'intro') {
             { label: 'Unbound (Neutral)', value: 'unbound', emoji: '🃏' }
         ]);
     
-    // Default setting for current page
     menu.options.find(o => o.data.value === page).data.default = true;
 
     if (page === 'intro') {
@@ -165,7 +164,7 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const modeRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setmode_${game.hostId}`)
+            .setCustomId(`mafia_setmode_${game.hostId}`)
             .setPlaceholder('Select Game Mode')
             .addOptions([
                 { label: 'First Edition', description: 'Classic balanced gameplay.', value: 'First Edition' },
@@ -176,8 +175,8 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const categoryRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setphase_cat_${game.hostId}`)
-            .setPlaceholder('🕑 Step 1: Select Phase to Configure')
+            .setCustomId(`mafia_setphase_cat_${game.hostId}`)
+            .setPlaceholder('Select Phase to Configure')
             .addOptions([
                 { label: 'Discussion Phase', value: 'discussion', emoji: '🗣️', default: category === 'discussion' },
                 { label: 'Voting Phase', value: 'voting', emoji: '⚖️', default: category === 'voting' },
@@ -217,23 +216,23 @@ function buildSettingsPayload(game, category = 'discussion') {
 
     const durationRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`archive_setphase_val_${game.hostId}_${category}`)
-            .setPlaceholder(`⏳ Step 2: Set ${category.charAt(0).toUpperCase() + category.slice(1)} Duration`)
+            .setCustomId(`mafia_setphase_val_${game.hostId}_${category}`)
+            .setPlaceholder(`Set ${category.charAt(0).toUpperCase() + category.slice(1)} Duration`)
             .addOptions(durationOptions[category] || durationOptions.discussion)
     );
 
     const backRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_togglereveal_${game.hostId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed on Death' : '🔒 Roles: Hidden Until Game Over').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`archive_lobby_back_${game.hostId}`).setLabel('⬅️ Back to Lobby').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`mafia_togglereveal_${game.hostId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed on Death' : '🔒 Roles: Hidden Until Game Over').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`mafia_lobby_back_${game.hostId}`).setLabel('⬅️ Back to Lobby').setStyle(ButtonStyle.Danger)
     );
 
     return { embeds: [embed], components: [modeRow, categoryRow, durationRow, backRow], flags: 64 };
 }
 
 function buildStartedLobbyPayload(game) {
-    const gameManager = require('./ArchiveManager');
+    const MafiaManager = require('./MafiaManager');
     const channelId = game.thread?.parentId || game.thread?.id;
-    const queue = gameManager.globalQueues.get(channelId) || new Set();
+    const queue = MafiaManager.globalQueues.get(channelId) || new Set();
 
     const embed = baseEmbed('📚 The Final Library | Session Active', 
         `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Players:** ${game.players.size}\n\nThe gates are sealed. The survival simulation is underway.`, 
@@ -247,8 +246,8 @@ function buildStartedLobbyPayload(game) {
     }
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`archive_queuenext_${game.hostId}`).setLabel('⏳ Join Next Game').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`archive_help_general_${game.hostId}`).setLabel('📖 Survival Guide').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`mafia_queuenext_${game.hostId}`).setLabel('⏳ Join Next Game').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mafia_help_general_${game.hostId}`).setLabel('📖 Survival Guide').setStyle(ButtonStyle.Secondary)
     );
 
     return { embeds: [embed], components: [row] };
@@ -369,6 +368,7 @@ function buildRoleCard(p, game) {
         embed.addFields({ name: '🎯 Your Target', value: `You win if the town exiles **${tgt?.name || 'Unknown'}**. Manipulate the discussion subtly.` });
     }
 
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
     if (p.role.priority !== 99) {
         embed.addFields({ name: '⚡ Night Ability', value: 'You will receive a DM each night with a target dropdown. Select your target before the timer expires.' });
     } else {
@@ -378,7 +378,7 @@ function buildRoleCard(p, game) {
     return { embeds: [embed] };
 }
 
-function buildArchiveProfile(user, stats) {
+function buildMafiaProfile(user, stats) {
     const embed = baseEmbed('🏅 Sanctuary Protocol Records', null, null)
         .setColor('#9b59b6')
         .setThumbnail(user.displayAvatarURL({ dynamic: true }))
@@ -416,11 +416,11 @@ function buildStagnationPayload(game) {
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(`archive_stagnation_keep_${game.hostId}`)
+            .setCustomId(`mafia_stagnation_keep_${game.hostId}`)
             .setLabel('⏳ Keep Waiting')
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-            .setCustomId(`archive_stagnation_disband_${game.hostId}`)
+            .setCustomId(`mafia_stagnation_disband_${game.hostId}`)
             .setLabel('🗑️ Disband Now')
             .setStyle(ButtonStyle.Danger)
     );
@@ -429,6 +429,7 @@ function buildStagnationPayload(game) {
 }
 
 module.exports = { 
+    baseEmbed,
     buildLobbyPayload, 
     buildSettingsPayload, 
     buildStartedLobbyPayload, 
@@ -437,7 +438,7 @@ module.exports = {
     buildMorningReport,
     buildGameOverPayload,
     buildRoleCard,
-    buildArchiveProfile,
+    buildMafiaProfile,
     buildEndedLobbyPayload,
     buildStagnationPayload
 };
