@@ -1,4 +1,5 @@
 const baseEmbed = require('./baseEmbed');
+const CONFIG = require('../config');
 
 /**
  * Generates a themed Archival Audit Log embed.
@@ -11,19 +12,19 @@ const baseEmbed = require('./baseEmbed');
  */
 const generateLogEmbed = (title, description, type = 'INFO', author = null) => {
     const colors = {
-        INFO: '#A78BFA',    // Purple
-        ACTION: '#FBBF24',  // Amber
-        ALERT: '#F87171'    // Red
+        INFO: CONFIG.COLORS.ARCHIVE,
+        ACTION: CONFIG.COLORS.WARNING,
+        ALERT: CONFIG.COLORS.ERROR
     };
 
-    const lables = {
+    const labels = {
         INFO: '📁 Discovery',
         ACTION: '📝 Modification',
         ALERT: '🚨 Alert'
     };
 
-    const embed = baseEmbed(`${lables[type] || '📚'}: ${title}`, description, null)
-        .setColor(colors[type] || '#A78BFA')
+    const embed = baseEmbed(`${labels[type] || '📚'}: ${title}`, description, null)
+        .setColor(colors[type] || CONFIG.COLORS.ARCHIVE)
         .setTimestamp();
 
     if (author) {

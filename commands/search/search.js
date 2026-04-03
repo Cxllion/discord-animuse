@@ -75,7 +75,7 @@ module.exports = {
             if (!results || results.length === 0) {
                 const embed = baseEmbed()
                     .setDescription(`📖 **No Matches Found**\n\nI have searched the shelves thoroughly, but I cannot find a record for "**${query}**" in the ${type.toLowerCase()} section.`)
-                    .setColor('#FF0000');
+                    .setColor(CONFIG.COLORS.ERROR);
                 
                 return await loader.stop({ embeds: [embed] });
             }

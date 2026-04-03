@@ -1,5 +1,6 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
+const CONFIG = require('../config');
 
 /**
  * ACTIVITY NOTIFICATION GENERATOR - V4 (Compact Edition)
@@ -18,7 +19,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.scale(SCALE, SCALE);
 
     const media = activityData.media || {};
-    const tokens = generateColorTokens(media.coverImage?.color || userMeta.themeColor || '#FFACD1');
+    const tokens = generateColorTokens(media.coverImage?.color || userMeta.themeColor || CONFIG.COLORS.PRIMARY);
 
     // ─── 1. CANVAS BOUNDARY ──────────────────────────────────────────────────
     ctx.save();

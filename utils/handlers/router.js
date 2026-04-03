@@ -10,7 +10,6 @@ const { handleDashboardInteraction } = require('./roleDashboard');
 const { handleMafiaInteraction } = require('./mafiaHandler');
 const { handleWordleInteraction, handleWordleModals } = require('./wordleHandlers');
 const logger = require('../core/logger');
-const { MessageFlags, EmbedBuilder } = require('discord.js');
 const { isUnknownInteraction } = require('../core/errorHandler');
 
 /**

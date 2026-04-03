@@ -34,12 +34,12 @@ module.exports = {
 
                     if (latestPin) {
                         const archiveEmbed = baseEmbed(null, latestPin.content || '*No content*', null)
-                            .setAuthor({ name: latestPin.author.tag, iconURL: latestPin.author.displayAvatarURL() })
+                            .setAuthor({ name: latestPin.author.username, iconURL: latestPin.author.displayAvatarURL() })
                             .addFields(
                                 { name: 'Source Wing', value: `<#${message.channel.id}>`, inline: true },
                                 { name: 'Jump to Record', value: `[Go to Message](${latestPin.url})`, inline: true }
                             )
-                            .setColor('#A78BFA');
+                            .setColor(CONFIG.COLORS.ARCHIVE);
 
                         if (latestPin.attachments.size > 0) {
                             archiveEmbed.setImage(latestPin.attachments.first().url);
@@ -51,7 +51,7 @@ module.exports = {
                         });
                     }
                 } catch (err) {
-                    console.error('[ArchiveBureau] Failed to mirror pin:', err);
+                    logger.error('[ArchiveBureau] Failed to mirror pin:', err, 'MessageEvent');
                 }
             }
         }
@@ -87,7 +87,7 @@ module.exports = {
                         await message.delete();
                         const embed = baseEmbed()
                             .setDescription(`I'm sorry, **${userTitle}**, but this wing of the gallery is for visual archives only. Please keep the library tidy for other **Readers**! ♡\n\n*(Use the threads for conversation!)*`)
-                            .setColor('#FFACD1');
+                            .setColor(CONFIG.COLORS.GALLERY);
 
                         const warning = await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed] });
                         setTimeout(() => {

@@ -11,6 +11,8 @@ const logger = require('./utils/core/logger');
 // GitHub Auto-Deploy: ENABLED 🟢
 // ==========================================
 
+const http = require('http');
+
 // Setup Process Safety
 setupProcessHandlers();
 
@@ -36,6 +38,20 @@ client.isTestBot = false;
 
 // Setup Client Safety
 setupClientHandlers(client);
+
+// --- Optional Health-Check Server (For Oracle Monitoring) ---
+const PORT = process.env.PORT || null;
+if (PORT) {
+    const server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Animuse Archives: Systems Operational ♡');
+    });
+    server.listen(PORT, () => {
+        logger.info(`[Networking] Health-Check Server Operational on Port ${PORT}.`, 'System');
+    });
+} else {
+    logger.info('[Networking] Health-Check Server is DISABLED (Optional).', 'System');
+}
 
 (async () => {
     try {

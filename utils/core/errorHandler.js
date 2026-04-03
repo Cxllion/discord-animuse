@@ -1,3 +1,4 @@
+const { EmbedBuilder } = require('discord.js');
 const logger = require('./logger');
 const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
@@ -10,14 +11,6 @@ const { fetchConfig } = require('./database');
  */
 
 // Color scheme for different error types
-const COLORS = {
-    ERROR: '#FF6B6B',         // Red for errors
-    WARNING: '#FFD93D',       // Yellow for warnings
-    COOLDOWN: '#FFA500',      // Orange for cooldowns
-    PERMISSION: '#9B59B6',    // Purple for permission errors
-    INFO: '#FFACD1',          // Pink for info
-    SUCCESS: '#6BCF7A'        // Green for success
-};
 
 /**
  * Tips from the Animuse Librarian to make errors a bit cuter. ♡
@@ -152,7 +145,7 @@ const createGeneralErrorEmbed = (message = null, errorCode = null) => {
     return createErrorEmbed(
         '❌ [SYSTEM ERROR] Archival Hiccup',
         errorCode ? `${description}\n\n**Support ID**: \`${errorCode}\` 🎀` : description,
-        CONFIG.COLORS.ERROR || COLORS.ERROR
+        CONFIG.COLORS.ERROR
     );
 };
 
@@ -267,16 +260,14 @@ const handleInteractionError = async (interaction, error, customMessage = null) 
         try {
             const config = await fetchConfig(interaction.guild.id);
             if (config?.logs_channel_id) {
-                const reportEmbed = new EmbedBuilder()
-                    .setTitle('📋 Interaction Incident Report')
-                    .setDescription(`An error occurred while processing an interaction.`)
+                const reportEmbed = baseEmbed('📋 Interaction Incident Report', 'An error occurred while processing an interaction.')
                     .addFields(
                         { name: 'Custom ID', value: `\`${interaction.customId || 'Unknown'}\``, inline: true },
                         { name: 'Type', value: interaction.type.toString(), inline: true },
                         { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
                         { name: 'Error', value: `\`\`\`js\n${error.message || 'No message'}\n\`\`\``, inline: false }
                     )
-                    .setColor(COLORS.ERROR)
+                    .setColor(CONFIG.COLORS.ERROR)
                     .setTimestamp();
 
                 if (errorCode) {
@@ -313,6 +304,5 @@ module.exports = {
     createNotFoundEmbed,
     handleCommandError,
     handleInteractionError,
-    isUnknownInteraction,
-    COLORS
+    isUnknownInteraction
 };

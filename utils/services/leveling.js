@@ -1,6 +1,7 @@
 const supabase = require('../core/supabaseClient');
 const { Collection } = require('discord.js');
 const logger = require('../core/logger');
+const CONFIG = require('../config');
 
 const cooldowns = new Collection();
 
@@ -29,7 +30,7 @@ const getLevelProgress = (xp, level) => {
     return {
         current: Math.max(0, current),
         required: required,
-        percent: Math.min(1, Math.max(0, current / required))
+        percent: Math.min(100, Math.max(0, (current / required) * 100))
     };
 };
 
@@ -156,7 +157,7 @@ const addXp = async (userId, guildId, member = null, message = null) => {
 
                     const embed = baseEmbed(finalTitle, `${finalText}\n\n🎭 **New Muse Tier**: **${tierName}**\n📍 **Ascension Level**: **${newLevel}**`, null)
                         .setThumbnail(member.user.displayAvatarURL({ extension: 'png' }))
-                        .setColor('#A78BFA');
+                        .setColor(CONFIG.COLORS.ARCHIVE);
 
                     // Resolve Target Channel
                     let targetChannel = message.channel;

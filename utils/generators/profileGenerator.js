@@ -2,6 +2,7 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const axios = require('axios');
 const logger = require('../core/logger');
+const CONFIG = require('../config');
 
 // --- PREMIUM ASSET CACHE ---
 const staticAssetCache = new Map();
@@ -97,7 +98,7 @@ const drawScanlines = (ctx, w, h) => {
     ctx.restore();
 };
 
-const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = '#3B82F6', displayName = null, onBannerFailure = null) => {
+const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = CONFIG.COLORS.PRIMARY, displayName = null, onBannerFailure = null) => {
     const isCompact = !userData.anilist_synced;
     const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
 
@@ -112,7 +113,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
 
     const TEXT_MAIN = '#FFFFFF';
     const TEXT_SUB = '#A1A1AA';
-    const THEME_COLOR = primaryColor || '#3B82F6';
+    const THEME_COLOR = primaryColor || CONFIG.COLORS.PRIMARY;
 
     ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 

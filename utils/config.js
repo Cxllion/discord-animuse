@@ -10,7 +10,9 @@ const CONFIG = {
         WARNING: '#FFB74D', // Pastel Orange
         INFO: '#4FC3F7',    // Light Blue
         DARK: '#2C2F33',    // Dark Grey for backgrounds if needed
-        INVISIBLE: '#2B2D31' // Discord Dark Mode Blend
+        INVISIBLE: '#2B2D31', // Discord Dark Mode Blend
+        ARCHIVE: '#A78BFA',  // Premium Archive Purple
+        GALLERY: '#FFACD1'   // Gallery Soft Pink
     },
 
     // Librarian Theme Branding

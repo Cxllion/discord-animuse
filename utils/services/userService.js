@@ -312,6 +312,5 @@ module.exports = {
     wasPostedInDB,
     markPostedInDB,
     findRecentActivityPostInDB,
-    clearUserBannerGlobally,
     clearOldActivityPostsInDB,
 };

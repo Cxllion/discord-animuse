@@ -8,7 +8,10 @@
     "dev": "node index.js",
     "migrate": "node scripts/migrate.js",
     "test": "jest",
-    "test:manual": "node index2.js"
+    "test:manual": "node test-bot.js",
+    "prod": "npx pm2 start ecosystem.config.js",
+    "pm2:logs": "npx pm2 logs animuse-bot",
+    "pm2:status": "npx pm2 status"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.87",

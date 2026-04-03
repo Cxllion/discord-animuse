@@ -7,7 +7,7 @@ const anilistClient = axios.create({
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     },
-    timeout: 15000, // 15s Hard Timeout for Render health stability
+    timeout: parseInt(process.env.ANILIST_TIMEOUT) || 15000, 
 });
 
 const NodeCache = require('node-cache');
@@ -17,6 +17,8 @@ const NodeCache = require('node-cache');
 const mediaCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 const searchCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 const autoCompleteCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+// Long-term cache for User IDs (24 hours) since IDs never change
+const userIdCache = new NodeCache({ stdTTL: 86400, checkperiod: 600 });
 
 let isAniListMaintenance = false;
 let lastMaintenanceLog = 0;
@@ -627,11 +629,20 @@ const getTrendingMovies = async () => {
  * @returns {Promise<Array>} List of activities
  */
 const getUserActivity = async (userName) => {
-    // 1. Fetch Activities for that ID directly by Username (Consolidated query - 1 hit vs 2)
+    // 1. Resolve Username to UserId (AniList Page.activities expects Int userId)
+    let userId = userIdCache.get(userName.toLowerCase());
+    
+    if (!userId) {
+        const user = await getAnilistUser(userName);
+        if (!user) return [];
+        userId = user.id;
+        userIdCache.set(userName.toLowerCase(), userId);
+    }
+
     const query = `
-    query ($userName: String) {
+    query ($userId: Int) {
         Page(page: 1, perPage: 10) {
-            activities(userName: $userName, sort: ID_DESC, type: MEDIA_LIST) {
+            activities(userId: $userId, sort: ID_DESC, type: MEDIA_LIST) {
                 ... on ListActivity {
                     id
                     status
@@ -662,7 +673,7 @@ const getUserActivity = async (userName) => {
     }
     `;
     try {
-        const data = await queryAnilist(query, { userName });
+        const data = await queryAnilist(query, { userId });
         // Filter out non-ListActivity items (text posts etc)
         const filtered = (data.Page?.activities || []).filter(a => a && a.media);
         return filtered;

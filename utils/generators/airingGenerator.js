@@ -1,13 +1,14 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
 const logger = require('../core/logger');
+const CONFIG = require('../config');
 
 /**
  * ARCHIVIST AIRING GENERATOR - V3 (Premium Redesign)
  * Inspired by Search Generator Design.
  * Features: 2x HD Scale, Cinematic Backdrops, Glassmorphism UI, High-Contrast Typography.
  */
-const generateAiringCard = async (media, episode = {}, trackers = [], userColor = '#FFACD1') => {
+const generateAiringCard = async (media, episode = {}, trackers = [], userColor = CONFIG.COLORS.PRIMARY) => {
     const SCALE = 2; 
     const baseW = 800;
     const baseH = 250; 

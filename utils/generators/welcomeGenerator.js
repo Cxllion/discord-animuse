@@ -178,7 +178,7 @@ const generateWelcomeCard = async (member) => {
     // Signature Text
     ctx.fillStyle = '#000';
     // Cursive Font
-    ctx.font = 'italic 30px "Segoe Script", "Brush Script MT", cursive';
+    ctx.font = 'italic 30px arial, sans-serif';
     ctx.fillText(member.user.username, contentX + 10, contentY - 8);
 
     // 7. STAMP (AUTHENTIC RECTANGULAR 'APPROVED')

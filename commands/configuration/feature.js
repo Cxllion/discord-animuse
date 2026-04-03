@@ -18,6 +18,7 @@ const { getUserRank, getLevelProgress } = require('../../utils/services/leveling
 const { getDynamicUserTitle } = require('../../utils/core/userMeta');
 const { sendNotifications } = require('../../utils/services/scheduler');
 const logger = require('../../utils/core/logger');
+const CONFIG = require('../../utils/config');
 
 module.exports = {
     category: 'configuration',
@@ -132,7 +133,7 @@ module.exports = {
                     await interaction.editReply({ content: `✅ **Airing Graphic Diagnostic**: **${media.title.english || media.title.romaji}**\n🎨 Generating solo and community variants...` });
 
                     try {
-                        const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+                        const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
                         
                         // Scenario A: Solo Airing
                         const bufferSolo = await generateAiringCard(media, { episode: nextEpNum }, [], themeColor);
@@ -208,7 +209,7 @@ module.exports = {
                                     avatarUrl = interaction.member.displayAvatarURL({ extension: 'png' });
                                 }
                             }
-                            const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+                            const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
 
                             const buffer = await generateBingoCard(dummyCard, interaction.member.user, themeColor, avatarUrl);
                             const attachment = new AttachmentBuilder(buffer, { name: `bingo-${size}x${size}.webp` });
@@ -252,7 +253,7 @@ module.exports = {
                         }
                     }
 
-                    const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || '#FFACD1';
+                    const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
 
                     // Prepare Mock User Data
                     const userMeta = {
@@ -412,7 +413,7 @@ module.exports = {
                     const attachments = [];
                     for (const task of tasks) {
                         const buffer = await generateProfileCard(
-                            targetUser, task.data, favorites, backgroundUrl, color || '#FFACD1', displayName,
+                            targetUser, task.data, favorites, backgroundUrl, color || CONFIG.COLORS.PRIMARY, displayName,
                             async () => await clearUserBannerGlobally(targetUser.id)
                         );
                         attachments.push(new AttachmentBuilder(buffer, { name: `profile-${task.name}-${targetUser.id}.webp` }));

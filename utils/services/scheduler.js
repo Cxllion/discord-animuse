@@ -21,6 +21,7 @@ const {
 } = require('../core/database');
 const { generateActivityCard } = require('../generators/activityGenerator');
 const logger = require('../core/logger');
+const CONFIG = require('../config');
 
 // Batch size for AniList queries to avoid hitting complexity limits
 const BATCH_SIZE = 50;
@@ -176,7 +177,8 @@ const sendNotifications = async (client, media, episode, options = {}) => {
             if (!guild) continue;
 
             // Use forced channel for tests/diagnostics
-            const targetChannelId = options.forceChannelId || config.airing_channel_id;
+            const config = await fetchConfig(guildId);
+            const targetChannelId = options.forceChannelId || (config ? config.airing_channel_id : null);
             if (!targetChannelId) continue;
 
             const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
@@ -293,7 +295,15 @@ const wasPosted = async (activityId) => {
 
 const markPosted = async (activityIds, meta = null) => {
     // Construct payload for DB: EVERY ID gets the metadata for consistent lookups
-    const dbPayload = activityIds.map(id => ({ id: String(id), ...meta }));
+    const dbPayload = activityIds.map(id => ({ 
+        id: String(id), 
+        userId: String(meta.userId || ''),
+        mediaId: String(meta.mediaId || ''),
+        channelId: String(meta.channelId || ''),
+        messageId: String(meta.messageId || ''),
+        progress: String(meta.progress || ''),
+        status: String(meta.status || '')
+    }));
 
     // Try DB first
     const savedToDB = await markPostedInDB(dbPayload);
