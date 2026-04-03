@@ -35,10 +35,10 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     // Helper: Fit Text
     const fitText = (ctx, text, maxWidth, initialFontSize) => {
         let fontSize = initialFontSize;
-        ctx.font = `900 ${fontSize}px sans-serif`;
+        ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
         while (ctx.measureText(text).width > maxWidth && fontSize > 10) {
             fontSize -= 2;
-            ctx.font = `900 ${fontSize}px sans-serif`;
+            ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
         }
         return fontSize;
     };
@@ -145,7 +145,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         const centerY = y - 5;
 
         if (isCustom) {
-            ctx.font = '900 13px sans-serif';
+            ctx.font = '900 13px digitalgalaxy, sans-serif';
             const hW = ctx.measureText(text).width + 60; // Wider padding
             ctx.save();
             ctx.fillStyle = PILL_COLOR;
@@ -160,7 +160,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '900 13px sans-serif';
+        ctx.font = '900 13px digitalgalaxy, sans-serif';
         ctx.fillStyle = TEXT_COLOR;
         ctx.letterSpacing = '4px';
         // Draw text at centerY, with +1px optical adjustment
@@ -207,7 +207,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = TEXT_COLOR; // Consistent with headers
-    ctx.font = '900 12px sans-serif';
+    ctx.font = '900 12px exton, sans-serif';
     ctx.letterSpacing = '1px';
     ctx.fillText(`RANK #${challengerData.rank}`, cX, avY + avR * 2 + 3); // Centered (offset logic: -10 + 13 = +3)
 
@@ -216,7 +216,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.letterSpacing = '0px';
     const nameStr = (challengerName || challenger.username).toUpperCase();
     const nameSize = fitText(ctx, nameStr, i1.w - 40, 24);
-    ctx.font = `900 ${nameSize}px sans-serif`;
+    ctx.font = `900 ${nameSize}px digitalgalaxy, sans-serif`;
     ctx.fillText(nameStr, cX, avY + avR * 2 + 55);
 
     // Stats
@@ -226,11 +226,11 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const barY = i1.y + i1.h - 40;
 
     ctx.textAlign = 'left';
-    ctx.font = '900 20px sans-serif';
+    ctx.font = '900 20px digitalgalaxy, sans-serif';
     ctx.fillText(`LVL ${challengerData.level}`, barX, barY - 15);
 
     ctx.textAlign = 'right';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = 'bold 12px exton, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fillText(`${formatStat(challengerData.xp)} XP`, barX + barW, barY - 15);
 
@@ -286,13 +286,13 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.textBaseline = 'middle'; // Center in pill
 
         // Rank
-        ctx.font = '900 14px sans-serif';
+        ctx.font = '900 14px digitalgalaxy, sans-serif';
         ctx.fillStyle = rankColor;
         ctx.letterSpacing = '1px';
         ctx.fillText(`#${i + 1}`, leftX, y - 4); // Optical center (y-5 + 1)
 
         // Name
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 14px exton, sans-serif';
         ctx.fillStyle = user ? '#FFF' : 'rgba(255,255,255,0.2)';
         ctx.letterSpacing = '0px';
         const uName = user ? (user.username || user.user_id) : '---';
@@ -302,7 +302,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         // XP/Level
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle'; // Center in pill
-        ctx.font = '900 14px sans-serif';
+        ctx.font = '900 14px digitalgalaxy, sans-serif';
         ctx.fillStyle = TEXT_COLOR;
         const val = user ? `LVL ${user.level}` : '-';
 
@@ -373,7 +373,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.fillStyle = ctx.strokeStyle;
         ctx.fill();
         ctx.fillStyle = '#000';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = 'bold 12px exton, sans-serif';
         ctx.textAlign = 'center';
         ctx.letterSpacing = '0px';
         ctx.fillText(`#${rank}`, x, bY + 14);

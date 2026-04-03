@@ -90,7 +90,7 @@ const generateActivityCard = async (userMeta, activityData) => {
             if (tags && tags.length > 0) {
                 let tagY = pY + 10;
                 tags.slice(0, 2).forEach(tag => {
-                    ctx.font = '800 11px sans-serif';
+                    ctx.font = '800 11px exton, sans-serif';
                     ctx.letterSpacing = '1px';
                     const text = tag.toUpperCase();
                     const tw = ctx.measureText(text).width + 20;
@@ -143,7 +143,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     let lines = [];
     let lH = 0;
     while (fSize > 28) {
-        ctx.font = `900 ${fSize}px sans-serif`;
+        ctx.font = `900 ${fSize}px digitalgalaxy, sans-serif`;
         ctx.letterSpacing = '-1.5px';
         lines = [];
         let cur = '';
@@ -200,7 +200,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         else scoreStr = `${s}/10`;
 
         ctx.save();
-        ctx.font = '800 11px sans-serif';
+        ctx.font = '800 11px digitalgalaxy, sans-serif';
         ctx.letterSpacing = '0px';
         const heartW = 10;
         const gap = 4;
@@ -243,7 +243,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Username + Status Pill (inline with avatar)
     const txtX = cX + avatarSize + 14;
     ctx.save();
-    ctx.font = '900 20px sans-serif';
+    ctx.font = '900 20px digitalgalaxy, sans-serif';
     ctx.letterSpacing = '0.5px';
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
@@ -298,7 +298,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${isManga ? 'READING' : 'WATCHING'}`;
 
     ctx.save();
-    ctx.font = '800 11px sans-serif';
+    ctx.font = '800 11px exton, sans-serif';
     ctx.letterSpacing = '1px';
     const vw = ctx.measureText(displayVerb).width + 22;
     const vh = 20;
@@ -329,7 +329,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.font = `900 ${fSize}px sans-serif`;
+    ctx.font = `900 ${fSize}px digitalgalaxy, sans-serif`;
     ctx.letterSpacing = '-1.5px';
     lines.slice(0, 2).forEach((l, i) => ctx.fillText(l, cX, curY + i * lH));
     ctx.restore();
@@ -371,7 +371,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         const score10 = (sVal / 10).toFixed(1);
         const stars = sVal / 20;
 
-        ctx.font = '800 14px sans-serif';
+        ctx.font = '800 14px digitalgalaxy, sans-serif';
         ctx.letterSpacing = '0px';
         const scoreW = ctx.measureText(score10).width;
         const innerPad = 18;
@@ -408,7 +408,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         ctx.fillStyle = '#FFF';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '800 14px sans-serif';
+        ctx.font = '800 14px digitalgalaxy, sans-serif';
         ctx.letterSpacing = '0px';
         ctx.fillText(score10, iPx + innerW / 2, iPy + innerH / 2 + 0.5);
         ctx.restore();
@@ -419,7 +419,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         const status = (media.status || '').toUpperCase();
         const fallbackText = status === 'NOT_YET_RELEASED' ? 'UNRELEASED' : 'NO RATING';
 
-        ctx.font = '800 14px sans-serif';
+        ctx.font = '800 14px digitalgalaxy, sans-serif';
         const scoreW = ctx.measureText(fallbackText).width;
         const innerPad = 18;
         const innerW = scoreW + innerPad * 2;
@@ -456,7 +456,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         ctx.fillStyle = '#FFF';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '800 12px sans-serif'; // Slightly smaller for longer text
+        ctx.font = '800 12px digitalgalaxy, sans-serif'; // Slightly smaller for longer text
         ctx.letterSpacing = '0px';
         ctx.fillText(fallbackText, iPx + innerW / 2, iPy + innerH / 2 + 0.5);
         ctx.restore();
@@ -467,7 +467,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Format Pod
     const drawPod = (text) => {
         ctx.save();
-        ctx.font = '700 12px sans-serif';
+        ctx.font = '700 12px exton, sans-serif';
         ctx.letterSpacing = '0.8px';
         const tw = ctx.measureText(text).width + 24;
         const ph = 38;
@@ -511,7 +511,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     const innerPadH = 4;        // REDUCED: closer to top/bottom
     const innerPadW = 12;
 
-    ctx.font = '900 13px sans-serif'; // SLIGHTLY BIGGER
+    ctx.font = '900 13px exton, sans-serif'; // SLIGHTLY BIGGER
     ctx.letterSpacing = '0px';
     const yearTxtW = ctx.measureText(yearStr).width;
     const innerPillW2 = yearTxtW + innerPadW * 2;
@@ -586,7 +586,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = '900 13px sans-serif';
+    ctx.font = '900 13px exton, sans-serif';
     ctx.letterSpacing = '0px';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -706,7 +706,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // ─── 5. FOOTER ────────────────────────────────────────────────────────────
     ctx.restore();
     ctx.textAlign = 'right';
-    ctx.font = '700 9px sans-serif';
+    ctx.font = '700 9px digitalgalaxy, sans-serif';
     ctx.letterSpacing = '5px';
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillText('ANIMUSE ACTIVITY', baseW - 36, baseH - 22);

@@ -20,10 +20,10 @@ const drawRoundedRect = (ctx, x, y, width, height, radius) => {
  */
 const fitText = (ctx, text, maxWidth, initialFontSize) => {
     let fontSize = initialFontSize;
-    ctx.font = `900 ${fontSize}px sans-serif`;
+    ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
     while (ctx.measureText(text).width > maxWidth && fontSize > 10) {
         fontSize -= 2;
-        ctx.font = `900 ${fontSize}px sans-serif`;
+        ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
     }
     return fontSize;
 };
@@ -34,7 +34,7 @@ const fitText = (ctx, text, maxWidth, initialFontSize) => {
  */
 const wrapText = (ctx, text, maxWidth, initialFontSize, maxLines = 3) => {
     let fontSize = initialFontSize;
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.font = `bold ${fontSize}px exton, sans-serif`;
 
     // Quick check if it fits single line
     if (ctx.measureText(text).width <= maxWidth) return { lines: [text], fontSize };
@@ -187,7 +187,7 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
     // Pill Config
     const pillText = 'ANIMUSE BINGO';
     const pillFontSize = 18;
-    ctx.font = `800 ${pillFontSize}px sans-serif`;
+    ctx.font = `800 ${pillFontSize}px exton, sans-serif`;
     const pillMetrics = ctx.measureText(pillText);
     const pillPaddingX = 20;
     const pillPaddingY = 10;
@@ -238,12 +238,12 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
     // If titleY > headerHeight - 40, we might overlap grid.
 
     // Render Title
-    ctx.font = `900 ${titleSize}px sans-serif`;
+    ctx.font = `900 ${titleSize}px digitalgalaxy, sans-serif`;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(titleText, CARD_WIDTH / 2, titleY);
 
     // Subtitle (Grid Size)
-    ctx.font = '700 16px sans-serif';
+    ctx.font = '700 16px exton, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.letterSpacing = '2px';
     // Position Subtitle relative to Title
@@ -374,7 +374,7 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
                 ctx.fillStyle = '#FFFFFF';
                 // Calculate font size relative to box size
                 const fontSize = Math.max(10, Math.floor(finalBoxWidth / 8));
-                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.font = `bold ${fontSize}px exton, sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.shadowColor = 'black';
                 ctx.shadowBlur = 4;
@@ -388,7 +388,7 @@ const generateBingoCard = async (card, clientUser, themeColor = '#FFACD1', avata
 
                 const { lines, fontSize: usedFont } = wrapText(ctx, entryTitle, maxW, baseFontSize, 3);
 
-                ctx.font = `bold ${usedFont}px sans-serif`;
+                ctx.font = `bold ${usedFont}px exton, sans-serif`;
 
                 // Draw bottom-up
                 const lineHeight = usedFont * 1.2;
