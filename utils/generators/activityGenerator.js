@@ -275,7 +275,7 @@ const generateActivityCard = async (userMeta, activityData) => {
             case 'POINT_100': scoreStr = `${s}`; break;
             case 'POINT_10_DECIMAL': scoreStr = `${s}`; break;
             case 'POINT_10': scoreStr = `${s}`; break;
-            case 'POINT_5': scoreStr = `${s}`; break; // Just the number, we'll draw a star icon
+            case 'POINT_5': scoreStr = `${s}`; break;
             case 'POINT_3':
                 if (s === 1) scoreStr = '☹';
                 else if (s === 2) scoreStr = '😐';
@@ -284,40 +284,44 @@ const generateActivityCard = async (userMeta, activityData) => {
             default: scoreStr = `${s}`;
         }
 
+        const starCount = isStar ? Math.min(5, Math.ceil(s)) : 0;
+        
         ctx.save();
         ctx.font = '800 11px monalqo, sans-serif';
         ctx.letterSpacing = '0px';
         const iconSize = 10;
-        const gap = 4;
-        const textW = ctx.measureText(scoreStr).width;
-        const bw = iconSize + gap + textW + 14;
-        const bh = 22;
-        const bx = cX - 8;
+        const starGap = 3;
+        const baseGap = 4;
+        
+        const textW = isStar ? 0 : ctx.measureText(scoreStr).width;
+        let contentW = isStar ? (iconSize * starCount + starGap * (starCount - 1)) : (iconSize + baseGap + textW);
+        
+        const bw = contentW + 18;
+        const bh = 24;
+        
+        // --- Smart Alignment: Ensure it never touches the name text ---
+        // Anchor to the right edge of the avatar with a small buffer
+        const maxRight = cX + avatarSize - 8;
+        const bx = Math.min(cX - 8, maxRight - bw);
         const by = curY - 8;
 
         ctx.beginPath();
-        ctx.roundRect(bx, by, bw, bh, 6);
+        ctx.roundRect(bx, by, bw, bh, 8);
         ctx.fillStyle = 'rgba(0,0,0,0.85)';
         ctx.fill();
         ctx.strokeStyle = tokens.primary;
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        const contentW = iconSize + gap + textW;
         const startX = bx + (bw - contentW) / 2;
         const cV = by + bh / 2;
 
         if (isStar) {
-            // Layout: [Rating] [Gap] [Star]
-            ctx.fillStyle = '#FFF'; // Uniform text color
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(scoreStr, startX, cV + 0.5);
-
-            // Draw a small Star
-            const starX = startX + textW + gap + iconSize/2;
-            const starY = cV;
-            drawStar(ctx, starX, starY, iconSize/2, 1);
+            // Draw N Stars
+            for (let i = 0; i < starCount; i++) {
+                const starX = startX + i * (iconSize + starGap) + iconSize / 2;
+                drawStar(ctx, starX, cV, iconSize / 2, 1);
+            }
         } else {
             // Layout: [Heart] [Gap] [Rating]
             const hx = startX + iconSize/2;
@@ -334,7 +338,7 @@ const generateActivityCard = async (userMeta, activityData) => {
             ctx.fillStyle = '#FFF'; // Uniform text color
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(scoreStr, startX + iconSize + gap, cV + 0.5);
+            ctx.fillText(scoreStr, startX + iconSize + baseGap, cV + 0.5);
         }
         ctx.restore();
     }
@@ -377,20 +381,18 @@ const generateActivityCard = async (userMeta, activityData) => {
         displayVerb = `PAUSED ${verb}`;
     }
     else if (rawStatus.includes('rewatched') || (rawStatus.includes('watching') && activityData.status.toLowerCase().includes('rewatch'))) {
-        displayVerb = `REWATCHED EPISODE ${progStr || '??'}`;
+        displayVerb = `REWATCHED EP ${progStr || '??'}`;
     }
     else if (rawStatus.includes('reread') || (rawStatus.includes('reading') && activityData.status.toLowerCase().includes('reread'))) {
-        displayVerb = `REREAD CHAPTER ${progStr || '??'}`;
+        displayVerb = `REREAD CH ${progStr || '??'}`;
     }
     else if (rawStatus.includes('watched')) {
         const verb = bingeMode ? 'BINGED' : 'WATCHED';
-        const progLabel = isRange ? 'EPISODES' : 'EPISODE';
-        displayVerb = progStr ? `${verb} ${progLabel} ${progStr}` : `${verb} ${progLabel}`;
+        displayVerb = progStr ? `${verb} EP ${progStr}` : `${verb}`;
     }
     else if (rawStatus.includes('read')) {
         const verb = bingeMode ? 'BINGE READ' : 'READ';
-        const progLabel = isRange ? (rawStatus.includes('volume') ? 'VOLUMES' : 'CHAPTERS') : (rawStatus.includes('volume') ? 'VOLUME' : 'CHAPTER');
-        displayVerb = progStr ? `${verb} ${progLabel} ${progStr}` : `${verb} ${progLabel}`;
+        displayVerb = progStr ? `${verb} CH ${progStr}` : `${verb}`;
     }
     else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${isManga ? 'READING' : 'WATCHING'}`;
     else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
