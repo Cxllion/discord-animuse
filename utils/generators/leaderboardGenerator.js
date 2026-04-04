@@ -207,8 +207,8 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = TEXT_COLOR; // Consistent with headers
-    ctx.font = '900 12px exton, sans-serif';
-    ctx.letterSpacing = '1px';
+    ctx.font = '900 12px monalqo, sans-serif';
+    ctx.letterSpacing = '1.2px';
     ctx.fillText(`RANK #${challengerData.rank}`, cX, avY + avR * 2 + 3); // Centered (offset logic: -10 + 13 = +3)
 
     // Name (Priority Nickname + FitText)
@@ -226,11 +226,11 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const barY = i1.y + i1.h - 40;
 
     ctx.textAlign = 'left';
-    ctx.font = '900 20px digitalgalaxy, sans-serif';
+    ctx.font = '900 20px monalqo, sans-serif';
     ctx.fillText(`LVL ${challengerData.level}`, barX, barY - 15);
 
     ctx.textAlign = 'right';
-    ctx.font = 'bold 12px exton, sans-serif';
+    ctx.font = 'bold 12px monalqo, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fillText(`${formatStat(challengerData.xp)} XP`, barX + barW, barY - 15);
 
@@ -286,15 +286,15 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.textBaseline = 'middle'; // Center in pill
 
         // Rank
-        ctx.font = '900 14px digitalgalaxy, sans-serif';
+        ctx.font = '900 14px monalqo, sans-serif';
         ctx.fillStyle = rankColor;
-        ctx.letterSpacing = '1px';
+        ctx.letterSpacing = '1.2px';
         ctx.fillText(`#${i + 1}`, leftX, y - 4); // Optical center (y-5 + 1)
 
         // Name
-        ctx.font = 'bold 14px exton, sans-serif';
+        ctx.font = 'bold 14px monalqo, sans-serif';
         ctx.fillStyle = user ? '#FFF' : 'rgba(255,255,255,0.2)';
-        ctx.letterSpacing = '0px';
+        ctx.letterSpacing = '0.5px';
         const uName = user ? (user.username || user.user_id) : '---';
         const truncName = uName.length > 14 ? uName.substring(0, 13) + '..' : uName;
         ctx.fillText(truncName, leftX + 40, y - 4); // Optical center
@@ -302,7 +302,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         // XP/Level
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle'; // Center in pill
-        ctx.font = '900 14px digitalgalaxy, sans-serif';
+        ctx.font = '900 14px monalqo, sans-serif';
         ctx.fillStyle = TEXT_COLOR;
         const val = user ? `LVL ${user.level}` : '-';
 
@@ -373,7 +373,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.fillStyle = ctx.strokeStyle;
         ctx.fill();
         ctx.fillStyle = '#000';
-        ctx.font = 'bold 12px exton, sans-serif';
+        ctx.font = 'bold 12px monalqo, sans-serif';
         ctx.textAlign = 'center';
         ctx.letterSpacing = '0px';
         ctx.fillText(`#${rank}`, x, bY + 14);

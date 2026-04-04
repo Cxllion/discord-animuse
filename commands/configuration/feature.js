@@ -200,7 +200,7 @@ module.exports = {
                                 if (avatarConfig.source === 'CUSTOM' && avatarConfig.customAvatarUrl) {
                                     avatarUrl = avatarConfig.customAvatarUrl;
                                 } else if (avatarConfig.source === 'ANILIST') {
-                                    const linkedUser = await getLinkedAnilist(interaction.member.id, interaction.guild.id);
+                                    const linkedUser = await retrieveLinkedUser(interaction.member.id, interaction.guild.id);
                                     if (linkedUser) {
                                         const { avatar } = await getAniListProfile(linkedUser);
                                         if (avatar) avatarUrl = avatar;
@@ -245,7 +245,7 @@ module.exports = {
                         if (avatarConfig.source === 'CUSTOM' && avatarConfig.customAvatarUrl) {
                             avatarUrl = avatarConfig.customAvatarUrl;
                         } else if (avatarConfig.source === 'ANILIST') {
-                            const linkedUser = await getLinkedAnilist(interaction.member.id, interaction.guild.id);
+                            const linkedUser = await retrieveLinkedUser(interaction.member.id, interaction.guild.id);
                             if (linkedUser) {
                                 const { avatar } = await getAniListProfile(linkedUser);
                                 if (avatar) avatarUrl = avatar;
@@ -349,7 +349,7 @@ module.exports = {
                     const [rankData, linkedUsername, backgroundUrl, title, color, avatarConfig, levelRoles] = await Promise.all([
                         getUserRank(targetUser.id, guildId),
                         retrieveLinkedUser(targetUser.id, guildId),
-                        retrieveBackground(targetUser.id, guildId),
+                        retrieveBannerConfig(targetUser.id, guildId),
                         getUserTitle(targetUser.id, guildId),
                         getUserColor(targetUser.id, guildId),
                         getUserAvatarConfig(targetUser.id, guildId),
@@ -363,7 +363,7 @@ module.exports = {
                     // Muse Rank Calculation
                     const earnedRoles = levelRoles.filter(lr => lr.level <= level);
                     let knowledgeRank = 'Muse Reader';
-                    let rankColor = color || THEME_COLOR;
+                    let rankColor = color || CONFIG.COLORS.PRIMARY;
 
                     if (earnedRoles.length > 0) {
                         const highestRole = earnedRoles[earnedRoles.length - 1];

@@ -67,7 +67,13 @@ if (PORT) {
         const handleShutdown = async (signal) => {
             logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
             
-            // Destroy Discord Session (Logs out cleanly)
+            // 1. Clear Active Intervals
+            if (client.intervals) {
+                client.intervals.forEach(clearInterval);
+                logger.info(`[ShutDown] Terminated ${client.intervals.length} background tasks.`, 'System');
+            }
+            
+            // 2. Destroy Discord Session (Logs out cleanly)
             client.destroy();
             logger.info('[ShutDown] Discord archivist connection terminated.', 'System');
 

@@ -276,7 +276,7 @@ const loadFileCache = () => {
 
 const saveFileCache = (cache) => {
     try {
-        const cutoff = Math.floor(Date.now() / 1000) - 24 * 60 * 60; // 24h prune
+        const cutoff = Math.floor(Date.now() / 1000) - 72 * 60 * 60; // 72h prune
         const pruned = {};
         for (const [id, ts] of Object.entries(cache)) {
             if (ts > cutoff) pruned[id] = ts;
@@ -316,11 +316,11 @@ const markPosted = async (activityIds, meta = null) => {
     }
 };
 
-// 24-hour window (Unix timestamp)
-const get24hCutoff = () => Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+// 72-hour window (Unix timestamp)
+const get24hCutoff = () => Math.floor(Date.now() / 1000) - 72 * 60 * 60;
 
 /**
- * Burst Logic: Fetches AniList activities for a user, filters to 24h window,
+ * Burst Logic: Fetches AniList activities for a user, filters to 72h window,
  * groups sequential episodes into combined cards, skips already-posted IDs.
  */
 const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) => {
@@ -337,7 +337,7 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
             // Debug: Let's see what we found
             logger.info(`[Activity Discovery] Found ID: ${act.id} | Status: ${act.status} | Progress: ${act.progress} | ${act.media?.title?.english || act.media?.title?.romaji}`, 'Scheduler');
 
-            // Skip if older than 24 hours
+            // Skip if older than 72 hours
             if (act.createdAt && act.createdAt < cutoff) {
                 logger.debug(`[Activity Skip] ID ${act.id} is too old. Created at ${act.createdAt}, cutoff ${cutoff}`, 'Scheduler');
                 continue;
@@ -378,7 +378,7 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
         }
 
         if (groups.size === 0) {
-            logger.info(`[Activity Feed] No new activities to post for ${userRow.anilist_username} (all within 24h window were already posted or empty).`, 'Scheduler');
+            logger.info(`[Activity Feed] No new activities to post for ${userRow.anilist_username} (all within 72h window were already posted or empty).`, 'Scheduler');
             return;
         }
 
@@ -441,6 +441,8 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                 const userColor = await getUserColor(userRow.user_id, guildId);
                 const userAvatar = await getUserAvatarConfig(userRow.user_id, guildId);
                 const score = await getUserMediaScore(g.user.id, g.media.id);
+                
+                logger.info(`[Activity Feed] Fetched Rating for ${userRow.anilist_username} (AL ID: ${g.user.id}): ${score || 'None found'}`, 'Scheduler');
                 const guild = client.guilds.cache.get(guildId);
                 const member = guild ? await guild.members.fetch(userRow.user_id).catch(() => null) : null;
                 const username = member ? member.displayName : g.user.name;
@@ -507,7 +509,7 @@ const checkUserActivity = async (client) => {
     isActivityPolling = true;
 
     try {
-        // --- 🧹 Cleanup legacy records (24h TTL) ---
+        // --- 🧹 Cleanup legacy records (72h TTL) ---
         clearOldActivityPostsInDB().catch(() => null);
 
         logger.info('[Scheduler] Pulse: Activity Feed checks across all guilds starting...', 'Scheduler');

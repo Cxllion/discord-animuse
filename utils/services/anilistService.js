@@ -641,7 +641,7 @@ const getUserActivity = async (userName) => {
 
     const query = `
     query ($userId: Int) {
-        Page(page: 1, perPage: 10) {
+        Page(page: 1, perPage: 50) {
             activities(userId: $userId, sort: ID_DESC, type: MEDIA_LIST) {
                 ... on ListActivity {
                     id
@@ -699,6 +699,7 @@ const getUserMediaScore = async (userId, mediaId) => {
         const data = await queryAnilist(query, { userId, mediaId });
         return data.MediaList ? data.MediaList.score : null;
     } catch (e) {
+        logger.error(`[AniList] Error fetching media score for user ${userId} and media ${mediaId}:`, e, 'AniList');
         return null;
     }
 };

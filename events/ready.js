@@ -9,6 +9,9 @@ module.exports = {
     async execute(client) {
         logger.info(`Ready! Logged in as ${client.user.tag}`, 'System');
         logger.info(`Animuse is now online and serving in ${client.guilds.cache.size} guilds.`, 'System');
+        
+        // Initialize Interval Tracker
+        client.intervals = [];
 
         // Clear Caches to ensure V3 visuals are immediate
         const { flushAniListCache } = require('../utils/services/anilistService');
@@ -28,16 +31,21 @@ module.exports = {
 
         let activityIndex = 0;
         const updatePresence = () => {
+            if (!client.user || client.destroyed) return;
             const act = activities[activityIndex];
-            client.user.setPresence({
-                activities: [{ name: act.name, type: act.type }],
-                status: 'online'
-            });
-            activityIndex = (activityIndex + 1) % activities.length;
+            try {
+                client.user.setPresence({
+                    activities: [{ name: act.name, type: act.type }],
+                    status: 'online'
+                });
+                activityIndex = (activityIndex + 1) % activities.length;
+            } catch (e) {
+                // Ignore shard errors during transition
+            }
         };
 
         updatePresence(); // Set initial
-        setInterval(updatePresence, 60 * 1000); // Rotate every minute
+        client.intervals.push(setInterval(updatePresence, 60 * 1000)); // Rotate every minute
 
 
         // Deploy Commands (Conditional)
@@ -107,20 +115,20 @@ module.exports = {
                     logger.info('Test bot detected. Background activity polling is DISABLED.', 'System');
                 }
 
-                setInterval(async () => {
+                client.intervals.push(setInterval(async () => {
                     try {
                         await checkAiringAnime(client);
                         if (!client.isTestBot) await checkUserActivity(client);
                     } catch (error) {
                         logger.error('Notification loop failure:', error, 'Scheduler');
                     }
-                }, 5 * 60 * 1000); 
+                }, 5 * 60 * 1000)); 
 
                 // --- 2. Housekeeping & Cache Maintenance (1h) ---
-                setInterval(() => {
+                client.intervals.push(setInterval(() => {
                     flushAniListCache();
                     clearConfigCache();
-                }, 60 * 60 * 1000);
+                }, 60 * 60 * 1000));
             }, 10000);
         }
  else {

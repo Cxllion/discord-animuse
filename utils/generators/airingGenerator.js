@@ -122,8 +122,8 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
                 
                 let tagY = posterY + 12;
                 metadataTags.slice(0, 2).forEach(tag => {
-                    ctx.font = `900 ${fontSize}px exton, sans-serif`;
-                    ctx.letterSpacing = '1px';
+                    ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
+                    ctx.letterSpacing = '1.2px';
                     const tagText = tag.toUpperCase();
                     const tw = ctx.measureText(tagText).width + horizontalPadding;
                     const tagX = posterX + posterW - tw - 12;
@@ -270,7 +270,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     ctx.stroke();
 
     // Nested Number (Robust Centering)
-    ctx.font = isFinal ? '900 13px digitalgalaxy, sans-serif' : '900 18px digitalgalaxy, sans-serif';
+    ctx.font = isFinal ? '900 13px monalqo, sans-serif' : '900 18px monalqo, sans-serif';
     ctx.letterSpacing = isFinal ? '1.5px' : '0px';
     ctx.fillStyle = '#FFF';
     ctx.shadowColor = 'rgba(255,255,255,0.3)';
@@ -288,7 +288,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     const metaText = studioValue;
 
     ctx.save();
-    ctx.font = '900 12px exton, sans-serif'; 
+    ctx.font = '900 12px monalqo, sans-serif'; 
     ctx.letterSpacing = '4px';
     const metaW = ctx.measureText(metaText).width;
     const pillW = metaW + 40;
@@ -332,7 +332,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
         
         let extraPillW = 0;
         if (extraCount > 0) {
-            ctx.font = '900 12px exton, sans-serif';
+            ctx.font = '900 12px monalqo, sans-serif';
             extraPillW = ctx.measureText(`+${extraCount}`).width + 16;
             pillW += extraPillW + 8;
         }
@@ -386,7 +386,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
             ctx.fillStyle = 'rgba(255,255,255,0.15)';
             ctx.fill();
             ctx.fillStyle = '#FFF';
-            ctx.font = '900 12px exton, sans-serif';
+            ctx.font = '900 12px monalqo, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(`+${extraCount}`, exX + (extraPillW/2), exY + 12.5);
@@ -461,7 +461,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     // --- 7. GENRES (Material Polish) ---
     let gx = anchorX;
     
-    ctx.font = '900 11px exton, sans-serif'; 
+    ctx.font = '900 11px monalqo, sans-serif'; 
     ctx.letterSpacing = '1px';
     (media.genres || []).slice(0, 3).forEach(g => {
         const txt = g.toUpperCase();

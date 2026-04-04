@@ -3,6 +3,7 @@ const { fetchConfig, pulseChannelActivity } = require('../utils/core/database');
 const baseEmbed = require('../utils/generators/baseEmbed');
 const logger = require('../utils/core/logger');
 const { getDynamicUserTitle } = require('../utils/core/userMeta');
+const CONFIG = require('../utils/config');
 
 module.exports = {
     name: Events.MessageCreate,

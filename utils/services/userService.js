@@ -258,7 +258,7 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
             .eq('media_id', String(mediaId))
             .eq('channel_id', String(channelId))
             .not('message_id', 'is', null) // Prioritize posts we can actually delete
-            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Binge merge: 24h window (don't delete old messages)
             .order('posted_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -271,13 +271,13 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
 };
 
 /**
- * Purge activity logs older than 24 hours from Supabase to prevent table bloat.
+ * Purge activity logs older than 72 hours from Supabase to prevent table bloat.
  * We only need this data during the active binge window.
  */
 const clearOldActivityPostsInDB = async () => {
     if (!supabase) return;
     try {
-        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
         await supabase
             .from('activity_posted')
             .delete()

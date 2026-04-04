@@ -166,7 +166,7 @@ class WordleGenerator {
     drawFooter(ctx, gameState) {
         ctx.save();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.font = `700 10px 'exton', sans-serif`;
+        ctx.font = `700 10px 'monalqo', sans-serif`;
         ctx.letterSpacing = '1px';
         ctx.textAlign = 'center';
         

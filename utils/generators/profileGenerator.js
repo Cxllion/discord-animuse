@@ -31,7 +31,7 @@ const secureLoadImage = async (url, fallbackPath = null) => {
     if (!url) return null;
     
     // 2. Local File Optimization (Skip remote uplink)
-    if (url.startsWith('/') || url.includes(':\\')) {
+    if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
         return await getCachedLocalImage(url);
     }
 
@@ -42,6 +42,7 @@ const secureLoadImage = async (url, fallbackPath = null) => {
             timeout: 8000,
             headers: { 'User-Agent': 'AniMuse-Archivist/1.0' }
         });
+        if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
         return await loadImage(Buffer.from(response.data));
     } catch (err) {
         logger.warn(`Asset Uplink Interrupted: ${url} (${err.message}). Falling back to archives.`, 'Generator');
@@ -120,7 +121,10 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
     try {
         // --- 1. AMBIENT BACKGROUND SYSTEM ---
         const defaultBg = path.join(__dirname, 'images', 'profile_background_default.png');
-        const bgImg = await secureLoadImage(bannerUrl, defaultBg);
+        
+        // Handle bannerUrl as both string or config object { source, customUrl }
+        const finalBannerUrl = (bannerUrl && typeof bannerUrl === 'object') ? bannerUrl.customUrl : bannerUrl;
+        const bgImg = await secureLoadImage(finalBannerUrl, defaultBg);
 
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 20;

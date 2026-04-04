@@ -78,7 +78,13 @@ server.listen(port);
                 server.close(() => logger.info('[ShutDown] HTTP archives locked and secured.', 'System'));
             }
 
-            // 2. Destroy Discord Session (Logs out cleanly)
+            // 2. Clear Active Intervals
+            if (client.intervals) {
+                client.intervals.forEach(clearInterval);
+                logger.info(`[ShutDown] Terminated ${client.intervals.length} background tasks.`, 'System');
+            }
+            
+            // 3. Destroy Discord Session (Logs out cleanly)
             client.destroy();
             logger.info('[ShutDown] Discord archivist connection terminated.', 'System');
 

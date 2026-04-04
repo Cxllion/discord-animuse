@@ -64,12 +64,13 @@ const generateWelcomeCard = async (member) => {
 
     // Text: ANIMUSE LIBRARY
     ctx.fillStyle = COLOR_HEADER_TEXT;
-    ctx.font = 'bold 32px digitalgalaxy, sans-serif';
+    ctx.font = 'bold 32px monalqo, sans-serif';
+    ctx.letterSpacing = '4px'; // Spaced-out headers for the Archives
     ctx.fillText('ANIMUSE LIBRARY', cardX + 110, cardY + 45);
 
     ctx.fillStyle = '#BBB';
-    ctx.font = '700 12px exton, sans-serif';
-    ctx.letterSpacing = 2;
+    ctx.font = '700 12px monalqo, sans-serif';
+    ctx.letterSpacing = '3px'; // Wide data labels
     ctx.fillText('OFFICIAL MEMBER ACCESS PASS', cardX + 110, cardY + 66);
 
     // Logo Circle
@@ -78,7 +79,7 @@ const generateWelcomeCard = async (member) => {
     ctx.fillStyle = '#FFF';
     ctx.fill();
     ctx.fillStyle = COLOR_ACCENT;
-    ctx.font = '900 24px digitalgalaxy, sans-serif';
+    ctx.font = '900 24px monalqo, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('A', cardX + 60, cardY + 51);
     ctx.textAlign = 'left';
@@ -119,10 +120,12 @@ const generateWelcomeCard = async (member) => {
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 12px exton, sans-serif';
+    ctx.font = 'bold 12px monalqo, sans-serif';
+    ctx.letterSpacing = '1.5px';
     ctx.textAlign = 'center';
     ctx.fillText('READER', tagX + tagW / 2, tagY + 19);
     ctx.textAlign = 'left';
+    ctx.letterSpacing = '0px'; 
 
     // 5. INFO AREA (Right Side)
     const contentX = cardX + 250;
@@ -130,7 +133,7 @@ const generateWelcomeCard = async (member) => {
 
     // NAME Label
     ctx.fillStyle = COLOR_INK_SUB;
-    ctx.font = '11px exton, sans-serif';
+    ctx.font = '11px monalqo, sans-serif';
     ctx.fillText('NAME', contentX, contentY);
 
     contentY += 35;
@@ -138,29 +141,36 @@ const generateWelcomeCard = async (member) => {
     // Auto-scale Display Name
     const nameStr = member.displayName.toUpperCase();
     let nameSize = 42;
-    ctx.font = `900 ${nameSize}px digitalgalaxy, sans-serif`;
+    let nameSpacing = 0.8;
+    
+    ctx.font = `900 ${nameSize}px monalqo, sans-serif`;
     while (ctx.measureText(nameStr).width > 310 && nameSize > 24) {
         nameSize -= 2;
-        ctx.font = `900 ${nameSize}px digitalgalaxy, sans-serif`;
+        // Increase spacing as font shrinks to prevent clumping
+        nameSpacing = nameSize < 32 ? 1.4 : 0.8;
+        ctx.font = `900 ${nameSize}px monalqo, sans-serif`;
+        ctx.letterSpacing = `${nameSpacing}px`;
     }
     ctx.fillText(nameStr, contentX, contentY);
+    ctx.letterSpacing = '0px'; 
+ Beach
 
     // Grid: ID & Date
     contentY += 45;
     const col2X = contentX + 160;
 
     ctx.fillStyle = COLOR_INK_SUB;
-    ctx.font = '10px exton, sans-serif';
+    ctx.font = '10px monalqo, sans-serif';
     ctx.fillText('ID NUMBER', contentX, contentY);
     ctx.fillText('JOINED', col2X, contentY);
 
     contentY += 22;
     ctx.fillStyle = COLOR_INK_MAIN;
-    ctx.font = '18px exton, monospace';
+    ctx.font = '18px monalqo, monospace';
     // ID formatting
     ctx.fillText(member.guild.memberCount.toString().padStart(8, '0'), contentX, contentY);
 
-    ctx.font = 'bold 18px exton, sans-serif';
+    ctx.font = 'bold 18px monalqo, sans-serif';
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
     ctx.fillText(dateStr, col2X, contentY);
 

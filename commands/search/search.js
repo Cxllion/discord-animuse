@@ -3,6 +3,7 @@ const baseEmbed = require('../../utils/generators/baseEmbed');
 const { searchMedia, getMediaById, formatMediaTitle } = require('../../utils/services/anilistService');
 const { createMediaResponse } = require('../../utils/generators/mediaResponse');
 const logger = require('../../utils/core/logger');
+const CONFIG = require('../../utils/config');
 
 module.exports = {
     category: 'search',

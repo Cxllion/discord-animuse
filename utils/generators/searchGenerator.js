@@ -110,8 +110,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
             
             let tagY = pY + 15;
             metadataTags.slice(0, 3).forEach(tag => {
-                ctx.font = `900 ${fontSize}px exton, sans-serif`;
-                ctx.letterSpacing = '1px';
+                ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
+                ctx.letterSpacing = '1.2px';
                 const tagText = tag.toUpperCase();
                 const tw = ctx.measureText(tagText).width + horizontalPadding;
                 const tagX = pX + pW - tw - 15;
@@ -185,7 +185,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     }
 
     ctx.save();
-    ctx.font = '900 18px exton, sans-serif'; 
+    ctx.font = '900 18px monalqo, sans-serif'; 
     ctx.letterSpacing = '10px';
     const baseMetaW = ctx.measureText(baseMeta).width;
     
@@ -193,7 +193,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     let extraPillW = 0;
     const extraPillH = 24; // Further enlarged
     if (!isManga && extraCount > 0) {
-        ctx.font = '900 14px exton, sans-serif'; // Upscaled font
+        ctx.font = '900 14px monalqo, sans-serif'; // Upscaled font
         ctx.letterSpacing = '1px';
         extraPillW = ctx.measureText(`+${extraCount}`).width + 18; 
     }
@@ -214,7 +214,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fill();
 
     // Draw Main Metadata (Centering within tab with optical offset)
-    ctx.font = '900 18px exton, sans-serif'; 
+    ctx.font = '900 18px monalqo, sans-serif'; 
     ctx.letterSpacing = '10px';
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
@@ -235,7 +235,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         ctx.lineWidth = 1.5;
         ctx.stroke();
         
-        ctx.font = '900 14px exton, sans-serif';
+        ctx.font = '900 14px monalqo, sans-serif';
         ctx.letterSpacing = '0.5px';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#FFF';
@@ -320,7 +320,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         const starGap = 10; 
         const starBlockW = (5 * starSize * 2) + (4 * starGap);
         
-        ctx.font = '900 22px digitalgalaxy, sans-serif'; 
+        ctx.font = '900 22px monalqo, sans-serif'; 
         const scoreW = ctx.measureText(score10).width;
         const innerPillPadding = 40; // Substantial horizontal presence
         const innerPillW = scoreW + (innerPillPadding * 2);
@@ -382,7 +382,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     };
     const theme = statusMap[statusRaw] || { base: '#FFF', bg: 'rgba(255, 255, 255, 0.06)' };
 
-    ctx.font = '900 15px exton, sans-serif'; 
+    ctx.font = '900 15px monalqo, sans-serif'; 
     ctx.letterSpacing = '4px';
     const stW = ctx.measureText(statusClean).width + 60;
     
@@ -437,7 +437,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     let sSize = 25;
     let sLines = [], sLead = 0;
     const calculateLines = (text, size) => {
-        ctx.font = `${size}px exton, sans-serif`;
+        ctx.font = `${size}px monalqo, sans-serif`;
         let lines = [], cur = '';
         for (let w of text.split(' ')) {
             if (ctx.measureText(cur + w + ' ').width > contentW) { lines.push(cur.trim()); cur = w + ' '; }
@@ -482,7 +482,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     // E. SIGNATURE footer (TAGS + WATERMARK)
     const footerY = baseH - 65; // Slightly higher for more presence
     let gx = pX; 
-    ctx.font = '900 15px exton, sans-serif'; // Upscaled
+    ctx.font = '900 15px monalqo, sans-serif'; // Upscaled
     ctx.letterSpacing = '1.5px';
     (media.genres || []).slice(0, 4).forEach(g => {
         const txt = g.toUpperCase();
