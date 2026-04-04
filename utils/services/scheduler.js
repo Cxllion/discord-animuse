@@ -330,6 +330,12 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
 
         const cutoff = get24hCutoff();
 
+        // ── Sort activities OLDEST FIRST before grouping ──────────────────────
+        // AniList returns ID_DESC (newest first). We must reverse so that:
+        //   1. Groups are created in chronological insertion order (Map preserves insertion)
+        //   2. The Discord feed reads oldest → newest top to bottom
+        activities.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
         // Grouping logic: find unique media pieces being updated
         const groups = new Map();
 
@@ -363,7 +369,8 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
                     status: act.status, 
                     user: act.user, 
                     ids: [], 
-                    progress: [] 
+                    progress: [],
+                    earliestCreatedAt: act.createdAt || 0 // Track oldest activity in group for sort
                 });
             }
             const g = groups.get(groupKey);
@@ -384,8 +391,11 @@ const checkAndBroadcastUserActivity = async (client, guildId, userRow, channel) 
 
         logger.info(`[Activity Feed] Burst Mode: Processed ${activities.length} total, creating ${groups.size} distinct cards. (User: ${userRow.anilist_username})`, 'Scheduler');
 
-        // Process each Group
-        for (const [key, g] of groups) {
+        // ── Sort groups by earliestCreatedAt ascending (chronological post order) ──
+        const sortedGroups = [...groups.values()].sort((a, b) => a.earliestCreatedAt - b.earliestCreatedAt);
+
+        // Process each Group in chronological order
+        for (const g of sortedGroups) {
             try {
                 // 1. Determine local range for THIS poll (e.g. 1-2)
                 let displayProgress = '';
