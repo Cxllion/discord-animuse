@@ -182,7 +182,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
     // "AIRING NOW" Pod (Vibrant Gradient Refinement)
     const statusText = "AIRING NOW";
-    ctx.font = '900 12px digitalgalaxy, sans-serif';
+    ctx.font = '900 12px monalqo, sans-serif';
     ctx.letterSpacing = '3px';
     const stW = ctx.measureText(statusText).width + 30;
     const podH = 36;
@@ -212,7 +212,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
     // --- 5. THE EPISODE BLOCK (Premium Nested HUD) ---
     ctx.save();
-    ctx.font = '900 18px digitalgalaxy, sans-serif';
+    ctx.font = '900 18px monalqo, sans-serif';
     ctx.letterSpacing = '0px'; 
     const epNumW = ctx.measureText(epNumStr).width;
     ctx.restore();
@@ -402,7 +402,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     const maxTitleW = contentW;
 
     while (fontSize > 20) {
-        ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
+        ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
         ctx.letterSpacing = '-1.2px';
         const words = cleanTitle.split(' ');
         lines = [];
@@ -410,16 +410,23 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
         for (let w of words) {
             if (ctx.measureText(cur + w + ' ').width > maxTitleW) {
-                lines.push(cur.trim());
-                cur = w + ' ';
+                if (cur) {
+                    lines.push(cur.trim());
+                    cur = w + ' ';
+                } else {
+                    cur = w + ' '; // Word itself too wide, font must drop
+                }
             } else {
                 cur += w + ' ';
             }
         }
-        lines.push(cur.trim());
+        if (cur) lines.push(cur.trim());
 
         const totalTitleH = lines.length * (fontSize * 0.9);
-        if (lines.length <= maxLines && totalTitleH < 100) break;
+        const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > maxTitleW);
+
+        // Break if: fits in 3 lines, respects available height, and NO line clips
+        if (lines.length <= 3 && totalTitleH < availableH - 40 && !isAnyLineTooWide) break;
         fontSize -= 2;
     }
 
@@ -439,7 +446,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     const footerY = titleY + titleBlockH + verticalGap;
 
     ctx.save();
-    ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
+    ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
     ctx.letterSpacing = '-1.2px';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -489,7 +496,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     // WATERMARK
     ctx.restore(); 
     ctx.textAlign = 'right';
-    ctx.font = '900 11px digitalgalaxy, sans-serif';
+    ctx.font = '900 11px monalqo, sans-serif';
     ctx.letterSpacing = '8.5px';
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fillText('ANIMUSE ALERTS', baseW - margin, baseH - margin); 

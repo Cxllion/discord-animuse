@@ -200,7 +200,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     const bottomPinY = pY + pH - padding - statsVisualH;
     const availableMiddleH = bottomPinY - (topPinY + identityVisualH);
 
-    // Dynamic Title Fitting Loop (V5)
+    // Dynamic Title Fitting Loop (V6 Elite Precision)
     let fSize = 135; 
     let lines = [];
     let lH = 0;
@@ -214,10 +214,17 @@ const generateActivityCard = async (userMeta, activityData) => {
 
         lines = [];
         let cur = '';
-        for (const w of cleanTitle.split(' ')) {
+        const words = cleanTitle.split(' ');
+        for (const w of words) {
+            // Check if adding this word exceeds width
             if (ctx.measureText(cur + w + ' ').width > cW) {
-                if (cur) lines.push(cur.trim());
-                cur = w + ' ';
+                if (cur) {
+                    lines.push(cur.trim());
+                    cur = w + ' ';
+                } else {
+                    // Single word is too wide! Don't push yet, let the font size decrease handle it
+                    cur = w + ' '; 
+                }
             } else {
                 cur += w + ' ';
             }
@@ -227,9 +234,11 @@ const generateActivityCard = async (userMeta, activityData) => {
         lH = fSize * 0.94; 
         const titleH = lines.length * lH;
 
-        // --- Improvement: Enforce Air-Gap (V6) ---
-        // Require 24px of breathing room (12px top and bottom)
-        if (lines.length <= 4 && titleH <= availableMiddleH - 24) break;
+        // Break if: 
+        // 1. Fits in 3 lines or less (User requested up to 3)
+        // 2. Fits within the available vertical height with a 32px safety buffer
+        // 3. NO individual line is wider than the container
+        if (lines.length <= 3 && titleH <= availableMiddleH - 32 && !isAnyLineTooWide) break;
         fSize -= 1;
     }
 
@@ -338,7 +347,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Username + Status Pill (inline with avatar)
     const txtX = cX + avatarSize + 14;
     ctx.save();
-    ctx.font = '900 20px digitalgalaxy, sans-serif';
+    ctx.font = '900 20px monalqo, sans-serif';
     ctx.letterSpacing = '0.5px';
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';

@@ -134,7 +134,7 @@ class WordleGenerator {
         if (char) {
             ctx.fillStyle = '#FFFFFF';
             // Use premium Neo font for letters
-            ctx.font = `900 32px 'neo', 'exomoon', sans-serif`;
+            ctx.font = `900 32px 'monalqo', 'exomoon', sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             

@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, MessageFlags } = require('discord.js');
 const logger = require('./logger');
 const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
@@ -169,6 +169,9 @@ const createNotFoundEmbed = (itemType = 'item') => {
  * @param {string} commandName - Command name
  */
 const handleCommandError = async (interaction, error, commandName) => {
+    // Suppress Unknown Interaction race conditions
+    if (isUnknownInteraction(error)) return;
+
     logger.error(`Error in command ${commandName}:`, error, 'ErrorHandler');
 
     let embed;
@@ -201,7 +204,9 @@ const handleCommandError = async (interaction, error, commandName) => {
             await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
     } catch (followUpError) {
-        logger.error('Could not send error message:', followUpError, 'ErrorHandler');
+        if (!isUnknownInteraction(followUpError)) {
+            logger.error('Could not send error message:', followUpError, 'ErrorHandler');
+        }
     }
 
     // --- AUTOMATED GUILD LOGGING ---
@@ -240,6 +245,9 @@ const handleCommandError = async (interaction, error, commandName) => {
  * @param {string} customMessage Optional custom message
  */
 const handleInteractionError = async (interaction, error, customMessage = null) => {
+    // Suppress Unknown Interaction race conditions
+    if (isUnknownInteraction(error)) return;
+
     logger.error('Interaction Error:', error, 'ErrorHandler');
     
     const errorCode = `INT_${interaction.customId?.slice(0, 5).toUpperCase() || 'UI'}_${Date.now().toString().slice(-6)}`;
@@ -252,7 +260,9 @@ const handleInteractionError = async (interaction, error, customMessage = null) 
             await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
     } catch (e) {
-        logger.error('Failed to send interaction error message:', e, 'ErrorHandler');
+        if (!isUnknownInteraction(e)) {
+            logger.error('Failed to send interaction error message:', e, 'ErrorHandler');
+        }
     }
 
     // --- AUTOMATED GUILD LOGGING ---

@@ -77,8 +77,9 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     const pX = 80;
     const pY = 60; // Elevated for vertical balance
 
-    const rawTitle = media?.title?.english || media?.title?.romaji || media?.title?.native || 'Unknown Title';
-    const { title: cleanTitle, tags: metadataTags } = parseMetadata(rawTitle);
+    const rawTitleStr = media?.title?.english || media?.title?.romaji || media?.title?.native || 'Unknown Record';
+    const { title: rawCleanTitle, tags: metadataTags } = parseMetadata(rawTitleStr);
+    const cleanTitle = rawCleanTitle.toUpperCase();
 
     try {
         const coverUrl = media?.coverImage?.extraLarge || media?.coverImage?.large;
@@ -111,7 +112,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
             let tagY = pY + 15;
             metadataTags.slice(0, 3).forEach(tag => {
                 ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
-                ctx.letterSpacing = '1.2px';
+                ctx.letterSpacing = '1px';
                 const tagText = tag.toUpperCase();
                 const tw = ctx.measureText(tagText).width + horizontalPadding;
                 const tagX = pX + pW - tw - 15;
@@ -164,78 +165,103 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fillRect(contentX - 60, 0, baseW, baseH);
     ctx.restore();
 
-    // B. Metadata HUD (V8.6 Media-Aware Architecture)
+    // B. Metadata HUD (V8.8 Cinematic Tier)
     const isManga = media?.type === 'MANGA';
     const format = (media?.format || (isManga ? 'MANGA' : 'TV')).replace(/_/g, ' ');
     const year = media?.seasonYear || media?.startDate?.year || 'TBA';
     
-    let baseMeta = '';
-    let extraCount = 0;
-    let studioNodes = [];
-
-    if (isManga) {
-        baseMeta = `${format}  •  ${year}`;
-    } else {
+    let segments = [format.toUpperCase(), year.toString()];
+    if (!isManga) {
         const studioEdges = media.studios?.edges || [];
         const mainStudios = studioEdges.filter(e => e.isMain).map(e => e.node.name);
         const rawStudio = mainStudios[0] || studioEdges[0]?.node?.name || 'TBA';
         const studioName = rawStudio.replace(/studio/gi, '').trim().split(' ')[0] || 'TBA';
         extraCount = mainStudios.length > 0 ? mainStudios.length - 1 : Math.max(0, studioEdges.length - 1);
-        baseMeta = `${format}  •  ${year}  •  ${studioName.toUpperCase()}`;
+        segments.push(studioName.toUpperCase());
     }
 
     ctx.save();
-    ctx.font = '900 18px monalqo, sans-serif'; 
-    ctx.letterSpacing = '10px';
-    const baseMetaW = ctx.measureText(baseMeta).width;
+    const hudFontSize = 16;
+    const hudSpacing = '4px';
+    ctx.font = `900 ${hudFontSize}px monalqo, sans-serif`; 
+    ctx.letterSpacing = hudSpacing;
+    ctx.fillStyle = '#FFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    // Calculate total layout width: [Text] [Gap] [Text] [Gap] [Text] + extra pill
+    let totalTextW = 0;
+    const segmentWidths = segments.map(s => {
+        const w = ctx.measureText(s).width;
+        totalTextW += w;
+        return w;
+    });
+
+    const dotGap = 20; // Space for the vector dot
+    const totalHudW = totalTextW + (segments.length - 1) * dotGap;
     
     // Calculate Extra Pill if needed (Anime only)
     let extraPillW = 0;
-    const extraPillH = 24; // Further enlarged
+    const extraPillH = 24; 
     if (!isManga && extraCount > 0) {
-        ctx.font = '900 14px monalqo, sans-serif'; // Upscaled font
+        ctx.font = `900 ${hudFontSize - 2}px monalqo, sans-serif`; 
         ctx.letterSpacing = '1px';
         extraPillW = ctx.measureText(`+${extraCount}`).width + 18; 
     }
 
-    const totalTargetW = baseMetaW + (extraCount > 0 ? extraPillW + 12 : 0);
-    const pillW = totalTargetW + 160;
-    const pillH = 60; 
+    const totalTargetW = totalHudW + (extraCount > 0 ? extraPillW + 12 : 0);
+    const pillW = Math.max(400, totalTargetW + 120);
+    const pillH = 55; 
     
-    // The Bleeding Path
+    // The Bleeding Path (Premium Glass Tab)
     ctx.beginPath();
     ctx.moveTo(baseW, 0); 
     ctx.lineTo(baseW - pillW, 0); 
-    ctx.lineTo(baseW - pillW, pillH - 30); 
-    ctx.arcTo(baseW - pillW, pillH, baseW - pillW + 30, pillH, 30); 
+    ctx.lineTo(baseW - pillW, pillH - 25); 
+    ctx.arcTo(baseW - pillW, pillH, baseW - pillW + 25, pillH, 25); 
     ctx.lineTo(baseW, pillH); 
     ctx.closePath();
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.fill();
 
-    // Draw Main Metadata (Centering within tab with optical offset)
-    ctx.font = '900 18px monalqo, sans-serif'; 
-    ctx.letterSpacing = '10px';
-    ctx.fillStyle = '#FFF';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const startX = baseW - (pillW/2) - (totalTargetW/2) + 12; // Balanced for optial curve centering
-    ctx.fillText(baseMeta, startX, pillH/2 + 2);
+    // Render Logic: Drawing segments with vector dots
+    let curHUDRenderX = baseW - (pillW/2) - (totalTargetW/2) + 10;
+    const hudCenterY = pillH / 2 + 1;
 
-    // Draw Extra Cluster Pill (V8.8 Matched Scale)
-    if (extraCount > 0) {
-        const pillX = startX + baseMetaW + 10; // Better separation
-        const pillY = pillH/2 - (extraPillH/2) + 2; 
+    segments.forEach((seg, i) => {
+        // Draw Text
+        ctx.font = `900 ${hudFontSize}px monalqo, sans-serif`;
+        ctx.letterSpacing = hudSpacing;
+        ctx.fillStyle = '#FFF';
+        ctx.fillText(seg, curHUDRenderX, hudCenterY);
+        curHUDRenderX += segmentWidths[i];
+
+        // Draw Vector Dot if not last
+        if (i < segments.length - 1) {
+            const dotX = curHUDRenderX + (dotGap / 2) - 1; // Center of the gap
+            ctx.beginPath();
+            ctx.arc(dotX, hudCenterY, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = tokens.primary;
+            ctx.globalAlpha = 0.8;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            curHUDRenderX += dotGap;
+        }
+    });
+
+    // Draw Extra Cluster Pill
+    if (!isManga && extraCount > 0) {
+        const pillX = curHUDRenderX + 12;
+        const pillY = hudCenterY - (extraPillH / 2);
         ctx.beginPath();
         ctx.roundRect(pillX, pillY, extraPillW, extraPillH, 12);
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
         ctx.fill();
-        
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 1;
         ctx.stroke();
-        
-        ctx.font = '900 14px monalqo, sans-serif';
+
+        ctx.font = `900 ${hudFontSize - 2}px monalqo, sans-serif`;
         ctx.letterSpacing = '0.5px';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#FFF';
@@ -243,44 +269,69 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     }
     ctx.restore();
 
-    // C. DYNAMIC HUB ORCHESTRATION (PERIMETER LOCK)
-    let fSize = 100;
+    // C. DYNAMIC HUB ORCHESTRATION (THE ARCHIVAL PERIMETER)
+    let fSize = 110; // High-fidelity scale
     let lines = [];
     let lH = 0;
-    while (fSize > 40) {
-        ctx.font = `900 ${fSize}px digitalgalaxy, sans-serif`;
-        ctx.letterSpacing = '-5px';
+    let finalSpacingVal = 0;
+    while (fSize > 35) {
+        ctx.font = `900 ${fSize}px monalqo, sans-serif`;
+        const spacing = fSize > 70 ? 0.4 : (fSize > 40 ? 0.8 : 1.2);
+        finalSpacingVal = spacing;
+        ctx.letterSpacing = `${spacing}px`;
+        
         lines = []; let cur = '';
-        for (let w of cleanTitle.split(' ')) {
-            if (ctx.measureText(cur + w + ' ').width > contentW) { lines.push(cur.trim()); cur = w + ' '; }
-            else cur += w + ' ';
+        const words = cleanTitle.split(' ');
+        for (let w of words) {
+            const testLine = cur + w + ' ';
+            if (ctx.measureText(testLine).width > contentW) {
+                if (cur) lines.push(cur.trim());
+                cur = w + ' ';
+            } else {
+                cur += w + ' ';
+            }
         }
-        lines.push(cur.trim());
-        lH = fSize * 0.95;
-        if (lines.length <= 2) break;
+        if (cur) lines.push(cur.trim());
+        
+        lH = fSize * 0.96;
+        const totalTitleH = lines.length * lH;
+        
+        // CRITICAL: Individual line width check
+        const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > contentW);
+        
+        // Break if fits in 3 lines, within reasonable height, and NO line clips
+        if (lines.length <= 3 && totalTitleH < 220 && !isAnyLineTooWide) break;
         fSize -= 5;
     }
 
     // Grid Metrics
     const titleH = lines.length * lH;
     const podH = 60;
-    const gap = 30;
+    const gap = 35; // Breathing room
     
-    // Calculate Synopsis space within the 560px Poster Perimeter
-    const synH = Math.min(260, pH - titleH - podH - (gap * 2) - 20); 
+    // Synopsis allocation
+    const synH = Math.min(240, pH - titleH - podH - (gap * 2) - 40); 
     const totalContentH = titleH + gap + podH + gap + synH;
     
-    // Perfect Centering within Poster Height (pY=60 to 620)
-    const startY = pY + (pH - totalContentH) / 2;
+    // Centering with optical balance
+    const startY = pY + (pH - totalContentH) / 2 + 10;
+    let curPlotY = startY;
 
     // Draw Title
+    ctx.save();
+    ctx.font = `900 ${fSize}px monalqo, sans-serif`;
+    ctx.letterSpacing = `${finalSpacingVal}px`;
+    ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#FFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 15;
     lines.forEach((l, i) => {
-        ctx.fillText(l, contentX, startY + (i * lH)); 
+        ctx.fillText(l, contentX, curPlotY + (i * lH));
     });
-    let curY = startY + titleH + gap;
+    ctx.restore();
+
+    let curY = curPlotY + titleH + gap;
     let podX = contentX;
 
     // C. STAT CLOUD (V9.6 UNIVERSAL ARCHITECTURE)
@@ -505,7 +556,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     
     // WATERMARK Alignment
     ctx.textAlign = 'right';
-    ctx.font = '800 11px digitalgalaxy, sans-serif';
+    ctx.font = '800 11px monalqo, sans-serif';
     ctx.letterSpacing = '6px';
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillText('ANIMUSE ARCHIVES', baseW - 50, footerY + 20); 

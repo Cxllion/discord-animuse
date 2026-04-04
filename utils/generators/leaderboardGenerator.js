@@ -35,10 +35,10 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     // Helper: Fit Text
     const fitText = (ctx, text, maxWidth, initialFontSize) => {
         let fontSize = initialFontSize;
-        ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
+        ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
         while (ctx.measureText(text).width > maxWidth && fontSize > 10) {
             fontSize -= 2;
-            ctx.font = `900 ${fontSize}px digitalgalaxy, sans-serif`;
+            ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
         }
         return fontSize;
     };
@@ -145,7 +145,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         const centerY = y - 5;
 
         if (isCustom) {
-            ctx.font = '900 13px digitalgalaxy, sans-serif';
+            ctx.font = '900 13px monalqo, sans-serif';
             const hW = ctx.measureText(text).width + 60; // Wider padding
             ctx.save();
             ctx.fillStyle = PILL_COLOR;
@@ -160,7 +160,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '900 13px digitalgalaxy, sans-serif';
+        ctx.font = '900 13px monalqo, sans-serif';
         ctx.fillStyle = TEXT_COLOR;
         ctx.letterSpacing = '4px';
         // Draw text at centerY, with +1px optical adjustment
@@ -216,7 +216,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.letterSpacing = '0px';
     const nameStr = (challengerName || challenger.username).toUpperCase();
     const nameSize = fitText(ctx, nameStr, i1.w - 40, 24);
-    ctx.font = `900 ${nameSize}px digitalgalaxy, sans-serif`;
+    ctx.font = `900 ${nameSize}px monalqo, sans-serif`;
     ctx.fillText(nameStr, cX, avY + avR * 2 + 55);
 
     // Stats
