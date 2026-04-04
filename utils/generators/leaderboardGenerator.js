@@ -36,9 +36,13 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const fitText = (ctx, text, maxWidth, initialFontSize) => {
         let fontSize = initialFontSize;
         ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
+        const spacing = fontSize > 70 ? 0.4 : 0.8;
+        ctx.letterSpacing = `${spacing}px`;
+
         while (ctx.measureText(text).width > maxWidth && fontSize > 10) {
-            fontSize -= 2;
+            fontSize -= 1;
             ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
+            ctx.letterSpacing = `${fontSize > 70 ? 0.4 : 0.8}px`;
         }
         return fontSize;
     };

@@ -193,12 +193,12 @@ const generateActivityCard = async (userMeta, activityData) => {
     const availableMiddleH = bottomPinY - (topPinY + identityVisualH);
 
     // Dynamic Title Fitting Loop (V6 Elite Precision)
-    let fSize = 135; 
+    let fSize = 145; 
     let lines = [];
     let lH = 0;
     let finalSpacingVal = 0;
     
-    while (fSize > 18) {
+    while (fSize > 16) {
         ctx.font = `900 ${fSize}px monalqo, sans-serif`;
         const spacing = fSize > 70 ? 0.4 : (fSize > 40 ? 0.8 : 1.2);
         finalSpacingVal = spacing;
@@ -208,13 +208,11 @@ const generateActivityCard = async (userMeta, activityData) => {
         let cur = '';
         const words = cleanTitle.split(' ');
         for (const w of words) {
-            // Check if adding this word exceeds width
             if (ctx.measureText(cur + w + ' ').width > cW) {
                 if (cur) {
                     lines.push(cur.trim());
                     cur = w + ' ';
                 } else {
-                    // Single word is too wide! Don't push yet, let the font size decrease handle it
                     cur = w + ' '; 
                 }
             } else {
@@ -225,15 +223,13 @@ const generateActivityCard = async (userMeta, activityData) => {
         
         lH = fSize * 0.94; 
         const titleH = lines.length * lH;
-
-        // CRITICAL: Final width-safety check
         const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > cW);
 
         // Break if: 
-        // 1. Fits in 3 lines or less
-        // 2. Fits within the available vertical height with a 32px safety buffer
+        // 1. Fits in 4 lines or less (Increased for cinematic density)
+        // 2. Fits within the available vertical height with a tighter buffer
         // 3. NO individual line is wider than the container
-        if (lines.length <= 3 && titleH <= availableMiddleH - 32 && !isAnyLineTooWide) break;
+        if (lines.length <= 4 && titleH <= availableMiddleH - 12 && !isAnyLineTooWide) break;
         fSize -= 1;
     }
 

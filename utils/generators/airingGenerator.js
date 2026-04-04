@@ -401,14 +401,16 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     const availableH = cardBottomBoundary - topRowBottom;
 
     // --- 6. TITLE ---
-    let fontSize = 52; 
-    const maxLines = 3; // Standardized to 3 Lines per user request
+    let fontSize = 58; 
+    const maxLines = 4; // Increased for better use of negative space
     let lines = [];
     const maxTitleW = contentW;
 
-    while (fontSize > 20) {
+    while (fontSize > 18) {
         ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
-        ctx.letterSpacing = '-1.2px';
+        const spacing = fontSize > 70 ? 0.4 : (fontSize > 40 ? 0.8 : 1.2);
+        ctx.letterSpacing = `${spacing}px`;
+
         const words = cleanTitle.split(' ');
         lines = [];
         let cur = '';
@@ -427,15 +429,16 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
         }
         if (cur) lines.push(cur.trim());
 
-        const totalTitleH = lines.length * (fontSize * 0.9);
+        const totalTitleH = lines.length * (fontSize * 0.94);
         const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > maxTitleW);
 
-        // Break if: fits in 3 lines, respects available height, and NO line clips
-        if (lines.length <= 3 && totalTitleH < availableH - 40 && !isAnyLineTooWide) break;
-        fontSize -= 2;
+        // Break if: fits in 4 lines, respects available height, and NO line clips
+        if (lines.length <= maxLines && totalTitleH < availableH - 18 && !isAnyLineTooWide) break;
+        fontSize -= 1;
     }
 
-    const lineHeight = fontSize * 0.88;
+    ctx.letterSpacing = `${fontSize > 70 ? 0.4 : (fontSize > 40 ? 0.8 : 1.2)}px`;
+    const lineHeight = fontSize * 0.94;
     const titleBlockH = lines.length * lineHeight;
     const genreH = 32;
     const verticalGap = 20;
@@ -449,7 +452,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
     ctx.save();
     ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
-    ctx.letterSpacing = '-1.2px';
+    ctx.letterSpacing = `${fontSize > 70 ? 0.4 : (fontSize > 40 ? 0.8 : 1.2)}px`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     

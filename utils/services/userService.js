@@ -258,7 +258,7 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
             .eq('media_id', String(mediaId))
             .eq('channel_id', String(channelId))
             .not('message_id', 'is', null) // Prioritize posts we can actually delete
-            .gt('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Binge merge: 24h window (don't delete old messages)
+            .gt('posted_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // Extended window: 48h for better media deduplication
             .order('posted_at', { ascending: false })
             .limit(1)
             .maybeSingle();

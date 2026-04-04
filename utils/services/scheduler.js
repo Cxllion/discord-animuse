@@ -46,10 +46,11 @@ const checkAiringAnime = async (client) => {
         logger.info('[Scheduler] Pulse: Airing Anime check started.', 'Scheduler');
         const monitorIds = await getAnimeDueForUpdate();
         if (monitorIds.length === 0) {
-            logger.info('[Scheduler] No airing anime to monitor at this time.', 'Scheduler');
+            logger.info('[Scheduler] No airing anime to monitor in the current 20m window.', 'Scheduler');
             return;
         }
 
+        logger.info(`[Scheduler] Tracking ${monitorIds.length} suspected update(s). Scanning AniList archives...`, 'Scheduler');
         for (let i = 0; i < monitorIds.length; i += BATCH_SIZE) {
             const batch = monitorIds.slice(i, i + BATCH_SIZE);
             await processBatch(client, batch);
@@ -100,24 +101,31 @@ const processBatch = async (client, ids) => {
                 const nextEp = media.nextAiringEpisode;
                 const trackedState = await getTrackedAnimeState(media.id);
                 const knownLastEpisode = trackedState ? trackedState.last_episode : 0;
+                const title = media.title?.english || media.title?.romaji || media.id;
 
                 const nextAiringDate = nextEp
                     ? new Date(nextEp.airingAt * 1000).toISOString()
                     : null;
 
+                // Case A: Next episode is far in the future or media has ended
                 if (!nextEp || nextEp.timeUntilAiring > 1200) {
                     if (nextAiringDate) {
                         await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
                     } else if (media.status === 'FINISHED') {
-                        logger.info(`[Scheduler] ${media.id} has finished airing. Removing ${media.id} from all archives. ♡`, 'Scheduler');
+                        logger.info(`[Scheduler] ${title} (${media.id}) has finished airing. Removing trackers. ♡`, 'Scheduler');
                         await removeAllTrackersForAnime(media.id);
                     }
                     continue;
                 }
 
+                // Case B: Imminent Update Detectec
                 if (nextEp.episode > knownLastEpisode) {
+                    logger.info(`[Scheduler] 🚨 Update detected for ${title}! Sending Episode ${nextEp.episode} alerts.`, 'Scheduler');
                     await sendNotifications(client, media, nextEp);
                     await updateTrackedAnimeState(media.id, nextEp.episode, nextAiringDate);
+                } else {
+                    // Just refresh state for the upcoming episode scan
+                    await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
                 }
             } catch (mediaError) {
                 logger.error(`[Scheduler] Error processing media ${media.id}:`, mediaError, 'Scheduler');
@@ -164,22 +172,28 @@ const sendNotifications = async (client, media, episode, options = {}) => {
 
             const config = await fetchConfig(guildId);
             const targetChannelId = options.forceChannelId || (config ? config.airing_channel_id : null);
-            if (!targetChannelId) continue;
+            if (!targetChannelId) {
+                logger.warn(`[Scheduler] Skipping airing notification for Guild ${guildId}: No airing_channel_id configured. ♡`, 'Scheduler');
+                continue;
+            }
 
             const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
-            if (!channel) continue;
+            if (!channel) {
+                logger.warn(`[Scheduler] Skipping airing notification for Guild ${guildId}: Configured channel is missing or inaccessible.`, 'Scheduler');
+                continue;
+            }
 
             const me = guild.members.me;
             const permissions = channel.permissionsFor(me);
             
-            if (!permissions || !permissions.has(['ViewChannel', 'SendMessages', 'EmbedLinks'])) {
+            if (!permissions || !permissions.has(['ViewChannel', 'SendMessages', 'EmbedLinks', 'AttachFiles'])) {
+                logger.warn(`[Scheduler] Missing Permissions in ${guildId} #${channel.name}: SendMessages, EmbedLinks, AttachFiles.`, 'Scheduler');
                 continue;
             }
 
             let content = ''; 
             if (userIds.length > 0) {
-                const pings = userIds.map(uid => `<@${uid}>`).join(' ');
-                content = `[⠀](https://discord.com "${pings}")`;
+                content = userIds.map(uid => `<@${uid}>`).join(' ');
             }
 
             const title = media.title.english || media.title.romaji;
@@ -338,15 +352,23 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         const recentPost = await findRecentActivityPostInDB(userRow.user_id, g.media.id, channel.id);
         let finalProgress = displayProgress;
         
-        if (recentPost && recentPost.message_id && g.status.toLowerCase() === (recentPost.status || '').toLowerCase()) {
-            const oldNums = (recentPost.progress || '').split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-            const newNums = displayProgress.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-            if (oldNums.length > 0 && newNums.length > 0) {
-                const combined = [...oldNums, ...newNums].sort((a,b) => a - b);
-                finalProgress = combined[0] === combined[combined.length-1] ? `${combined[0]}` : `${combined[0]}-${combined[combined.length-1]}`;
-                const oldMsg = await channel.messages.fetch(recentPost.message_id).catch(() => null);
-                if (oldMsg) await oldMsg.delete().catch(() => null);
+        if (recentPost && recentPost.message_id) {
+            const isStatusMatching = g.status.toLowerCase() === (recentPost.status || '').toLowerCase();
+            
+            // Progress Merging Logic (Active only for same-status updates)
+            if (isStatusMatching) {
+                const oldNums = (recentPost.progress || '').split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                const newNums = displayProgress.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                if (oldNums.length > 0 && newNums.length > 0) {
+                    const combined = [...oldNums, ...newNums].sort((a,b) => a - b);
+                    finalProgress = combined[0] === combined[combined.length-1] ? `${combined[0]}` : `${combined[0]}-${combined[combined.length-1]}`;
+                }
             }
+            
+            // 🛡️ [Cyber Librarian] Absolute Deduplication: One Media = One Message
+            // Always delete the older card to ensure the feed accurately reflects the LATEST state.
+            const oldMsg = await channel.messages.fetch(recentPost.message_id).catch(() => null);
+            if (oldMsg) await oldMsg.delete().catch(() => null);
         }
 
         const userColor = await getUserColor(userRow.user_id, guildId);
