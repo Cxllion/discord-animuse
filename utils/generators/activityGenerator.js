@@ -95,14 +95,6 @@ const generateActivityCard = async (userMeta, activityData) => {
     // --- 💎 Improvement: Binge Mode Accent Glow ---
     if (activityData.bingeMode) {
         ctx.save();
-        ctx.strokeStyle = tokens.primary + '30';
-        ctx.lineWidth = 6;
-        ctx.setLineDash([15, 8]); // Tech dash style
-        ctx.roundRect(4, 4, baseW - 8, baseH - 8, 28);
-        ctx.stroke();
-        ctx.restore();
-        
-        ctx.save();
         ctx.fillStyle = tokens.primary + '20';
         ctx.font = '900 120px monalqo, sans-serif';
         ctx.letterSpacing = '20px';
