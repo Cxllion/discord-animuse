@@ -690,14 +690,24 @@ const getUserActivity = async (userName) => {
 const getUserMediaScore = async (userId, mediaId) => {
     const query = `
     query ($userId: Int, $mediaId: Int) {
+        User(id: $userId) {
+            mediaListOptions {
+                scoreFormat
+            }
+        }
         MediaList(userId: $userId, mediaId: $mediaId) {
-            score(format: POINT_10_DECIMAL)
+            score
         }
     }
     `;
     try {
         const data = await queryAnilist(query, { userId, mediaId });
-        return data.MediaList ? data.MediaList.score : null;
+        if (!data.MediaList) return null;
+        
+        return {
+            score: data.MediaList.score,
+            format: data.User?.mediaListOptions?.scoreFormat || 'POINT_10_DECIMAL'
+        };
     } catch (e) {
         logger.error(`[AniList] Error fetching media score for user ${userId} and media ${mediaId}:`, e, 'AniList');
         return null;

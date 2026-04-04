@@ -8,7 +8,7 @@ const CONFIG = require('../config');
  * All elements are grouped into self-contained blocks for layout precision.
  */
 const generateActivityCard = async (userMeta, activityData) => {
-    const SCALE = 2;
+    const SCALE = 2.5;
     const baseW = 900;
     const baseH = 300;
     const width = baseW * SCALE;
@@ -17,6 +17,10 @@ const generateActivityCard = async (userMeta, activityData) => {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
+    
+    // Maximize interpolation quality
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     const media = activityData.media || {};
     const tokens = generateColorTokens(media.coverImage?.color || userMeta.themeColor || CONFIG.COLORS.PRIMARY);
@@ -26,7 +30,8 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.beginPath();
     ctx.roundRect(0, 0, baseW, baseH, 32);
     ctx.clip();
-
+    
+    // Fill background
     ctx.fillStyle = tokens.surface;
     ctx.fillRect(0, 0, baseW, baseH);
 
@@ -61,6 +66,27 @@ const generateActivityCard = async (userMeta, activityData) => {
     g1.addColorStop(1, 'transparent');
     ctx.fillStyle = g1;
     ctx.fillRect(0, 0, baseW, baseH);
+
+    // --- 💎 Improvement: Binge Mode Accent Glow ---
+    if (activityData.bingeMode) {
+        ctx.save();
+        ctx.strokeStyle = tokens.primary + '30';
+        ctx.lineWidth = 6;
+        ctx.setLineDash([15, 8]); // Tech dash style
+        ctx.roundRect(4, 4, baseW - 8, baseH - 8, 28);
+        ctx.stroke();
+        ctx.restore();
+        
+        ctx.save();
+        ctx.fillStyle = tokens.primary + '20';
+        ctx.font = '900 120px monalqo, sans-serif';
+        ctx.letterSpacing = '20px';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.globalAlpha = 0.08; // Ghost text background
+        ctx.fillText('BINGE', baseW / 2, baseH / 2);
+        ctx.restore();
+    }
 
     // ─── 3. POSTER ───────────────────────────────────────────────────────────
     const pH = 240;
@@ -130,16 +156,16 @@ const generateActivityCard = async (userMeta, activityData) => {
     shield.addColorStop(0, 'rgba(0,0,0,0)');
     shield.addColorStop(0.25, 'rgba(0,0,0,0.45)');
     shield.addColorStop(1, 'rgba(0,0,0,0.65)');
-    ctx.fillStyle = shield;
-    ctx.fillRect(cX - 44, 0, baseW, baseH);
     ctx.restore();
+
 
 
     // ── Pre-compute Title for vertical centering ──────────────────────────────
     const rawTitle = media.title?.english || media.title?.romaji || 'Unknown Title';
     const { title: cleanTitle } = parseMetadata(rawTitle);
 
-    let fSize = 60;
+    // DYNAMIC FONT SCALING: Start larger for short titles to fill the space
+    let fSize = cleanTitle.length < 12 ? 82 : (cleanTitle.length < 20 ? 72 : 62);
     let lines = [];
     let lH = 0;
     let letterSpacingValue = '0px';
@@ -169,17 +195,51 @@ const generateActivityCard = async (userMeta, activityData) => {
         fSize -= 4;
     }
 
-    // Block heights (fixed)
+    // ─── 5. EPIC LAYOUT V3: TOTAL VOLUME FILL ────────────────────────────────
+    // Strategy: We maximize the TITLE size until it fills the vertical room.
     const avatarSize = 46;
-    const identityBlockH = avatarSize + 6 + 20; // avatar + name gap + verb pill
-    const identityToTitle = 8;  // SHIFTED UP: tighter to the ID block
-    const titleBlockH = Math.min(lines.length, 2) * lH;
-    const titleToStats = 26; // SHIFTED DOWN: more room above the scorepod
-    const statsBlockH = 38;
-    const totalContentH = identityBlockH + identityToTitle + titleBlockH + titleToStats + statsBlockH;
+    const identityBlockH = avatarSize + 6 + 20; 
+    const statsBlockH = 38;                     
+    const tightGap = 8; // Ultra-tight elite spacing
 
-    // Center the whole content block within the poster's vertical span
-    let curY = pY + Math.max(8, (pH - totalContentH) / 2);
+    // We search for the sweet spot: Max font size that fits Width AND Height
+    fSize = 150; // Start extreme
+    while (fSize > 20) {
+        ctx.font = `900 ${fSize}px monalqo, sans-serif`;
+        const spacing = fSize > 70 ? 0.4 : (fSize > 40 ? 0.8 : 1.2);
+        ctx.letterSpacing = `${spacing}px`;
+
+        lines = [];
+        let cur = '';
+        const words = cleanTitle.split(' ');
+        for (const w of words) {
+            if (ctx.measureText(cur + w + ' ').width > cW) {
+                if (cur) lines.push(cur.trim());
+                cur = w + ' ';
+            } else {
+                cur += w + ' ';
+            }
+        }
+        if (cur) lines.push(cur.trim());
+        
+        lH = fSize * 0.95; 
+        const titleH = lines.length * lH;
+        const totalH = identityBlockH + titleH + statsBlockH + (tightGap * 2);
+
+        // Break if it finally fits within the card height (pH - padding) 
+        // AND doesn't exceed 3 lines (maintain readability)
+        if (lines.length <= 3 && totalH <= pH - 10) break;
+        fSize -= 1;
+    }
+
+    const titleBlockH = lines.length * lH;
+    const totalContentH = identityBlockH + tightGap + titleBlockH + tightGap + statsBlockH;
+
+    // Fixed start to ensure we aren't an 'island' in the middle
+    // Center the whole block in the poster area
+    let curY = pY + (pH - totalContentH) / 2;
+    const identityToTitle = tightGap;
+    const titleToStats = tightGap;
 
     // ─── BLOCK A: User Identity (Avatar + Name + Status Pill) ────────────────
     try {
@@ -200,12 +260,27 @@ const generateActivityCard = async (userMeta, activityData) => {
     } catch (e) {}
 
     // Score Heart Badge (overlapping avatar, top-left corner)
-    if (activityData.score !== null && activityData.score !== undefined) {
+    const s = activityData.score;
+    const userFormat = activityData.scoreFormat;
+
+    if (s && s > 0) {
         let scoreStr = '';
-        const s = activityData.score;
-        if (s > 10) scoreStr = `${s}`;
-        else if (s <= 5 && Number.isInteger(s)) scoreStr = `${s}/5`;
-        else scoreStr = `${s}/10`;
+        switch(userFormat) {
+            case 'POINT_100': scoreStr = `${s}`; break;
+            case 'POINT_10_DECIMAL': scoreStr = `${s}/10`; break;
+            case 'POINT_10': scoreStr = `${s}/10`; break;
+            case 'POINT_5': 
+                // Star notation for preference (3.5 -> 4 stars)
+                scoreStr = "★".repeat(Math.round(s)) + "☆".repeat(5 - Math.round(s));
+                break;
+            case 'POINT_3':
+                // Smiley notation
+                if (s === 1) scoreStr = '☹';
+                else if (s === 2) scoreStr = '😐';
+                else scoreStr = '😊';
+                break;
+            default: scoreStr = `${s}`;
+        }
 
         ctx.save();
         ctx.font = '800 11px monalqo, sans-serif';
@@ -305,24 +380,40 @@ const generateActivityCard = async (userMeta, activityData) => {
     else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
     else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${isManga ? 'READING' : 'WATCHING'}`;
 
+    // --- 💎 Improvement: Status-Aware Color Coding ---
+    const lStatus = (activityData.status || '').toLowerCase();
+    let statusColors = { fill: 'rgba(255,255,255,0.13)', stroke: 'rgba(255,255,255,0.22)' };
+    
+    if (lStatus.includes('completed') || (activityData.verb || '').includes('FINISHED')) {
+        statusColors = { fill: 'rgba(46, 204, 113, 0.16)', stroke: 'rgba(46, 204, 113, 0.5)' }; // Green
+    } else if (lStatus.includes('dropped')) {
+        statusColors = { fill: 'rgba(231, 76, 60, 0.16)', stroke: 'rgba(231, 76, 60, 0.5)' }; // Red
+    } else if (lStatus.includes('paused')) {
+        statusColors = { fill: 'rgba(241, 196, 15, 0.16)', stroke: 'rgba(241, 196, 15, 0.5)' }; // Yellow
+    } else if (lStatus.includes('watch') || lStatus.includes('read')) {
+        statusColors = { fill: 'rgba(52, 152, 219, 0.16)', stroke: 'rgba(52, 152, 219, 0.5)' }; // Blue
+    }
+
+    const finalVerb = (activityData.displayVerb || displayVerb || 'WATCHED').toUpperCase();
+
     ctx.save();
     ctx.font = '800 11px monalqo, sans-serif';
     ctx.letterSpacing = '1px';
-    const vw = ctx.measureText(displayVerb).width + 22;
+    const vw = ctx.measureText(finalVerb).width + 22;
     const vh = 20;
     const vx = txtX;
     const vy = curY + 27;
     ctx.beginPath();
     ctx.roundRect(vx, vy, vw, vh, 5);
-    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    ctx.fillStyle = statusColors.fill;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.strokeStyle = statusColors.stroke;
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(displayVerb, vx + vw / 2, vy + vh / 2 + 0.5);
+    ctx.fillText(finalVerb, vx + vw / 2, vy + vh / 2 + 0.5);
     ctx.restore();
 
     curY += avatarSize + identityToTitle;
@@ -362,7 +453,11 @@ const generateActivityCard = async (userMeta, activityData) => {
         if (fill > 0) {
             ctx.save();
             ctx.clip();
-            ctx.fillStyle = '#FFF';
+            ctx.clip();
+            const g = ctx.createLinearGradient(0, -size, 0, size);
+            g.addColorStop(0, '#FFF');
+            g.addColorStop(1, tokens.primary);
+            ctx.fillStyle = g;
             ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
             ctx.restore();
         }
@@ -719,7 +814,33 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillText('ANIMUSE ACTIVITY', baseW - 36, baseH - 22);
 
-    return await canvas.encode('webp', { quality: 90 });
+    // --- 💎 Improvement: Subtle Scanline Tech Layer ---
+    // (Clipped to main card body to fix the 'white corners' artifact)
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, baseW, baseH, 32);
+    ctx.clip();
+    ctx.globalAlpha = 0.04; 
+    ctx.fillStyle = '#FFF';
+    for (let i = 0; i < baseH; i += 3) {
+        ctx.fillRect(0, i, baseW, 1.2);
+    }
+    ctx.restore();
+
+    // --- 🛡️ Glyph Guard: Card Border for anti-alias cleanup ---
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, baseW, baseH, 32);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Inner Glow Cuff
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    return await canvas.encode('webp', { quality: 95 });
 };
 
 module.exports = { generateActivityCard };
