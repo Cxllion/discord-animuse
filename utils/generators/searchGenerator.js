@@ -79,7 +79,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
 
     const rawTitleStr = media?.title?.english || media?.title?.romaji || media?.title?.native || 'Unknown Record';
     const { title: rawCleanTitle, tags: metadataTags } = parseMetadata(rawTitleStr);
-    const cleanTitle = rawCleanTitle.toUpperCase();
+    // Standardize punctuation spacing
+    const cleanTitle = rawCleanTitle.replace(/\s*:\s*/g, ': ').toUpperCase().trim();
 
     try {
         const coverUrl = media?.coverImage?.extraLarge || media?.coverImage?.large;
@@ -197,7 +198,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         return w;
     });
 
-    const dotGap = 20; // Space for the vector dot
+    const dotGap = 45; // Enhanced spacing for metadata pillars
     const totalHudW = totalTextW + (segments.length - 1) * dotGap;
     
     // Calculate Extra Pill if needed (Anime only)
@@ -209,11 +210,12 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         extraPillW = ctx.measureText(`+${extraCount}`).width + 18; 
     }
 
-    const totalTargetW = totalHudW + (extraCount > 0 ? extraPillW + 12 : 0);
-    const pillW = Math.max(400, totalTargetW + 120);
+    const totalTargetW = totalHudW + (extraCount > 0 ? extraPillW + 15 : 0);
+    const pillPadding = 120; // Internal horizontal buffer
+    const pillW = totalTargetW + pillPadding; // Dynamically sized to text!
     const pillH = 55; 
     
-    // The Bleeding Path (Premium Glass Tab)
+    // The Bleeding Path (Dynamic Glass Tab)
     ctx.beginPath();
     ctx.moveTo(baseW, 0); 
     ctx.lineTo(baseW - pillW, 0); 
@@ -224,8 +226,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.fill();
 
-    // Render Logic: Drawing segments with vector dots
-    let curHUDRenderX = baseW - (pillW/2) - (totalTargetW/2) + 10;
+    // Render Logic: Centered perfectly within the dynamic tab
+    let curHUDRenderX = baseW - pillW + (pillPadding / 2);
     const hudCenterY = pillH / 2 + 1;
 
     segments.forEach((seg, i) => {
@@ -241,8 +243,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
             const dotX = curHUDRenderX + (dotGap / 2) - 1; // Center of the gap
             ctx.beginPath();
             ctx.arc(dotX, hudCenterY, 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = tokens.primary;
-            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = '#FFF'; // Muted white for neutrality
+            ctx.globalAlpha = 0.4;
             ctx.fill();
             ctx.globalAlpha = 1.0;
             curHUDRenderX += dotGap;
@@ -293,7 +295,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         }
         if (cur) lines.push(cur.trim());
         
-        lH = fSize * 0.96;
+        lH = fSize * 0.92; // Tighter Leading
         const totalTitleH = lines.length * lH;
         
         // CRITICAL: Individual line width check
@@ -307,15 +309,16 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     // Grid Metrics
     const titleH = lines.length * lH;
     const podH = 60;
-    const gap = 35; // Breathing room
+    const gap = 20; 
+    const finalBuffer = 35; // Final safety margin at the bottom
     
-    // Synopsis allocation
-    const synH = Math.min(240, pH - titleH - podH - (gap * 2) - 40); 
-    const totalContentH = titleH + gap + podH + gap + synH;
+    // Synopsis allocation (Dynamic space filling)
+    const synH = Math.min(260, pH - titleH - podH - gap - 100 - finalBuffer); 
+    const totalContentH = titleH + gap + podH + 100 + synH;
     
-    // Centering with optical balance
+    // Centering with layout-aware balance
     const startY = pY + (pH - totalContentH) / 2 + 10;
-    let curPlotY = startY;
+    let curHUDRenderY = startY;
 
     // Draw Title
     ctx.save();
@@ -327,11 +330,11 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 15;
     lines.forEach((l, i) => {
-        ctx.fillText(l, contentX, curPlotY + (i * lH));
+        ctx.fillText(l, contentX, curHUDRenderY + (i * lH));
     });
     ctx.restore();
 
-    let curY = curPlotY + titleH + gap;
+    let curY = curHUDRenderY + titleH + gap;
     let podX = contentX;
 
     // C. STAT CLOUD (V9.6 UNIVERSAL ARCHITECTURE)
@@ -454,7 +457,7 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
     ctx.fillText(statusClean, podX + stW/2, curY + 30);
     ctx.restore();
 
-    curY += 90; 
+    curY += 100; // Final safety gap before synopsis
 
     // D. SYNOPSIS ZONE (V9.6: High Precision Tyopgraphy)
     ctx.letterSpacing = '0px'; 
@@ -484,8 +487,8 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         else desc = words.slice(0, targetLimit).join(' ') + '...';
     }
     
-    // Phase 2: Container-aware scaling & line calculation
-    let sSize = 25;
+    // Phase 2: Elite Synopsis Scaling (Starts at 32px to fill space)
+    let sSize = 32;
     let sLines = [], sLead = 0;
     const calculateLines = (text, size) => {
         ctx.font = `${size}px monalqo, sans-serif`;
@@ -498,9 +501,9 @@ const generateSearchCard = async (media, userColor = '#FFACD1') => {
         return lines;
     };
 
-    while (sSize > 18) {
+    while (sSize > 15) {
         sLines = calculateLines(desc, sSize);
-        sLead = sSize * 1.5;
+        sLead = sSize * 1.45; // Tighter leading for premium legibility
         if (sLines.length * sLead <= synH) break;
         sSize -= 1;
     }

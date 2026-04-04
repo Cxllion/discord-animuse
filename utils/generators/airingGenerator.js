@@ -395,9 +395,14 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     }
 
 
-    // --- 5. TITLE ---
+    // --- 5. VERTICAL METRICS ---
+    const topRowBottom = margin + podH;
+    const cardBottomBoundary = baseH - margin - 15; 
+    const availableH = cardBottomBoundary - topRowBottom;
+
+    // --- 6. TITLE ---
     let fontSize = 52; 
-    const maxLines = 2;
+    const maxLines = 3; // Standardized to 3 Lines per user request
     let lines = [];
     const maxTitleW = contentW;
 
@@ -436,10 +441,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     const verticalGap = 20;
     const totalContentH = titleBlockH + verticalGap + genreH;
     
-    // Center it between top row pods and the bottom watermark area
-    const topRowBottom = margin + podH;
-    const cardBottomBoundary = baseH - margin - 15; 
-    const availableH = cardBottomBoundary - topRowBottom;
+    // Centering Logic
     
     const contentStartOffset = Math.max(0, (availableH - totalContentH) / 2);
     const titleY = topRowBottom + contentStartOffset;

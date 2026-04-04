@@ -234,8 +234,11 @@ const generateActivityCard = async (userMeta, activityData) => {
         lH = fSize * 0.94; 
         const titleH = lines.length * lH;
 
+        // CRITICAL: Final width-safety check
+        const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > cW);
+
         // Break if: 
-        // 1. Fits in 3 lines or less (User requested up to 3)
+        // 1. Fits in 3 lines or less
         // 2. Fits within the available vertical height with a 32px safety buffer
         // 3. NO individual line is wider than the container
         if (lines.length <= 3 && titleH <= availableMiddleH - 32 && !isAnyLineTooWide) break;
