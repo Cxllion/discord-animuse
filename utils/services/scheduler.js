@@ -488,6 +488,44 @@ const pulseUserActivity = async (client, guildId, userRow, channel) => {
     }
 };
 
+/**
+ * PERIODIC TRACKER SYNC (V1)
+ * Automatically adds Releasing/Upcoming anime from a user's AniList 'Watching' list
+ * to their local bot trackers if they have enabled Auto-Sync.
+ */
+const syncAllUserTrackers = async (client) => {
+    const { getAutoSyncUsers } = require('./userService');
+    const { getWatchingList } = require('./anilistService');
+    const { addTracker } = require('../core/database');
+
+    try {
+        const users = await getAutoSyncUsers();
+        if (users.length === 0) return;
+
+        logger.info(`[Sync] Initiating Periodic Archive Sync for ${users.length} users...`, 'Scheduler');
+        
+        for (const user of users) {
+            try {
+                const watchingList = await getWatchingList(user.anilist_username);
+                const ongoing = watchingList.filter(m => ['RELEASING', 'NOT_YET_RELEASED'].includes(m.status));
+                
+                for (const anime of ongoing) {
+                    const title = anime.title.english || anime.title.romaji;
+                    await addTracker(user.guild_id, user.user_id, anime.id, title);
+                }
+                
+                // Small delay to respect AniList points
+                await new Promise(r => setTimeout(r, 1000));
+            } catch (err) {
+                logger.error(`[Sync] Failed to sync ${user.anilist_username}:`, err, 'Scheduler');
+            }
+        }
+        logger.info('[Sync] Periodic Archive Sync completed for all monitored users. ♡', 'Scheduler');
+    } catch (e) {
+        logger.error('[Sync] Global Sync Crash:', e, 'Scheduler');
+    }
+};
+
 const getPulseStatus = () => ({
     airing: lastAiringPulse,
     activity: lastActivityPulse,
@@ -495,4 +533,11 @@ const getPulseStatus = () => ({
     isActivityBusy: isActivityPolling
 });
 
-module.exports = { checkAiringAnime, checkUserActivity, pulseUserActivity, sendNotifications, getPulseStatus };
+module.exports = { 
+    checkAiringAnime, 
+    checkUserActivity, 
+    pulseUserActivity, 
+    sendNotifications, 
+    getPulseStatus,
+    syncAllUserTrackers
+};

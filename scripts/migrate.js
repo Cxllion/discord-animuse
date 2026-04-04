@@ -62,6 +62,9 @@ const initializeDatabase = async () => {
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS auto_role_bot text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS premium_role_id text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS banner_dump_channel_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS leveling_mode text DEFAULT 'BLACKLIST';`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS leveling_channels text[] DEFAULT '{}';`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS xp_level_up_message text;`);
             
             // Boutique Persistence
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_channel_id text;`);
@@ -116,6 +119,7 @@ const initializeDatabase = async () => {
             await client.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_source text DEFAULT 'DISCORD_GLOBAL';`);
             await client.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS custom_avatar_url text;`);
             await client.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS banner_source text DEFAULT 'PRESET';`);
+            await client.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_track_sync boolean DEFAULT false;`);
         } catch (e) { /* Ignore if exists */ }
 
         // 5. Create user_titles

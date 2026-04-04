@@ -57,6 +57,9 @@ const displayChannelDashboard = async (interaction, isUpdate = false) => {
 };
 
 const handleChannelDashboardInteraction = async (interaction) => {
+    // Proactively acknowledge to avoid 3s timeouts during DB fetches
+    await interaction.deferUpdate().catch(() => null);
+
     const customId = interaction.customId;
 
     if (customId === 'channel_dash_menu') {
@@ -92,7 +95,7 @@ const handleChannelDashboardInteraction = async (interaction) => {
             new ChannelSelectMenuBuilder()
                 .setCustomId(`execute_assign_${featureKey}`)
                 .setPlaceholder(`Select Channel for ${featureKey.replace(/_/g, ' ')}...`)
-                .addChannelTypes(ChannelType.GuildText)
+                .setChannelTypes(ChannelType.GuildText)
         );
         
         const row2 = new ActionRowBuilder().addComponents(
@@ -166,7 +169,7 @@ const handlePinManagement = async (interaction) => {
         new ChannelSelectMenuBuilder()
             .setCustomId('pin_select_channel')
             .setPlaceholder('Pin a channel...')
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
+            .setChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
@@ -250,7 +253,6 @@ const handleSortingControl = async (interaction, isUpdate = false, successMsg = 
 };
 
 const performChannelOrganize = async (interaction) => {
-    await interaction.deferUpdate();
     const guild = interaction.guild;
     const channelData = await getGuildChannelData(guild.id);
     const channels = await guild.channels.fetch();
@@ -329,7 +331,6 @@ const handleZoningMenu = async (interaction, isUpdate = false) => {
 };
 
 const performGhostScan = async (interaction) => {
-    await interaction.deferUpdate();
     const guild = interaction.guild;
     const channelData = await getGuildChannelData(guild.id);
     const channels = await guild.channels.fetch();
@@ -387,7 +388,6 @@ const handleArchiveMenu = async (interaction, isUpdate = false) => {
 };
 
 const performCategorySync = async (interaction) => {
-    await interaction.deferUpdate();
     const guild = interaction.guild;
     const channels = await guild.channels.fetch();
     const categories = channels.filter(c => c.type === ChannelType.GuildCategory);

@@ -49,7 +49,7 @@ const addXp = async (userId, guildId, member = null, message = null) => {
     
     // --- 1. Filter Check (Whitelist/Blacklist) ---
     if (message && config) {
-        if (config.xp_enabled === false) return;
+        if (config.leveling_enabled === false) return;
         
         const mode = config.leveling_mode || 'BLACKLIST';
         const channels = config.leveling_channels || [];

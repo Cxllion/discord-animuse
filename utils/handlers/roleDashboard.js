@@ -141,48 +141,56 @@ const displayRoleDashboard = async (interaction, isUpdate = false) => {
     }
 };
 
-const handleDashboardInteraction = async (i) => {
-    try {
-        if (i.customId === 'dash_home' || i.customId === 'role_dash_home') return await displayRoleDashboard(i, true);
+const handleChannelSelectInteractions = async (i) => {
+    if (i.customId === 'level_channel_select') {
+        const channelId = i.values[0];
+        await upsertConfig(i.guild.id, { level_up_channel_id: channelId });
+        return handleLevelSettings(i);
+    }
+    if (i.customId === 'level_filter_channels') {
+        await upsertConfig(i.guild.id, { leveling_channels: i.values });
+        return handleLevelSettings(i);
+    }
+};
 
-        if (i.isChannelSelectMenu()) {
-            if (i.customId === 'level_channel_select') {
-                const channelId = i.values[0];
-                await upsertConfig(i.guild.id, { level_up_channel_id: channelId });
-                return handleLevelSettings(i);
-            }
-            if (i.customId === 'level_filter_channels') {
-                await upsertConfig(i.guild.id, { leveling_channels: i.values });
-                return handleLevelSettings(i);
-            }
+const handleDashboardInteraction = async (i) => {
+    // Proactively acknowledge to avoid 3s timeouts during DB fetches
+    await i.deferUpdate().catch(() => null);
+
+    try {
+        // --- Navigation & Wing Routing ---
+        const choice = (i.isStringSelectMenu() && i.customId === 'role_dash_menu') ? i.values[0] : i.customId;
+
+        if (i.isChannelSelectMenu()) return await handleChannelSelectInteractions(i);
+
+        if (choice === 'opt_refresh' || i.customId === 'role_dash_home' || i.customId === 'dash_home') {
+            return await displayRoleDashboard(i, true);
         }
+        if (choice === 'opt_flush_cache') {
+            const { clearConfigCache } = require('../services/guildConfigService');
+            clearConfigCache();
+            return await handleBotInsight(i);
+        }
+        if (choice === 'opt_autoroles' || choice === 'opt_roles') return handleAutoRoles(i);
+        if (choice === 'opt_categories') return handleCategories(i);
+        if (choice === 'opt_levels') return handleLevels(i);
+        if (choice === 'opt_colors') return handleColorRoles(i);
+        if (choice === 'opt_purge') return handlePurge(i);
+        if (choice === 'opt_organize') return handleOrganizeMenu(i);
+        if (choice === 'opt_insight') return handleBotInsight(i);
+        if (choice === 'opt_admin') return handleAdminWing(i);
+        if (choice === 'opt_media') return handleMediaAiring(i);
+        if (choice === 'opt_channels') {
+            const { displayChannelDashboard } = require('./channelDashboard');
+            return displayChannelDashboard(i, true);
+        }
+        if (choice === 'opt_muses') {
+            const { displayMuseBureau } = require('./museBureau');
+            return displayMuseBureau(i, true);
+        }
+
+        // --- Select Menu Logic ---
         if (i.isStringSelectMenu()) {
-            if (i.customId === 'role_dash_menu') {
-                const choice = i.values[0];
-                if (choice === 'opt_refresh') return await displayRoleDashboard(i, true);
-                if (choice === 'opt_flush_cache') {
-                    const { clearConfigCache } = require('../services/guildConfigService');
-                    clearConfigCache();
-                    return await handleBotInsight(i);
-                }
-                if (choice === 'opt_autoroles' || choice === 'opt_roles') return handleAutoRoles(i);
-                if (choice === 'opt_categories') return handleCategories(i);
-                if (choice === 'opt_levels') return handleLevels(i);
-                if (choice === 'opt_colors') return handleColorRoles(i);
-                if (choice === 'opt_purge') return handlePurge(i);
-                if (choice === 'opt_organize') return handleOrganizeMenu(i);
-                if (choice === 'opt_insight') return handleBotInsight(i);
-                if (choice === 'opt_admin') return handleAdminWing(i);
-                if (choice === 'opt_media') return handleMediaAiring(i);
-                if (choice === 'opt_channels') {
-                    const { displayChannelDashboard } = require('./channelDashboard');
-                    return displayChannelDashboard(i, true);
-                }
-                if (choice === 'opt_muses') {
-                    const { displayMuseBureau } = require('./museBureau');
-                    return displayMuseBureau(i, true);
-                }
-            }
             if (i.customId.startsWith('cat_view_')) {
                 return handleCategoryRoles(i, i.values[0]);
             }
@@ -230,7 +238,7 @@ const handleDashboardInteraction = async (i) => {
             if (i.customId === 'level_deploy_standard') return executeLevelDeployment(i);
             if (i.customId === 'level_toggle') {
                 const config = await fetchConfig(i.guild.id);
-                await upsertConfig(i.guild.id, { xp_enabled: config.xp_enabled === false });
+                await upsertConfig(i.guild.id, { leveling_enabled: config.leveling_enabled === false });
                 return handleLevels(i);
             }
             if (i.customId === 'level_wing_settings') return handleLevelSettings(i);
@@ -302,7 +310,7 @@ const handleDashboardInteraction = async (i) => {
 
             if (i.customId === 'purge_confirm') return executePurge(i);
             if (i.customId === 'purge_dryrun') return dryRunPurge(i);
-            if (i.customId === 'organize_confirm') return executeOrganize(i);
+            if (i.customId === 'organize_confirm' || i.customId === 'organize_perform') return executeOrganize(i);
             
             if (i.customId.startsWith('color_page_')) {
                 const page = parseInt(i.customId.split('_').pop());
@@ -530,7 +538,7 @@ const handleCategoryRoles = async (i, categoryId) => {
 
 const handleLevels = async (i) => {
     const config = await fetchConfig(i.guild.id);
-    const levelingEnabled = config.xp_enabled !== false;
+    const levelingEnabled = config.leveling_enabled !== false;
 
     const embed = applyLibrarianBranding(baseEmbed(), i)
         .setTitle('📈 Levelling & Rank Archives')
@@ -559,6 +567,7 @@ const handleLevelSettings = async (i) => {
             `**Custom Message**: ${config.xp_level_up_message ? '`Configured`' : '*Default Presets*'}`);
 
     const rows = [
+        getNavigationRow(i, 'opt_levels'),
         new ActionRowBuilder().addComponents(
             new ChannelSelectMenuBuilder().setCustomId('level_channel_select').setPlaceholder('Select Announcement Hub...').setChannelTypes(ChannelType.GuildText)
         ),

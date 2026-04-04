@@ -160,9 +160,13 @@ module.exports = {
                 if (!result.error) addedCount++;
             }
 
+            // Enable persistent Auto-Sync for this user 
+            const { toggleTrackSync } = require('../../utils/services/userService');
+            await toggleTrackSync(userId, guildId, true);
+
             const embed = baseEmbed('AniList Synchronization Complete', null, interaction.client.user.displayAvatarURL())
                 .setThumbnail(interaction.user.displayAvatarURL())
-                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n✅ Added **${addedCount}** new anime to your observation list.\n\n*Only ongoing and upcoming series from your "Watching" list were added.*`);
+                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n✅ Added **${addedCount}** new anime to your observation list.\n\n🛡️ **Auto-Sync Enabled**: I will now automatically add any new ongoing shows you start watching on AniList to your tracking list.`);
 
             await interaction.editReply({ embeds: [embed] });
 

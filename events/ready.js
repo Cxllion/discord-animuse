@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { checkAiringAnime, checkUserActivity } = require('../utils/services/scheduler');
+const { checkAiringAnime, checkUserActivity, syncAllUserTrackers } = require('../utils/services/scheduler');
 const { deployCommands } = require('../utils/core/commandDeployer');
 const logger = require('../utils/core/logger');
 
@@ -123,6 +123,16 @@ module.exports = {
                         logger.error('Notification loop failure:', error, 'Scheduler');
                     }
                 }, 5 * 60 * 1000)); 
+
+                // --- NEW: Periodic Tracker Sync (6h) ---
+                // Scans AniList for new ongoing shows added by users
+                setTimeout(async () => {
+                    syncAllUserTrackers(client).catch(e => logger.error('[Sync] Startup sync failed:', e));
+                }, 60000); // Wait 1m after startup to avoid flooding
+
+                client.intervals.push(setInterval(async () => {
+                    syncAllUserTrackers(client).catch(e => logger.error('[Sync] Loop sync failed:', e));
+                }, 6 * 60 * 60 * 1000)); 
 
                 // --- 2. Housekeeping & Cache Maintenance (1h) ---
                 client.intervals.push(setInterval(() => {

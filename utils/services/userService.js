@@ -133,7 +133,7 @@ const getLinkedUsersForFeed = async (guildId) => {
     if (!supabase) return [];
     const { data, error } = await supabase
         .from('users')
-        .select('user_id, anilist_username')
+        .select('user_id, anilist_username, is_track_sync')
         .eq('guild_id', String(guildId))
         .not('anilist_username', 'is', null);
 
@@ -141,6 +141,32 @@ const getLinkedUsersForFeed = async (guildId) => {
         logger.error(`[userService] Error fetching linked users for ${guildId}:`, error);
         return [];
     }
+    
+    return data || [];
+};
+
+/**
+ * Enable or disable persistent Auto-Sync for a user's AniList tracking.
+ */
+const toggleTrackSync = async (userId, guildId, state = true) => {
+    if (!supabase) return;
+    await supabase.from('users').upsert({ 
+        user_id: userId, 
+        guild_id: guildId, 
+        is_track_sync: state 
+    }, { onConflict: 'user_id, guild_id' });
+};
+
+/**
+ * Find all users across all guilds who have Auto-Sync enabled.
+ */
+const getAutoSyncUsers = async () => {
+    if (!supabase) return [];
+    const { data } = await supabase
+        .from('users')
+        .select('user_id, guild_id, anilist_username')
+        .eq('is_track_sync', true)
+        .not('anilist_username', 'is', null);
     
     return data || [];
 };
@@ -305,6 +331,8 @@ module.exports = {
     removeUserFavorite,
     getUserFavoritesLocal,
     getLinkedUsersForFeed,
+    getAutoSyncUsers,
+    toggleTrackSync,
     updateLastActivityId,
     getActivityCache,
     upsertActivityCache,
