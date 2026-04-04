@@ -131,7 +131,8 @@ module.exports = {
                             user_id: String(message.author.id),
                             anilist_username: anilistUsername
                         };
-                        await checkAndBroadcastUserActivity(message.client, message.guild.id, userRow, activityChannel);
+                        const { pulseUserActivity } = require('../utils/services/scheduler');
+                        await pulseUserActivity(message.client, message.guild.id, userRow, activityChannel);
                         message.client.activityPulseCache.set(cooldownKey, now);
                     }
                 }

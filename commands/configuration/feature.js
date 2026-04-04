@@ -279,6 +279,7 @@ module.exports = {
                         
                         // ── Score & Release Variants ──
                         { status: 'plans to watch', score: null, format: 'TV', statusMedia: 'NOT_YET_RELEASED' }, // Unreleased
+                        { status: 'watched movie', progress: null, score: 4.5, format: 'MOVIE', scoreFormat: 'POINT_5' }, // Star Rating Test
                         { status: 'watched episode', progress: '5', score: null, format: 'TV' }, // Released, no score
                         
                         // ── NSFW / Adult Variants (Spoilered) ──
@@ -316,7 +317,8 @@ module.exports = {
                             },
                             status: s.status,
                             progress: s.progress,
-                            score: s.score === undefined ? (s.status.includes('planning') ? null : (Math.floor(Math.random() * 4) + 7)) : s.score
+                            score: s.score === undefined ? (s.status.includes('planning') ? null : (Math.floor(Math.random() * 4) + 7)) : s.score,
+                            scoreFormat: s.scoreFormat || 'POINT_10_DECIMAL'
                         };
 
                         try {

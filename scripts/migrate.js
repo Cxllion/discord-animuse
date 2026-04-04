@@ -389,7 +389,49 @@ const initializeDatabase = async () => {
             );
         `);
 
-        // 15. PERFORMANCE INDICES
+        // 15. Leveling RPC Logic (Critical Fix)
+        await client.query(`
+            CREATE OR REPLACE FUNCTION public.add_xp_to_user(
+                p_guild_id text,
+                p_user_id text,
+                p_xp_to_add integer
+            ) RETURNS jsonb LANGUAGE plpgsql AS $$
+            DECLARE
+                v_old_level integer;
+                v_new_level integer;
+                v_new_xp bigint;
+            BEGIN
+                -- Ensure user exists
+                INSERT INTO public.users (user_id, guild_id, xp, level)
+                VALUES (p_user_id, p_guild_id, 0, 0)
+                ON CONFLICT (user_id, guild_id) DO NOTHING;
+
+                -- Update XP and Level
+                UPDATE public.users
+                SET 
+                    xp = xp + p_xp_to_add,
+                    last_message = now()
+                WHERE user_id = p_user_id AND guild_id = p_guild_id
+                RETURNING xp INTO v_new_xp;
+
+                -- Recalculate Level: floor(0.1 * sqrt(xp))
+                v_old_level := (SELECT level FROM public.users WHERE user_id = p_user_id AND guild_id = p_guild_id);
+                v_new_level := floor(0.1 * sqrt(v_new_xp));
+
+                IF v_new_level > v_old_level THEN
+                    UPDATE public.users SET level = v_new_level WHERE user_id = p_user_id AND guild_id = p_guild_id;
+                END IF;
+
+                RETURN jsonb_build_object(
+                    'old_level', v_old_level,
+                    'new_level', v_new_level,
+                    'new_xp', v_new_xp
+                );
+            END;
+            $$;
+        `);
+
+        // 16. PERFORMANCE INDICES
         await client.query(`CREATE INDEX IF NOT EXISTS idx_subs_anilist_id ON public.subscriptions(anilist_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_tracked_next_airing ON public.tracked_anime_state(next_airing);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_users_guild_user ON public.users(guild_id, user_id);`);

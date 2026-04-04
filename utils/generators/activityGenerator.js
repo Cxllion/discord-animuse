@@ -25,6 +25,31 @@ const generateActivityCard = async (userMeta, activityData) => {
     const media = activityData.media || {};
     const tokens = generateColorTokens(media.coverImage?.color || userMeta.themeColor || CONFIG.COLORS.PRIMARY);
 
+    // Vector Helper: Draws a crisp, scaled star
+    const drawStar = (ctx, x, y, size, fill) => {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * size, -Math.sin((18 + i * 72) / 180 * Math.PI) * size);
+            ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * (size * 0.5), -Math.sin((54 + i * 72) / 180 * Math.PI) * (size * 0.5));
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fill();
+        if (fill > 0) {
+            ctx.save();
+            ctx.clip();
+            const g = ctx.createLinearGradient(0, -size, 0, size);
+            g.addColorStop(0, '#FFF');
+            g.addColorStop(1, tokens.primary);
+            ctx.fillStyle = g;
+            ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
+            ctx.restore();
+        }
+        ctx.restore();
+    };
+
     // ─── 1. CANVAS BOUNDARY ──────────────────────────────────────────────────
     ctx.save();
     ctx.beginPath();
@@ -161,58 +186,35 @@ const generateActivityCard = async (userMeta, activityData) => {
 
 
     // ── Pre-compute Title for vertical centering ──────────────────────────────
+    // ── Pre-compute Title for vertical centering ──────────────────────────────
     const rawTitle = media.title?.english || media.title?.romaji || 'Unknown Title';
     const { title: cleanTitle } = parseMetadata(rawTitle);
 
-    // DYNAMIC FONT SCALING: Start larger for short titles to fill the space
-    let fSize = cleanTitle.length < 12 ? 82 : (cleanTitle.length < 20 ? 72 : 62);
+    // ─── 5. EPIC LAYOUT V5: PIXEL-PERFECT CENTER ───────────────────────────
+    const padding = 18; 
+    const avatarSize = 46; // Base avatar diameter
+    const identityVisualH = 50; 
+    const statsVisualH = 38;    
+
+    const topPinY = pY + padding; 
+    const bottomPinY = pY + pH - padding - statsVisualH;
+    const availableMiddleH = bottomPinY - (topPinY + identityVisualH);
+
+    // Dynamic Title Fitting Loop (V5)
+    let fSize = 135; 
     let lines = [];
     let lH = 0;
-    let letterSpacingValue = '0px';
-
-    while (fSize > 24) {
-        ctx.font = `900 ${fSize}px monalqo, sans-serif`;
-        
-        // Dynamic Letter Spacing: Progressive spacing to prevent clumping
-        // Large (60px): 0.6px, Med (40-50px): 0.9px, Small (<40px): 1.4px
-        const spacing = fSize > 50 ? 0.6 : (fSize > 40 ? 0.9 : 1.4);
-        letterSpacingValue = `${spacing}px`;
-        ctx.letterSpacing = letterSpacingValue;
-
-        lines = [];
-        let cur = '';
-        for (const w of cleanTitle.split(' ')) {
-            if (ctx.measureText(cur + w + ' ').width > cW) {
-                lines.push(cur.trim());
-                cur = w + ' ';
-            } else {
-                cur += w + ' ';
-            }
-        }
-        lines.push(cur.trim());
-        lH = fSize * 0.95;
-        if (lines.length <= 2) break;
-        fSize -= 4;
-    }
-
-    // ─── 5. EPIC LAYOUT V3: TOTAL VOLUME FILL ────────────────────────────────
-    // Strategy: We maximize the TITLE size until it fills the vertical room.
-    const avatarSize = 46;
-    const identityBlockH = avatarSize + 6 + 20; 
-    const statsBlockH = 38;                     
-    const tightGap = 8; // Ultra-tight elite spacing
-
-    // We search for the sweet spot: Max font size that fits Width AND Height
-    fSize = 150; // Start extreme
-    while (fSize > 20) {
+    let finalSpacingVal = 0;
+    
+    while (fSize > 18) {
         ctx.font = `900 ${fSize}px monalqo, sans-serif`;
         const spacing = fSize > 70 ? 0.4 : (fSize > 40 ? 0.8 : 1.2);
+        finalSpacingVal = spacing;
         ctx.letterSpacing = `${spacing}px`;
 
         lines = [];
         let cur = '';
-        const words = cleanTitle.split(' ');
-        for (const w of words) {
+        for (const w of cleanTitle.split(' ')) {
             if (ctx.measureText(cur + w + ' ').width > cW) {
                 if (cur) lines.push(cur.trim());
                 cur = w + ' ';
@@ -222,24 +224,22 @@ const generateActivityCard = async (userMeta, activityData) => {
         }
         if (cur) lines.push(cur.trim());
         
-        lH = fSize * 0.95; 
+        lH = fSize * 0.94; 
         const titleH = lines.length * lH;
-        const totalH = identityBlockH + titleH + statsBlockH + (tightGap * 2);
 
-        // Break if it finally fits within the card height (pH - padding) 
-        // AND doesn't exceed 3 lines (maintain readability)
-        if (lines.length <= 3 && totalH <= pH - 10) break;
+        // --- Improvement: Enforce Air-Gap (V6) ---
+        // Require 24px of breathing room (12px top and bottom)
+        if (lines.length <= 4 && titleH <= availableMiddleH - 24) break;
         fSize -= 1;
     }
 
     const titleBlockH = lines.length * lH;
-    const totalContentH = identityBlockH + tightGap + titleBlockH + tightGap + statsBlockH;
+    // The visual center of the gap between the status pill and the rating pod
+    const middleCenterY = (topPinY + identityVisualH) + (availableMiddleH / 2);
+    const titleStartY = middleCenterY - (titleBlockH / 2);
 
-    // Fixed start to ensure we aren't an 'island' in the middle
-    // Center the whole block in the poster area
-    let curY = pY + (pH - totalContentH) / 2;
-    const identityToTitle = tightGap;
-    const titleToStats = tightGap;
+    // Global assignments
+    let curY = topPinY;
 
     // ─── BLOCK A: User Identity (Avatar + Name + Status Pill) ────────────────
     try {
@@ -265,16 +265,14 @@ const generateActivityCard = async (userMeta, activityData) => {
 
     if (s && s > 0) {
         let scoreStr = '';
+        const isStar = userFormat === 'POINT_5';
+        
         switch(userFormat) {
             case 'POINT_100': scoreStr = `${s}`; break;
-            case 'POINT_10_DECIMAL': scoreStr = `${s}/10`; break;
-            case 'POINT_10': scoreStr = `${s}/10`; break;
-            case 'POINT_5': 
-                // Star notation for preference (3.5 -> 4 stars)
-                scoreStr = "★".repeat(Math.round(s)) + "☆".repeat(5 - Math.round(s));
-                break;
+            case 'POINT_10_DECIMAL': scoreStr = `${s}`; break;
+            case 'POINT_10': scoreStr = `${s}`; break;
+            case 'POINT_5': scoreStr = `${s}`; break; // Just the number, we'll draw a star icon
             case 'POINT_3':
-                // Smiley notation
                 if (s === 1) scoreStr = '☹';
                 else if (s === 2) scoreStr = '😐';
                 else scoreStr = '😊';
@@ -285,41 +283,55 @@ const generateActivityCard = async (userMeta, activityData) => {
         ctx.save();
         ctx.font = '800 11px monalqo, sans-serif';
         ctx.letterSpacing = '0px';
-        const heartW = 10;
+        const iconSize = 10;
         const gap = 4;
         const textW = ctx.measureText(scoreStr).width;
-        const bw = heartW + gap + textW + 14;
-        const bh = 20;
+        const bw = iconSize + gap + textW + 14;
+        const bh = 22;
         const bx = cX - 8;
         const by = curY - 8;
 
         ctx.beginPath();
         ctx.roundRect(bx, by, bw, bh, 6);
-        ctx.fillStyle = 'rgba(0,0,0,0.88)';
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
         ctx.fill();
         ctx.strokeStyle = tokens.primary;
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        const startX = bx + (bw - heartW - gap - textW) / 2;
+        const contentW = iconSize + gap + textW;
+        const startX = bx + (bw - contentW) / 2;
         const cV = by + bh / 2;
 
-        // Heart
-        ctx.fillStyle = tokens.primary;
-        const hx = startX + heartW / 2;
-        const hy = cV - heartW / 2 + 1;
-        ctx.beginPath();
-        ctx.moveTo(hx, hy + 2.5);
-        ctx.bezierCurveTo(hx, hy, hx - 5, hy, hx - 5, hy + 2.5);
-        ctx.bezierCurveTo(hx - 5, hy + 6, hx, hy + 9, hx, hy + 9);
-        ctx.bezierCurveTo(hx, hy + 9, hx + 5, hy + 6, hx + 5, hy + 2.5);
-        ctx.bezierCurveTo(hx + 5, hy, hx, hy, hx, hy + 2.5);
-        ctx.fill();
+        if (isStar) {
+            // Layout: [Rating] [Gap] [Star]
+            ctx.fillStyle = '#FFF'; // Uniform text color
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(scoreStr, startX, cV + 0.5);
 
-        ctx.fillStyle = tokens.primary;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(scoreStr, startX + heartW + gap, cV + 0.5);
+            // Draw a small Star
+            const starX = startX + textW + gap + iconSize/2;
+            const starY = cV;
+            drawStar(ctx, starX, starY, iconSize/2, 1);
+        } else {
+            // Layout: [Heart] [Gap] [Rating]
+            const hx = startX + iconSize/2;
+            const hy = cV - (iconSize-2)/2;
+            ctx.fillStyle = tokens.primary;
+            ctx.beginPath();
+            ctx.moveTo(hx, hy + 2.5);
+            ctx.bezierCurveTo(hx, hy, hx - 5, hy, hx - 5, hy + 2.5);
+            ctx.bezierCurveTo(hx - 5, hy + 6, hx, hy + 9, hx, hy + 9);
+            ctx.bezierCurveTo(hx, hy + 9, hx + 5, hy + 6, hx + 5, hy + 2.5);
+            ctx.bezierCurveTo(hx + 5, hy, hx, hy, hx, hy + 2.5);
+            ctx.fill();
+
+            ctx.fillStyle = '#FFF'; // Uniform text color
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(scoreStr, startX + iconSize + gap, cV + 0.5);
+        }
         ctx.restore();
     }
 
@@ -416,10 +428,9 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.fillText(finalVerb, vx + vw / 2, vy + vh / 2 + 0.5);
     ctx.restore();
 
-    curY += avatarSize + identityToTitle;
-
     // ─── BLOCK B: TITLE ───────────────────────────────────────────────────────
-    // (Title was pre-computed above for vertical centering)
+    // Centered in the fluid middle zone
+    curY = titleStartY;
 
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
@@ -429,40 +440,15 @@ const generateActivityCard = async (userMeta, activityData) => {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.font = `900 ${fSize}px monalqo, sans-serif`;
-    ctx.letterSpacing = letterSpacingValue;
-    lines.slice(0, 2).forEach((l, i) => ctx.fillText(l, cX, curY + i * lH));
+    ctx.letterSpacing = `${finalSpacingVal}px`;
+    lines.forEach((l, i) => ctx.fillText(l, cX, curY + i * lH));
     ctx.restore();
 
-    curY += Math.min(lines.length, 2) * lH + titleToStats;
-
     // ─── BLOCK C: STAT CLOUD ─────────────────────────────────────────────────
+    curY = bottomPinY;
     let podX = cX;
 
     // Rating Pod (Stars + Score)
-    const drawStar = (ctx, x, y, size, fill) => {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-            ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * size, -Math.sin((18 + i * 72) / 180 * Math.PI) * size);
-            ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * (size * 0.5), -Math.sin((54 + i * 72) / 180 * Math.PI) * (size * 0.5));
-        }
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.fill();
-        if (fill > 0) {
-            ctx.save();
-            ctx.clip();
-            ctx.clip();
-            const g = ctx.createLinearGradient(0, -size, 0, size);
-            g.addColorStop(0, '#FFF');
-            g.addColorStop(1, tokens.primary);
-            ctx.fillStyle = g;
-            ctx.fillRect(-size, -size, size * 2 * fill, size * 2);
-            ctx.restore();
-        }
-        ctx.restore();
-    };
 
     const sVal = media.meanScore || media.averageScore;
     const starSize = 8;

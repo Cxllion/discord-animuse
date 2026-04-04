@@ -375,9 +375,13 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         const isManga = g.media.type === 'MANGA' || (g.status || '').toLowerCase().includes('read');
         let verb = binge ? (isManga ? 'BINGE READ' : 'BINGED') : (isManga ? 'READ' : 'WATCHED');
         
-        // --- 💎 Improvement: Combined 'AND FINISHED' label ---
+        // --- 💎 Restore Count & Progress ---
+        if (finalProgress) {
+            verb += ` ${isManga ? 'CH' : 'EP'} ${finalProgress}`;
+        }
+
         if (g.status.toLowerCase() === 'completed') {
-            if (prog) verb += ' AND FINISHED';
+            if (finalProgress) verb += ' AND FINISHED';
             else verb = isManga ? 'FINISHED READING' : 'FINISHED WATCHING';
         }
 
@@ -446,6 +450,22 @@ const checkUserActivity = async (client) => {
     }
 };
 
+/**
+ * Triggered by messageCreate pulses (Manual User Scan)
+ */
+const pulseUserActivity = async (client, guildId, userRow, channel) => {
+    try {
+        const groups = await fetchAndGroupUserActivities(userRow);
+        if (groups.length === 0) return;
+
+        // Take latest group first for manual pulse context
+        const latest = groups.sort((a,b) => b.earliestCreatedAt - a.earliestCreatedAt)[0];
+        await postGroupedActivity(client, guildId, userRow, channel, latest);
+    } catch (e) {
+        logger.error(`[Activity Pulse] Failed for ${userRow.anilist_username}:`, e, 'Scheduler');
+    }
+};
+
 const getPulseStatus = () => ({
     airing: lastAiringPulse,
     activity: lastActivityPulse,
@@ -453,4 +473,4 @@ const getPulseStatus = () => ({
     isActivityBusy: isActivityPolling
 });
 
-module.exports = { checkAiringAnime, checkUserActivity, sendNotifications, getPulseStatus };
+module.exports = { checkAiringAnime, checkUserActivity, pulseUserActivity, sendNotifications, getPulseStatus };
