@@ -370,29 +370,33 @@ const generateActivityCard = async (userMeta, activityData) => {
         }
     }
 
-    let displayVerb = 'INTERACTED WITH';
-    if (rawStatus.includes('watched movie')) displayVerb = `WATCHED MOVIE`;
-    else if (rawStatus.includes('paused')) {
-        const verb = isManga ? 'READING' : 'WATCHING';
-        displayVerb = `PAUSED ${verb}`;
+    let displayVerb = activityData.displayVerb || 'INTERACTED WITH';
+    if (!activityData.displayVerb) {
+        if (rawStatus.includes('watched movie')) displayVerb = `WATCHED MOVIE`;
+        else if (rawStatus.includes('paused')) {
+            const verb = isManga ? 'READING' : 'WATCHING';
+            displayVerb = `PAUSED ${verb}`;
+        }
+        else if (rawStatus.includes('rewatched') || (rawStatus.includes('watching') && activityData.status.toLowerCase().includes('rewatch'))) {
+            displayVerb = `REWATCHED EP ${progStr || '??'}`;
+        }
+        else if (rawStatus.includes('reread') || (rawStatus.includes('reading') && activityData.status.toLowerCase().includes('reread'))) {
+            displayVerb = `REREAD CH ${progStr || '??'}`;
+        }
+        else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) {
+            displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
+        }
+        else if (rawStatus.includes('watched')) {
+            const verb = bingeMode ? 'BINGED' : 'WATCHED';
+            displayVerb = progStr ? `${verb} EP ${progStr}` : `${verb}`;
+        }
+        else if (rawStatus.includes('read')) {
+            const verb = bingeMode ? 'BINGE READ' : 'READ';
+            displayVerb = progStr ? `${verb} CH ${progStr}` : `${verb}`;
+        }
+        else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${isManga ? 'READING' : 'WATCHING'}`;
+        else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${isManga ? 'READING' : 'WATCHING'}`;
     }
-    else if (rawStatus.includes('rewatched') || (rawStatus.includes('watching') && activityData.status.toLowerCase().includes('rewatch'))) {
-        displayVerb = `REWATCHED EP ${progStr || '??'}`;
-    }
-    else if (rawStatus.includes('reread') || (rawStatus.includes('reading') && activityData.status.toLowerCase().includes('reread'))) {
-        displayVerb = `REREAD CH ${progStr || '??'}`;
-    }
-    else if (rawStatus.includes('watched')) {
-        const verb = bingeMode ? 'BINGED' : 'WATCHED';
-        displayVerb = progStr ? `${verb} EP ${progStr}` : `${verb}`;
-    }
-    else if (rawStatus.includes('read')) {
-        const verb = bingeMode ? 'BINGE READ' : 'READ';
-        displayVerb = progStr ? `${verb} CH ${progStr}` : `${verb}`;
-    }
-    else if (rawStatus.includes('completed')) displayVerb = `FINISHED ${isManga ? 'READING' : 'WATCHING'}`;
-    else if (rawStatus.includes('planning') || rawStatus.includes('plans to')) displayVerb = `PLANS TO ${isManga ? 'READ' : 'WATCH'}`;
-    else if (rawStatus.includes('dropped')) displayVerb = `QUIT ${isManga ? 'READING' : 'WATCHING'}`;
 
     // --- 💎 Improvement: Status-Aware Color Coding ---
     const lStatus = (activityData.status || '').toLowerCase();
@@ -404,7 +408,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         statusColors = { fill: 'rgba(231, 76, 60, 0.16)', stroke: 'rgba(231, 76, 60, 0.5)' }; // Red
     } else if (lStatus.includes('paused')) {
         statusColors = { fill: 'rgba(241, 196, 15, 0.16)', stroke: 'rgba(241, 196, 15, 0.5)' }; // Yellow
-    } else if (lStatus.includes('watch') || lStatus.includes('read')) {
+    } else if ((lStatus.includes('watch') || lStatus.includes('read') || lStatus.includes('watched')) && !lStatus.includes('planning') && !lStatus.includes('plans to')) {
         statusColors = { fill: 'rgba(52, 152, 219, 0.16)', stroke: 'rgba(52, 152, 219, 0.5)' }; // Blue
     }
 

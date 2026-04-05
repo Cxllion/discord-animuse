@@ -278,7 +278,9 @@ module.exports = {
                         { status: 'dropped', score: 2, format: 'TV' },
                         
                         // ── Score & Release Variants ──
-                        { status: 'plans to watch', score: null, format: 'TV', statusMedia: 'NOT_YET_RELEASED' }, // Unreleased
+                        { status: 'planning', score: null, format: 'TV' }, // Planning (Direct)
+                        { status: 'plans to watch', score: null, format: 'TV', statusMedia: 'NOT_YET_RELEASED' }, // Unreleased Planning
+                        { status: 'plans to read', score: null, mediaType: 'MANGA', format: 'MANGA' }, // Planning Manga
                         { status: 'watched movie', progress: null, score: 4.5, format: 'MOVIE', scoreFormat: 'POINT_5' }, // Star Rating Test
                         { status: 'watched episode', progress: '5', score: null, format: 'TV' }, // Released, no score
                         

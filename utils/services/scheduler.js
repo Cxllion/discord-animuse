@@ -394,12 +394,17 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         const prog = String(finalProgress || '');
         const rNums = prog.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
         const binge = rNums.length >= 2 && (Math.max(...rNums) - Math.min(...rNums) + 1) >= 5;
-        const isManga = g.media.type === 'MANGA' || (g.status || '').toLowerCase().includes('read');
-        let verb = binge ? (isManga ? 'BINGE READ' : 'BINGED') : (isManga ? 'READ' : 'WATCHED');
+        const lStatus = (g.status || '').toLowerCase();
+        const isManga = g.media.type === 'MANGA' || lStatus.includes('read');
+        let verb = '';
         
-        // --- 💎 Restore Count & Progress ---
-        if (finalProgress) {
-            verb += ` ${isManga ? 'CH' : 'EP'} ${finalProgress}`;
+        if (lStatus.includes('planning') || lStatus.includes('plans to')) {
+            verb = isManga ? 'PLANS TO READ' : 'PLANS TO WATCH';
+        } else {
+            verb = binge ? (isManga ? 'BINGE READ' : 'BINGED') : (isManga ? 'READ' : 'WATCHED');
+            if (finalProgress) {
+                verb += ` ${isManga ? 'CH' : 'EP'} ${finalProgress}`;
+            }
         }
 
         if (g.status.toLowerCase() === 'completed') {
