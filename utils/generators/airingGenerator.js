@@ -395,21 +395,20 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
     }
 
 
-    // --- 5. VERTICAL METRICS ---
-    const topRowBottom = margin + podH;
-    const cardBottomBoundary = baseH - margin - 15; 
-    const availableH = cardBottomBoundary - topRowBottom;
+    // --- 5. VERTICAL METRICS (Fine-Tuned for Premium Balance) ---
+    const topRowH = margin + podH;
+    const footerBoundary = 25; // Space at the very bottom
+    const availableH = baseH - topRowH - footerBoundary; 
 
-    // --- 6. TITLE ---
-    let fontSize = 58; 
-    const maxLines = 4; // Increased for better use of negative space
+    // --- 6. TITLE (Cinematic Auto-Scale Line Break) ---
+    let fontSize = 56; 
+    const maxLines = 4;
     let lines = [];
     const maxTitleW = contentW;
 
     while (fontSize > 18) {
         ctx.font = `900 ${fontSize}px monalqo, sans-serif`;
-        const spacing = fontSize > 70 ? 0.4 : (fontSize > 40 ? 0.8 : 1.2);
-        ctx.letterSpacing = `${spacing}px`;
+        ctx.letterSpacing = `${fontSize > 40 ? 0.8 : 1.2}px`;
 
         const words = cleanTitle.split(' ');
         lines = [];
@@ -421,7 +420,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
                     lines.push(cur.trim());
                     cur = w + ' ';
                 } else {
-                    cur = w + ' '; // Word itself too wide, font must drop
+                    cur = w + ' '; 
                 }
             } else {
                 cur += w + ' ';
@@ -432,23 +431,21 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
         const totalTitleH = lines.length * (fontSize * 0.94);
         const isAnyLineTooWide = lines.some(l => ctx.measureText(l).width > maxTitleW);
 
-        // Break if: fits in 4 lines, respects available height, and NO line clips
-        if (lines.length <= maxLines && totalTitleH < availableH - 18 && !isAnyLineTooWide) break;
+        // Break if fits and respects bottom boundary
+        if (lines.length <= maxLines && totalTitleH < availableH - 40 && !isAnyLineTooWide) break;
         fontSize -= 1;
     }
 
-    ctx.letterSpacing = `${fontSize > 70 ? 0.4 : (fontSize > 40 ? 0.8 : 1.2)}px`;
     const lineHeight = fontSize * 0.94;
     const titleBlockH = lines.length * lineHeight;
     const genreH = 32;
-    const verticalGap = 20;
-    const totalContentH = titleBlockH + verticalGap + genreH;
+    const verGap = 18;
+    const ensembleH = titleBlockH + verGap + genreH;
     
-    // Centering Logic
-    
-    const contentStartOffset = Math.max(0, (availableH - totalContentH) / 2);
-    const titleY = topRowBottom + contentStartOffset;
-    const footerY = titleY + titleBlockH + verticalGap;
+    // 💎 Precision Centering: Place the ensemble (Title + Genres) in the dead center of the available space
+    const centerShift = Math.max(0, (availableH - ensembleH) / 2);
+    const titleY = topRowH + centerShift;
+    const footerY = titleY + titleBlockH + verGap;
 
     ctx.save();
     ctx.font = `900 ${fontSize}px monalqo, sans-serif`;

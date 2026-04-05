@@ -421,7 +421,15 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         const attach = new AttachmentBuilder(buffer, { name });
         
         logger.info(`[Activity Broadcast] 🚀 Sending ${verb} card for ${userRow.anilist_username}`, 'Scheduler');
-        const newMsg = await channel.send({ files: [attach] });
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('View on AniList')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(g.media.siteUrl || `https://anilist.co/${(g.media.type || 'anime').toLowerCase()}/${g.media.id}`)
+            );
+
+        const newMsg = await channel.send({ files: [attach], components: [row] });
 
         if (!client.isTestBot) {
             await markPosted(g.ids, { userId: userRow.user_id, mediaId: g.media.id, channelId: channel.id, messageId: newMsg.id, progress: finalProgress, status: g.status });

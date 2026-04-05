@@ -655,6 +655,7 @@ const getUserActivity = async (userName) => {
                         title { english romaji }
                         coverImage { extraLarge large color }
                         bannerImage
+                        siteUrl
                         format
                         averageScore
                         meanScore
