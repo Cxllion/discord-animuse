@@ -400,6 +400,10 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         
         if (lStatus.includes('planning') || lStatus.includes('plans to')) {
             verb = isManga ? 'PLANS TO READ' : 'PLANS TO WATCH';
+        } else if (lStatus.includes('paused')) {
+            verb = isManga ? 'PAUSED READING' : 'PAUSED WATCHING';
+        } else if (lStatus.includes('dropped')) {
+            verb = isManga ? 'QUIT READING' : 'QUIT WATCHING';
         } else {
             verb = binge ? (isManga ? 'BINGE READ' : 'BINGED') : (isManga ? 'READ' : 'WATCHED');
             if (finalProgress) {
