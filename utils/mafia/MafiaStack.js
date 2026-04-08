@@ -1,4 +1,4 @@
-function resolveNightStack(game) {
+async function resolveNightStack(game) {
     const alivePlayersList = game.getAlivePlayers();
 
     // Trigger test bots

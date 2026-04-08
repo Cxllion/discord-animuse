@@ -210,29 +210,32 @@ class MafiaGame extends EventEmitter {
         return Array.from(this.players.values()).filter(p => p.alive);
     }
 
-    async refreshControlPanel(player, content, components) {
-        if (player.isBot) return;
+    async refreshControlPanel(player, payload, components) {
+        if (player.isBot || !player.user) return;
 
         // 1. Delete old panel if it exists
         if (player.controlPanelMessageId) {
             try {
-                const oldMsg = await player.user.send('Refreshed.').catch(() => null);
-                if (oldMsg) {
-                    const dmChannel = oldMsg.channel;
+                const dmChannel = await player.user.createDM();
+                if (dmChannel) {
                     const prevPanel = await dmChannel.messages.fetch(player.controlPanelMessageId).catch(() => null);
                     if (prevPanel) await prevPanel.delete().catch(() => null);
-                    await oldMsg.delete().catch(() => null);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error(`[Mafia Refresh Clear] Failed to clear for ${player.name}:`, e.message);
+            }
         }
 
         // 2. Send new panel
         try {
-            const newMsg = await player.user.send({ content, components });
+            const sendOptions = typeof payload === 'string' ? { content: payload } : { ...payload };
+            if (components) sendOptions.components = components;
+            
+            const newMsg = await player.user.send(sendOptions);
             player.controlPanelMessageId = newMsg.id;
             this.emit('saveState');
         } catch (e) {
-            console.error(`[Mafia Refresh] Failed to send panel to ${player.name}:`, e);
+            console.error(`[Mafia Refresh] Failed to send panel to ${player.name}:`, e.message);
         }
     }
 
@@ -681,7 +684,7 @@ class MafiaGame extends EventEmitter {
     async endNight() {
         if (this.isDestroyed || this.state === 'GAME_OVER') return;
         await this.cleanupPhaseMessage();
-        const { deaths, readings } = resolveNightStack(this);
+        const { deaths, readings } = await resolveNightStack(this);
         
         const guiltDeaths = (this.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
         const allDeaths = [...guiltDeaths, ...deaths];
