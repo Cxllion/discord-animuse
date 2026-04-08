@@ -43,6 +43,7 @@ class MafiaPlayer {
         this.nightActionTarget = null;
         this.isRoleblocked = false;
         this.isProtected = false;
+        this.inkBoundTarget = null;
     }
 
     resetForDay() {

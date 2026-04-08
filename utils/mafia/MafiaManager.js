@@ -85,6 +85,14 @@ class MafiaManager {
         game.on('stateChanged', () => this.saveState());
     }
 
+    applyHostPreferences(game, userId) {
+        if (this.hostPreferences.has(userId)) {
+            game.settings = { ...game.settings, ...this.hostPreferences.get(userId) };
+            return true;
+        }
+        return false;
+    }
+
     async createGame(lobbyMessageId, hostUser, channel) {
         const Game = require('./MafiaGame');
         const game = new Game(lobbyMessageId, hostUser);
@@ -93,9 +101,7 @@ class MafiaManager {
             game.guildId = channel.guildId;
         }
         
-        if (this.hostPreferences.has(hostUser.id)) {
-            game.settings = { ...game.settings, ...this.hostPreferences.get(hostUser.id) };
-        }
+        this.applyHostPreferences(game, hostUser.id);
         
         // --- QUEUE AUTO-IMPORT ---
         if (channel && this.globalQueues.has(channel.id)) {

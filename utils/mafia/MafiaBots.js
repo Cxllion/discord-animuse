@@ -151,6 +151,15 @@ async function handleBotDaySpeech(game) {
         }
         
         if (message) {
+            // --- AI INTEL PRESERVATION (LAST WILL SYNC) ---
+            bot.lastWill = message.replace(/\*\*.*?\*\*|<@\d+>/g, (match) => {
+                if (match.startsWith('<@')) {
+                    const id = match.replace(/[<@>]/g, '');
+                    return game.players.get(id)?.name || 'Unknown';
+                }
+                return match.replace(/\*\*/g, '');
+            });
+
             const timer = setTimeout(async () => {
                 if (game.state === 'DAY' && !game.isDestroyed) {
                     if (archiveWebhook) {

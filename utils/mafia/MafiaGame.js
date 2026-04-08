@@ -159,9 +159,20 @@ class MafiaGame extends EventEmitter {
 
     removePlayer(userId) {
         if (this.players.has(userId)) {
+            const wasHost = this.hostId === userId;
             this.players.delete(userId);
             this.lastActivityAt = Date.now();
             this.stagnationNoticeSent = false;
+            
+            if (wasHost && this.state === 'LOBBY') {
+                const nextHost = Array.from(this.players.values()).find(p => !p.isBot);
+                if (nextHost) {
+                    this.hostId = nextHost.id;
+                    this.emit('hostChanged', this.hostId);
+                    console.log(`[Mafia] Host migrated to ${nextHost.name} (${this.hostId})`);
+                }
+            }
+
             this.emit('saveState');
             return true;
         }
@@ -379,12 +390,24 @@ class MafiaGame extends EventEmitter {
         const { generateRolesForMode } = require('./MafiaModes');
         const availableRoles = generateRolesForMode(this.settings.gameMode, this.players.size);
         
-        let i = 0;
-        for (const p of this.players.values()) {
-            if (i < availableRoles.length) {
-                p.assignRole(availableRoles[i]);
+        // --- HUMAN-FIRST ASSIGNMENT PROTOCOL ---
+        // 1. Identify "Power" roles (Action roles or Unique Passives)
+        const powerRoles = availableRoles.filter(r => r.priority < 99 || ['The Critic', 'The Anomaly', 'The Plurality'].includes(r.name));
+        const basicRoles = availableRoles.filter(r => !powerRoles.includes(r));
+        
+        // 2. Sort Players: Humans first
+        const players = Array.from(this.players.values());
+        const humans = players.filter(p => !p.isBot);
+        const bots = players.filter(p => p.isBot);
+        
+        // 3. Re-assemble with priority
+        const sortedRoles = [...powerRoles, ...basicRoles];
+        const sortedPlayers = [...humans, ...bots];
+
+        for (let i = 0; i < sortedPlayers.length; i++) {
+            if (i < sortedRoles.length) {
+                sortedPlayers[i].assignRole(sortedRoles[i]);
             }
-            i++;
         }
         
         // Build role composition display
@@ -555,7 +578,13 @@ class MafiaGame extends EventEmitter {
         if (losers.length > 0) mafiaService.recordMatchResults(losers, false);
         
         const { buildGameOverPayload } = require('./MafiaUI');
-        const gameOverMsg = buildGameOverPayload(this, winner);
+        
+        // --- SECONDARY WIN RECOGNITION (ANOMALY/CRITIC) ---
+        const secondaryWinners = Array.from(this.players.values())
+            .filter(p => p.won && !p.isBot)
+            .map(p => p.name);
+        
+        const gameOverMsg = buildGameOverPayload(this, winner, secondaryWinners);
         
         if (this.thread) {
             await this.thread.send(gameOverMsg);
@@ -761,7 +790,7 @@ class MafiaGame extends EventEmitter {
         const guiltDeaths = (this.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
         const allDeaths = [...guiltDeaths, ...deaths];
         
-        for (const d of deaths) {
+        for (const d of allDeaths) {
             this.moveToGraveyard(d.target.id);
         }
         
@@ -1131,7 +1160,7 @@ class MafiaGame extends EventEmitter {
                             try {
                                 const guild = this.thread.guild;
                                 for (const [id, p] of this.players) {
-                                    if (!p.isBot) {
+                                    if (!p.isBot && p.alive && id !== exiled.id) {
                                         const member = await guild.members.fetch(id).catch(() => null);
                                         if (member && member.voice.channelId === this.voiceChannelId) {
                                             await member.voice.setMute(false).catch(() => null);
@@ -1160,6 +1189,16 @@ class MafiaGame extends EventEmitter {
                 if (grave) {
                     await grave.members.add(userId).catch(() => null);
                     await grave.send(`🕯️ **Survivor Entry:** <@${userId}> has been redacted from the living records and entered the spectator archives.`);
+                }
+            } catch (e) {}
+        }
+
+        // 1.1 Redact from Secret Biolink (Infected Chat)
+        if (this.archiveThreadId) {
+            try {
+                const secretHub = await this.thread.parent.threads.fetch(this.archiveThreadId).catch(() => null);
+                if (secretHub) {
+                    await secretHub.members.remove(userId).catch(() => null);
                 }
             } catch (e) {}
         }

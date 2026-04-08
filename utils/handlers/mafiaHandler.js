@@ -90,7 +90,14 @@ const handleMafiaInteraction = async (interaction) => {
 
         // Leave Button (from Action Hub)
         if (interaction.customId.startsWith('mafia_leave_')) {
+            const oldHostId = game.hostId;
             if (game.removePlayer(interaction.user.id)) {
+                // If host migrated, load new host's preferences
+                if (game.hostId !== oldHostId) {
+                    MafiaManager.applyHostPreferences(game, game.hostId);
+                    MafiaManager.saveState();
+                }
+
                 const { buildActionHub } = require('../mafia/MafiaUI');
                 await interaction.update(buildActionHub(game, interaction.user));
                 await game.bumpLobby(interaction.channel);
