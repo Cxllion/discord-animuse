@@ -25,7 +25,7 @@ class MafiaManager {
         this.pulseInterval = setInterval(() => this.pulse(client), 60000); // Pulse every 1 minute
     }
 
-    pulse(client) {
+    async pulse(client) {
         const now = Date.now();
         const toDisband = [];
 
@@ -41,7 +41,7 @@ class MafiaManager {
 
         for (const id of toDisband) {
             console.log(`[Mafia] Auto-disbanding stagnant lobby (Host: ${id})`);
-            this.endGame(id);
+            await this.endGame(id);
         }
 
         // --- PENDING RESTORES EXPIRY ---
@@ -73,11 +73,10 @@ class MafiaManager {
 
         game.on('gameEnded', (threadId) => {
             // Keep in memory for a bit to allow post-game chat, then cleanup
-            setTimeout(() => {
+            setTimeout(async () => {
                 const g = this.games.get(threadId);
                 if (g) {
-                    g.destroy();
-                    this.endGame(threadId);
+                    await this.endGame(threadId);
                 }
             }, 300000); // 5 minutes post-game cleanup
         });
@@ -195,6 +194,8 @@ class MafiaManager {
     async endGame(key) {
         const game = this.games.get(key) || this.lobbies.get(key);
         if (game) {
+            await game.destroy().catch(() => null);
+            
             const hostId = game.hostId;
             const threadId = game.threadId;
             

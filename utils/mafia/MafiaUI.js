@@ -248,6 +248,7 @@ function buildStartedLobbyPayload(game) {
         null
     )
         .setColor('#2ecc71')
+        .addFields({ name: '🎙️ Audio Status', value: '> **Library Hub:** `Operational`\n> **Uplink:** `Encrypted`' })
         .setTimestamp();
     
     if (queue.size > 0) {
@@ -393,6 +394,8 @@ function buildRoleCard(p, game) {
     } else {
         embed.addFields({ name: '💤 Protocol Level', value: 'Level **99** Clearance. No active night action authorized.' });
     }
+
+    embed.addFields({ name: '🎙️ Audio Access', value: `You are authorized for the **Library Hub** voice frequency. Coordinate with your fellow survivors in real-time.` });
 
     return { embeds: [embed] };
 }

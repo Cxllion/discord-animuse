@@ -2,7 +2,7 @@ class MafiaPlayer {
     constructor(user, isBot = false) {
         this.id = user.id;
         this.user = user; 
-        this.name = user.username || user.displayName || user.name || `Player_${user.id}`;
+        this.name = user.displayName || user.globalName || user.username || user.name || `Player_${user.id}`;
         this.isBot = isBot;
         
         this.alive = true;

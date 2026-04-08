@@ -216,7 +216,7 @@ const handleMafiaInteraction = async (interaction) => {
             }
             
             await interaction.reply({ content: response, flags: MessageFlags.Ephemeral });
-            return game.updateVotingBoard();
+            await game.updateVotingBoard();
         }
 
         // Spectate button

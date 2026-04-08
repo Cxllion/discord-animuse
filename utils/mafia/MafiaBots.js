@@ -32,8 +32,8 @@ function handleBotNightActions(game) {
     }
 }
 
-function handleBotDayVoting(game) {
-    const aliveBots = game.getAlivePlayers().filter(p => p.isBot);
+function handleBotDayVoting(game, specificBot = null) {
+    const aliveBots = specificBot ? [specificBot] : game.getAlivePlayers().filter(p => p.isBot);
     const alivePlayers = game.getAlivePlayers();
     const humans = alivePlayers.filter(p => !p.isBot);
 
