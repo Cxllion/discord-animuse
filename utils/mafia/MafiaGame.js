@@ -245,6 +245,103 @@ class MafiaGame extends EventEmitter {
         return Array.from(this.players.values()).filter(p => p.alive);
     }
 
+    /**
+     * Centralized logic to determine if a player has night action options
+     * and what those options are, enforcing hierarchies (like Revision Kill).
+     */
+    getNightActionOptions(player) {
+        if (!player || !player.alive || !player.role || player.role.priority === 99) return [];
+
+        const alivePlayers = this.getAlivePlayers();
+        const roleName = player.role.name;
+
+        // --- SPECIFIC ROLE LOGIC ---
+        if (roleName === 'The Scribe') {
+            return Array.from(this.players.values())
+                .filter(ap => !ap.alive && !this.guiltDeaths.includes(ap))
+                .map(ap => ({ label: ap.name, value: ap.id }));
+        }
+
+        if (roleName === 'The Bookburner') {
+            const options = alivePlayers.filter(ap => ap.id !== player.id).map(ap => ({ label: ap.name, value: ap.id }));
+            options.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
+            return options;
+        }
+
+        if (roleName === 'The Conservator') {
+            // Can't heal the same person twice in a row
+            return alivePlayers.filter(ap => ap.id !== player.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
+        }
+
+        if (roleName === 'The Shredder' || roleName === 'The Plagiarist') {
+            // --- REVISION KILL HIERARCHY ---
+            const aliveRevisions = alivePlayers.filter(ap => ap.role?.faction === 'Revisions');
+            
+            // PRIORITY 1: The Plagiarist
+            const firstPlagiarist = aliveRevisions.find(ap => ap.role.name === 'The Plagiarist');
+            const hasPlagiarist = !!firstPlagiarist;
+
+            let isKiller = false;
+
+            if (roleName === 'The Plagiarist') {
+                // Only the first Plagiarist in the list is the designated killer
+                if (player.id === firstPlagiarist?.id) isKiller = true;
+            } else if (roleName === 'The Shredder' && !hasPlagiarist) {
+                // Secondary fallback: First Shredder in list takes the mantle only if no Plagiarist is alive
+                const firstShredder = aliveRevisions.find(ap => ap.role.name === 'The Shredder');
+                if (player.id === firstShredder?.id) isKiller = true;
+            }
+
+            if (!isKiller) return [];
+            return alivePlayers.filter(ap => ap.id !== player.id).map(ap => ({ label: ap.name, value: ap.id }));
+        }
+
+        // --- DEFAULT DROPDOWN (Indexer, Censor, Ghostwriter, Corruptor, etc.) ---
+        return alivePlayers.filter(ap => ap.id !== player.id).map(ap => ({ label: ap.name, value: ap.id }));
+    }
+
+    /**
+     * Strictly manages voice states (mute/deaf) for all players based on phase and health.
+     * ensures dead players stay silent and alive players follow phase protocols.
+     */
+    async updateVoiceStates(specialMode = null, focusId = null) {
+        if (!this.voiceChannelId || !this.thread) return;
+
+        try {
+            const guild = this.thread.guild;
+            for (const [id, p] of this.players) {
+                if (p.isBot) continue;
+
+                const member = await guild.members.fetch(id).catch(() => null);
+                if (!member || member.voice.channelId !== this.voiceChannelId) continue;
+
+                if (!p.alive) {
+                    // DEAD: Strictly isolated from the living frequency
+                    await member.voice.setMute(true, 'Redacted survivor').catch(() => null);
+                    await member.voice.setDeaf(true, 'Redacted survivor').catch(() => null);
+                    continue;
+                }
+
+                // ALIVE: Phase Protocols
+                if (specialMode === 'TWILIGHT') {
+                    // Last Words: Only focus can speak
+                    await member.voice.setMute(id !== focusId, 'Twilight: Last Words Protocol').catch(() => null);
+                    await member.voice.setDeaf(false).catch(() => null);
+                } else if (specialMode === 'NIGHT') {
+                    // Archive Silence: Everyone is deafened to prevent coordination outside secret threads
+                    await member.voice.setMute(false).catch(() => null);
+                    await member.voice.setDeaf(true, 'Protocol 2: Night Silence').catch(() => null);
+                } else {
+                    // Day/Discussion: Open comms
+                    await member.voice.setMute(false).catch(() => null);
+                    await member.voice.setDeaf(false).catch(() => null);
+                }
+            }
+        } catch (e) {
+            console.error('[Mafia] Voice protocol override failed:', e);
+        }
+    }
+
     async refreshControlPanel(player, payload, components) {
         if (player.isBot || !player.user) return;
 
@@ -678,37 +775,7 @@ class MafiaGame extends EventEmitter {
             const components = [];
             
             if (p.role && p.role.priority !== 99) {
-                let optionsData = [];
-                if (p.role.name === 'The Scribe') {
-                    optionsData = Array.from(this.players.values()).filter(ap => !ap.alive && !this.guiltDeaths.includes(ap)).map(ap => ({ label: ap.name, value: ap.id }));
-                } else if (p.role.name === 'The Bookburner') {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
-                    optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
-                } else if (p.role.name === 'The Conservator') {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
-                } else if (p.role.name === 'The Shredder' || p.role.name === 'The Plagiarist') {
-                    // --- REVISION KILL HIERARCHY ---
-                    const aliveRevisions = alivePlayers.filter(ap => ap.role?.faction === 'Revisions');
-                    const hasPlagiarist = aliveRevisions.some(ap => ap.role.name === 'The Plagiarist');
-                    let isKiller = false;
-
-                    if (p.role.name === 'The Plagiarist') {
-                        // All Plagiarists are killers (or we can pick one, but user said "the plagiarist" singular-ish)
-                        // If there are multiple, they all get the kill power currently.
-                        isKiller = true; 
-                    } else if (p.role.name === 'The Shredder' && !hasPlagiarist) {
-                        // Shredder only kills if no Plagiarist is alive
-                        // To ensure only ONE shredder gets it if there are multiple:
-                        const firstShredder = aliveRevisions.find(ap => ap.role.name === 'The Shredder');
-                        if (p.id === firstShredder?.id) isKiller = true;
-                    }
-
-                    if (isKiller) {
-                        optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
-                    }
-                } else {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
-                }
+                const optionsData = this.getNightActionOptions(p);
 
                 if (optionsData.length === 0 && p.role.name === 'The Scribe') {
                     optionsData.push({ label: 'No bodies to scan yet', value: 'none', description: 'Wait for a casualty.' });
@@ -750,21 +817,7 @@ class MafiaGame extends EventEmitter {
         }, this.settings.nightTime * 1000);
 
         // --- VOICE PROTOCOL: NIGHT SILENCE ---
-        if (this.voiceChannelId) {
-            try {
-                const voiceChannel = await this.thread.guild.channels.fetch(this.voiceChannelId).catch(() => null);
-                if (voiceChannel) {
-                    for (const [id, p] of this.players) {
-                        if (p.alive && !p.isBot) {
-                            const member = await voiceChannel.guild.members.fetch(id).catch(() => null);
-                            if (member && member.voice.channelId === this.voiceChannelId) {
-                                await member.voice.setDeaf(true, 'Sanctuary Night Silence').catch(() => null);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {}
-        }
+        await this.updateVoiceStates('NIGHT');
         
         this.emit('saveState');
     }
@@ -785,7 +838,8 @@ class MafiaGame extends EventEmitter {
     async endNight() {
         if (this.isDestroyed || this.state === 'GAME_OVER') return;
         await this.cleanupPhaseMessage();
-        const { deaths, readings } = await resolveNightStack(this);
+        const res = await resolveNightStack(this);
+        const { deaths, readings } = res;
         
         const guiltDeaths = (this.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
         const allDeaths = [...guiltDeaths, ...deaths];
@@ -794,6 +848,11 @@ class MafiaGame extends EventEmitter {
             this.moveToGraveyard(d.target.id);
         }
         
+        this.emit('nightEnded', res);
+
+        // --- VOICE PROTOCOL: REDACT DECEASED ---
+        await this.updateVoiceStates();
+
         if (this.thread) {
             const { buildMorningReport } = require('./MafiaUI');
             const report = buildMorningReport(this, allDeaths);
@@ -828,21 +887,7 @@ class MafiaGame extends EventEmitter {
         if (this.checkWin()) return;
 
         // --- VOICE PROTOCOL: RESTORE COMMS ---
-        if (this.voiceChannelId) {
-            try {
-                const voiceChannel = await this.thread.guild.channels.fetch(this.voiceChannelId).catch(() => null);
-                if (voiceChannel) {
-                    for (const [id, p] of this.players) {
-                        if (p.alive && !p.isBot) {
-                            const member = await voiceChannel.guild.members.fetch(id).catch(() => null);
-                            if (member && member.voice.channelId === this.voiceChannelId) {
-                                await member.voice.setDeaf(false, 'Morning Restoration').catch(() => null);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {}
-        }
+        await this.updateVoiceStates();
 
         this.startDay();
     }
@@ -1118,19 +1163,9 @@ class MafiaGame extends EventEmitter {
                 const exiled = this.players.get(tied[0]);
                 if (exiled) {
                     // --- VOICE PROTOCOL: LAST WORDS ---
+                    await this.updateVoiceStates('TWILIGHT', exiled.id);
                     if (this.voiceChannelId && !exiled.isBot) {
-                        try {
-                            const guild = this.thread.guild;
-                            for (const [id, p] of this.players) {
-                                if (p.alive && !p.isBot) {
-                                    const member = await guild.members.fetch(id).catch(() => null);
-                                    if (member && member.voice.channelId === this.voiceChannelId) {
-                                        await member.voice.setMute(id !== exiled.id, 'Twilight: Last Words Protocol').catch(() => null);
-                                    }
-                                }
-                            }
-                            await this.thread.send(`🎙️ **Audio Priority:** Channel focused on <@${exiled.id}> for final transmissions.`);
-                        } catch (e) {}
+                        await this.thread.send(`🎙️ **Audio Priority:** Channel focused on <@${exiled.id}> for final transmissions.`);
                     }
 
                     exiled.die();
@@ -1155,20 +1190,8 @@ class MafiaGame extends EventEmitter {
                     if (this.checkWin()) return;
 
                     this.activeTimer = setTimeout(async () => {
-                        // Restore voice for everyone before moving the ghost
-                        if (this.voiceChannelId) {
-                            try {
-                                const guild = this.thread.guild;
-                                for (const [id, p] of this.players) {
-                                    if (!p.isBot && p.alive && id !== exiled.id) {
-                                        const member = await guild.members.fetch(id).catch(() => null);
-                                        if (member && member.voice.channelId === this.voiceChannelId) {
-                                            await member.voice.setMute(false).catch(() => null);
-                                        }
-                                    }
-                                }
-                            } catch (e) {}
-                        }
+                        // Restore voice protocols (Deceased will be muted by graveyard move/update)
+                        await this.updateVoiceStates();
 
                         this.moveToGraveyard(exiled.id);
                         if (this.state !== 'GAME_OVER') this.startNight();

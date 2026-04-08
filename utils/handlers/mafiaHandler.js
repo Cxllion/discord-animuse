@@ -374,34 +374,10 @@ const handleMafiaInteraction = async (interaction) => {
 
                 // Reconstruct components for persistence
                 const components = [];
-                const alivePlayers = game.getAlivePlayers();
-                
-                let optionsData = [];
-                if (p.role.name === 'The Scribe') {
-                    optionsData = Array.from(game.players.values()).filter(ap => !ap.alive && !game.guiltDeaths.includes(ap)).map(ap => ({ label: ap.name, value: ap.id }));
-                } else if (p.role.name === 'The Bookburner') {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
-                    optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
-                } else if (p.role.name === 'The Conservator') {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
-                } else if (p.role.name === 'The Shredder' || p.role.name === 'The Plagiarist') {
-                    // --- REVISION KILL HIERARCHY ---
-                    const aliveRevisions = alivePlayers.filter(ap => ap.role?.faction === 'Revisions');
-                    const hasPlagiarist = aliveRevisions.some(ap => ap.role.name === 'The Plagiarist');
-                    let isKiller = false;
+                const optionsData = game.getNightActionOptions(p);
 
-                    if (p.role.name === 'The Plagiarist') {
-                        isKiller = true; 
-                    } else if (p.role.name === 'The Shredder' && !hasPlagiarist) {
-                        const firstShredder = aliveRevisions.find(ap => ap.role.name === 'The Shredder');
-                        if (p.id === firstShredder?.id) isKiller = true;
-                    }
-
-                    if (isKiller) {
-                        optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
-                    }
-                } else {
-                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
+                if (optionsData.length === 0 && p.role.name === 'The Scribe') {
+                    optionsData.push({ label: 'No bodies to scan yet', value: 'none', description: 'Wait for a casualty.' });
                 }
 
                 if (optionsData.length > 0) {

@@ -9,6 +9,16 @@ async function resolveNightStack(game) {
     const actions = [];
     for (const p of alivePlayersList) {
         if (p.nightActionTarget && p.role) {
+            // --- AUTHORIZATION CHECK ---
+            const authorizedOptions = game.getNightActionOptions(p);
+            const isAuthorized = authorizedOptions.some(opt => opt.value === p.nightActionTarget);
+            
+            if (!isAuthorized) {
+                console.log(`[MAFIA-STACK] Unauthorized action discarded: ${p.name} -> ${p.nightActionTarget}`);
+                p.nightActionTarget = null;
+                continue;
+            }
+
             let target = game.players.get(p.nightActionTarget);
             if (p.nightActionTarget === 'ignite') target = { id: 'ignite', name: 'Ignition Framework', isProtected: false };
             if (target) {

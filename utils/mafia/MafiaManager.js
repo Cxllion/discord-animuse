@@ -219,10 +219,11 @@ class MafiaManager {
             this.games.delete(threadId);
             this.lobbies.delete(hostId);
 
-            // ARCHIVE THREAD
-            if (game.threadId) {
+            // ARCHIVE ALL RELEVANT THREADS
+            const threadsToClose = [game.threadId, game.graveyardThreadId, game.archiveThreadId].filter(id => id);
+            for (const tId of threadsToClose) {
                 try {
-                    const thread = game.thread || await this.client?.channels.fetch(game.threadId).catch(() => null);
+                    const thread = await this.client?.channels.fetch(tId).catch(() => null);
                     if (thread) {
                         await thread.setLocked(true).catch(() => null);
                         await thread.setArchived(true).catch(() => null);

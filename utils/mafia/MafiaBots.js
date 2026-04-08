@@ -5,33 +5,13 @@ function handleBotNightActions(game) {
     for (const bot of aliveBots) {
         if (!bot.role || bot.role.priority === 99) continue;
 
-        let possible = [];
-        
-        if (bot.role.faction === 'Revisions') {
-            possible = alivePlayers.filter(p => !p.role || p.role.faction !== 'Revisions');
-        } else if (bot.role.faction === 'Archivists') {
-            if (bot.role.name === 'The Conservator') {
-                // Respect the rotation rule: Cannot heal the last target
-                possible = alivePlayers.filter(p => p.id !== bot.role.lastTargetId);
-                
-                // If the bot PROTECTED themselves last night, they MUST pick someone else.
-                // Otherwise, they have a chance to self-protect.
-                if (bot.role.lastTargetId !== bot.id && Math.random() < 0.3) {
-                    bot.nightActionTarget = bot.id;
-                    console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) self-protected.`);
-                    continue;
-                }
-            } else {
-                possible = alivePlayers.filter(p => p.id !== bot.id);
-            }
-        } else {
-            possible = alivePlayers.filter(p => p.id !== bot.id);
-        }
+        const options = game.getNightActionOptions(bot);
+        if (options.length === 0) continue;
 
-        if (possible.length > 0 && !bot.nightActionTarget) {
-            const target = possible[Math.floor(Math.random() * possible.length)];
-            bot.nightActionTarget = target.id;
-            console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) targeted ${target.name}.`);
+        if (!bot.nightActionTarget) {
+            const targetData = options[Math.floor(Math.random() * options.length)];
+            bot.nightActionTarget = targetData.value;
+            console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) targeted ${targetData.label}.`);
         }
     }
 }
