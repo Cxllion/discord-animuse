@@ -657,6 +657,26 @@ class MafiaGame extends EventEmitter {
                     optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
                 } else if (p.role.name === 'The Conservator') {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
+                } else if (p.role.name === 'The Shredder' || p.role.name === 'The Plagiarist') {
+                    // --- REVISION KILL HIERARCHY ---
+                    const aliveRevisions = alivePlayers.filter(ap => ap.role?.faction === 'Revisions');
+                    const hasPlagiarist = aliveRevisions.some(ap => ap.role.name === 'The Plagiarist');
+                    let isKiller = false;
+
+                    if (p.role.name === 'The Plagiarist') {
+                        // All Plagiarists are killers (or we can pick one, but user said "the plagiarist" singular-ish)
+                        // If there are multiple, they all get the kill power currently.
+                        isKiller = true; 
+                    } else if (p.role.name === 'The Shredder' && !hasPlagiarist) {
+                        // Shredder only kills if no Plagiarist is alive
+                        // To ensure only ONE shredder gets it if there are multiple:
+                        const firstShredder = aliveRevisions.find(ap => ap.role.name === 'The Shredder');
+                        if (p.id === firstShredder?.id) isKiller = true;
+                    }
+
+                    if (isKiller) {
+                        optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
+                    }
                 } else {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                 }
@@ -978,6 +998,7 @@ class MafiaGame extends EventEmitter {
         await this.updateVotingBoard(true);
         
         let afkErased = [];
+        let afkWarned = [];
         for (const p of this.getAlivePlayers()) {
             if (!p.isBot) {
                 if (!p.voteTarget) {
@@ -987,6 +1008,8 @@ class MafiaGame extends EventEmitter {
                         p.deathDay = this.dayCount;
                         afkErased.push(p);
                         this.moveToGraveyard(p.id);
+                    } else {
+                        afkWarned.push(p);
                     }
                 } else {
                     p.missedVotes = 0; 
@@ -994,10 +1017,16 @@ class MafiaGame extends EventEmitter {
             }
         }
         
-        if (this.thread && afkErased.length > 0) {
-            const afkNames = afkErased.map(p => p.name).join(', ');
-            await this.thread.send(`⚠️ **System Purge:** ${afkNames} ${afkErased.length === 1 ? 'was' : 'were'} erased due to biometric inactivity.`);
-            if (this.checkWin()) return;
+        if (this.thread) {
+            if (afkErased.length > 0) {
+                const afkNames = afkErased.map(p => p.name).join(', ');
+                await this.thread.send(`⚠️ **System Purge:** ${afkNames} ${afkErased.length === 1 ? 'was' : 'were'} erased due to biometric inactivity.`);
+            }
+            if (afkWarned.length > 0) {
+                const pings = afkWarned.map(p => `<@${p.id}>`).join(' ');
+                await this.thread.send(`⚠️ **Biometric Instability:** ${pings}, you have missed a vote. This is your **last chance**. If you miss the next archive update, you will be **redacted** from the records.`);
+            }
+            if (afkErased.length > 0 && this.checkWin()) return;
         }
         
         const tallies = {};

@@ -377,6 +377,22 @@ const handleMafiaInteraction = async (interaction) => {
                     optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
                 } else if (p.role.name === 'The Conservator') {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
+                } else if (p.role.name === 'The Shredder' || p.role.name === 'The Plagiarist') {
+                    // --- REVISION KILL HIERARCHY ---
+                    const aliveRevisions = alivePlayers.filter(ap => ap.role?.faction === 'Revisions');
+                    const hasPlagiarist = aliveRevisions.some(ap => ap.role.name === 'The Plagiarist');
+                    let isKiller = false;
+
+                    if (p.role.name === 'The Plagiarist') {
+                        isKiller = true; 
+                    } else if (p.role.name === 'The Shredder' && !hasPlagiarist) {
+                        const firstShredder = aliveRevisions.find(ap => ap.role.name === 'The Shredder');
+                        if (p.id === firstShredder?.id) isKiller = true;
+                    }
+
+                    if (isKiller) {
+                        optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
+                    }
                 } else {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                 }

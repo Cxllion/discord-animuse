@@ -240,8 +240,20 @@ class ThePlagiarist extends Role {
         this.name = 'The Plagiarist';
         this.faction = 'Revisions';
         this.emoji = '🃏';
-        this.description = 'Godfather: Reads as an innocent Archivist to the Indexer.';
-        this.priority = 99; // Passive
+        this.description = 'Godfather: Reads as an innocent Archivist to the Indexer. Serves as the primary executioner for the faction.';
+        this.priority = 3; // Erasures
+        this.feedback = [
+            "You sharpen your tools, eager to silicate **{target}** from the sanctuary.",
+            "Tonight, **{target}**'s vital signs will be flatlined.",
+            "The Virus has spoken: **{target}** is the next to be silenced.",
+            "You prepare the incinerator for **{target}**'s final chapter.",
+            "One by one, the cells of **{target}** will vanish into grey static.",
+            "You've marked **{target}** for a permanent logout.",
+            "The silence in the library will be broken by **{target}**'s end.",
+            "Tonight's infiltration requires the elimination of **{target}**.",
+            "You've placed **{target}** on the path of the shredder's sensors.",
+            "The forbidden rot calls for the sacrifice of **{target}**."
+        ];
     }
 }
 
