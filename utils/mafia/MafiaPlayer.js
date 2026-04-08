@@ -25,6 +25,7 @@ class MafiaPlayer {
         this.deathDay = null; // Track when they died for timelines
         this.missedVotes = 0; // Track AFK voting
         this.controlPanelMessageId = null; // Track persistent DM panel
+        this.initialVoiceChannelId = null; // Original VC to return to
     }
 
     assignRole(roleObject) {
@@ -66,7 +67,8 @@ class MafiaPlayer {
             isConfirmed: this.isConfirmed,
             deathDay: this.deathDay,
             missedVotes: this.missedVotes,
-            controlPanelMessageId: this.controlPanelMessageId
+            controlPanelMessageId: this.controlPanelMessageId,
+            initialVoiceChannelId: this.initialVoiceChannelId
         };
     }
 
@@ -111,6 +113,7 @@ class MafiaPlayer {
         this.deathDay = data.deathDay;
         this.missedVotes = data.missedVotes || 0;
         this.controlPanelMessageId = data.controlPanelMessageId || null;
+        this.initialVoiceChannelId = data.initialVoiceChannelId || null;
     }
 }
 

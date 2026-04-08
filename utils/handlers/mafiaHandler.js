@@ -121,6 +121,25 @@ const handleMafiaInteraction = async (interaction) => {
             return;
         }
 
+        // Toggle voice support setting
+        if (interaction.customId.startsWith('mafia_togglevc_')) {
+            if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can do this.', flags: MessageFlags.Ephemeral });
+            
+            const current = game.settings.voiceSupport;
+            if (current === 'new') game.settings.voiceSupport = 'existing';
+            else if (current === 'existing') game.settings.voiceSupport = 'disabled';
+            else game.settings.voiceSupport = 'new';
+
+            MafiaManager.hostPreferences.set(game.hostId, game.settings);
+            MafiaManager.saveState();
+            await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
+            try {
+                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
+                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
+            } catch(e) {}
+            return;
+        }
+
         // Queue for next game
         if (interaction.customId.startsWith('mafia_queuenext_')) {
             const channelId = (interaction.channel.parentId || interaction.channel.id);
@@ -356,6 +375,8 @@ const handleMafiaInteraction = async (interaction) => {
                 } else if (p.role.name === 'The Bookburner') {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                     optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
+                } else if (p.role.name === 'The Conservator') {
+                    optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
                 } else {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                 }

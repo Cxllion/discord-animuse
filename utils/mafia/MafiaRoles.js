@@ -99,6 +99,12 @@ class TheConservator extends Role {
             "You've indexed **{target}** as 'Uninfected' for the night.",
             "The library's oldest bindings wrap **{target}** in a safe embrace."
         ];
+        this.lastTargetId = null; // Prevent double-healing
+    }
+
+    executeAction(target, game) {
+        target.isProtected = true;
+        this.lastTargetId = target.id;
     }
 }
 
@@ -292,13 +298,9 @@ class TheBookburner extends Role {
         this.faction = 'Unbound';
         this.emoji = '🔥';
         this.description = 'Arsonist: Secretly saturates one player with toxins each night. Can choose to "Ignite" instead, erasing all saturated players simultaneously.';
-        this.priority = 3; // Erasures
+        this.priority = 4; // Priming
         this.isReadyToIgnite = false;
         this.feedback_douse = [
-            "You spray volatile toxins onto **{target}**, preparing them for the reaction.",
-            "Tonight, you've secretly prepared **{target}** for a glorious chemical blaze.",
-            "A faint smell of ammonia now lingers on the bunk of **{target}**.",
-            "You've indexed **{target}** as 'Biologically Unstable' in your secret notes.",
             "The sanctuary's most dangerous chemicals now coat the skin of **{target}**.",
             "You've marked **{target}** as catalyst for your future masterpiece.",
             "A thin layer of corrosive-gel now coats the essence of **{target}**.",

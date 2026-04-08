@@ -167,7 +167,8 @@ function buildSettingsPayload(game, category = 'discussion') {
         `**Discussion:** \`${game.settings.discussionTime}s\` · **Voting:** \`${game.settings.votingTime}s\`\n` +
         `**Night:** \`${game.settings.nightTime}s\` · **Prologue:** \`${game.settings.prologueTime}s\`\n` +
         `**Mode:** ${game.settings.gameMode}\n` +
-        `**Role Reveal on Death:** ${game.settings.revealRoles ? '✅ Enabled' : '❌ Hidden'}`,
+        `**Role Reveal on Death:** ${game.settings.revealRoles ? '✅ Enabled' : '❌ Hidden'}\n` +
+        `**Voice Support:** ${game.settings.voiceSupport === 'new' ? '🎙️ New Hub' : (game.settings.voiceSupport === 'existing' ? '🎧 Existing Sector' : '❌ Disabled')}`,
         null
     ).setColor('#3498db');
 
@@ -230,9 +231,14 @@ function buildSettingsPayload(game, category = 'discussion') {
             .addOptions(durationOptions[category] || durationOptions.discussion)
     );
 
+    let vcLabel = '🔇 VC: Disabled';
+    if (game.settings.voiceSupport === 'new') vcLabel = '🎙️ VC: New Hub';
+    else if (game.settings.voiceSupport === 'existing') vcLabel = '🎧 VC: Existing';
+
     const backRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`mafia_togglereveal_${game.hostId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed on Death' : '🔒 Roles: Hidden Until Game Over').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`mafia_lobby_back_${game.hostId}`).setLabel('⬅️ Back to Lobby').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(`mafia_togglereveal_${game.hostId}`).setLabel(game.settings.revealRoles ? '👁️ Roles: Revealed' : '🔒 Roles: Hidden').setStyle(game.settings.revealRoles ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`mafia_togglevc_${game.hostId}`).setLabel(vcLabel).setStyle(game.settings.voiceSupport !== 'disabled' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`mafia_lobby_back_${game.hostId}`).setLabel('⬅️ Back').setStyle(ButtonStyle.Danger)
     );
 
     return { embeds: [embed], components: [modeRow, categoryRow, durationRow, backRow], flags: 64 };

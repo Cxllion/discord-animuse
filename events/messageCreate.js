@@ -11,6 +11,21 @@ module.exports = {
         if (message.author.bot) return;
         if (!message.guild) return;
 
+        // --- Mafia Vigilant Redaction (Silence for the Dead) ---
+        if (message.channel.isThread()) {
+            const MafiaManager = require('../utils/mafia/MafiaManager');
+            const game = MafiaManager.games.get(message.channel.id);
+            if (game && game.state !== 'LOBBY' && game.state !== 'GAME_OVER') {
+                const player = game.players.get(message.author.id);
+                if (player && !player.alive) {
+                    try {
+                        await message.delete();
+                        return; // Halt further processing for redacted messages
+                    } catch (e) {}
+                }
+            }
+        }
+
         // Skip other automated tasks for test bot
         // But the Activity Pulse is allowed for live-dev testing
         const isSelfTest = message.client.isTestBot;

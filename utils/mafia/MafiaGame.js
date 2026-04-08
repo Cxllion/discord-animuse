@@ -74,7 +74,8 @@ class MafiaGame extends EventEmitter {
             nightTime: 60, // seconds
             prologueTime: 15, // seconds
             gameMode: 'Classic Archive',
-            revealRoles: true // Show roles on death/exile
+            revealRoles: true, // Show roles on death/exile
+            voiceSupport: 'new' // 'new', 'existing', 'disabled'
         };
 
         // Players collection: userId -> Player
@@ -108,12 +109,35 @@ class MafiaGame extends EventEmitter {
         // --- VOICE PROTOCOL: REDACT HUB ---
         if (this.voiceChannelId) {
             try {
-                const guild = this.thread?.guild;
+                const guild = this.thread?.guild || (this.threadId ? await this.client?.channels.fetch(this.threadId).then(t => t.guild).catch(() => null) : null);
                 if (guild) {
-                    const vc = await guild.channels.fetch(this.voiceChannelId).catch(() => null);
-                    if (vc) await vc.delete('Game over').catch(() => null);
+                    // RETURN PLAYERS TO ORIGINAL VC (If we moved them)
+                    for (const p of this.players.values()) {
+                        if (!p.isBot) {
+                            try {
+                                const member = await guild.members.fetch(p.id).catch(() => null);
+                                if (member) {
+                                    // Always unmute/undeafen during cleanup for any audio mode
+                                    await member.voice.setMute(false).catch(() => null);
+                                    await member.voice.setDeaf(false).catch(() => null);
+                                    
+                                    // Only move back if we were in 'new' mode and they have a record
+                                    if (this.settings.voiceSupport === 'new' && p.initialVoiceChannelId && member.voice.channelId) {
+                                        await member.voice.setChannel(p.initialVoiceChannelId).catch(() => null);
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                    }
+
+                    if (this.voiceChannelId && this.settings.voiceSupport === 'new') {
+                        const vc = await guild.channels.fetch(this.voiceChannelId).catch(() => null);
+                        if (vc) await vc.delete('Game over').catch(() => null);
+                    }
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('[Mafia] Cleanup failed:', e);
+            }
         }
 
         this.thread = null;
@@ -280,37 +304,63 @@ class MafiaGame extends EventEmitter {
         this.thread = thread;
 
         // --- VOICE CHANNEL SETUP ---
-        try {
-            const voiceChannel = await interaction.channel.guild.channels.create({
-                name: `🎙️ Library Hub | ${this.settings.gameMode}`,
-                type: ChannelType.GuildVoice,
-                permissionOverwrites: [
-                    {
-                        id: interaction.channel.guild.roles.everyone.id,
-                        deny: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
-                    },
-                    ...Array.from(this.players.entries()).filter(([id, p]) => !p.isBot).map(([id]) => ({
-                        id: id,
-                        allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
-                    })),
-                ],
-                reason: 'Mafia Voice Hub',
-            });
-            this.voiceChannelId = voiceChannel.id;
-
-            // Move players who are in voice
-            for (const [userId, player] of this.players.entries()) {
-                if (!player.isBot) {
-                    try {
-                        const member = await interaction.guild.members.fetch(userId).catch(() => null);
-                        if (member && member.voice.channel) {
-                            await member.voice.setChannel(voiceChannel).catch(() => null);
-                        }
-                    } catch (e) {}
+        if (this.settings.voiceSupport !== 'disabled') {
+            try {
+                // Record initial VCs for restoration
+                for (const [userId, player] of this.players.entries()) {
+                    if (!player.isBot) {
+                        try {
+                            const member = await interaction.guild.members.fetch(userId).catch(() => null);
+                            if (member && member.voice.channelId) {
+                                player.initialVoiceChannelId = member.voice.channelId;
+                            }
+                        } catch (e) {}
+                    }
                 }
+
+                if (this.settings.voiceSupport === 'new') {
+                    const voiceChannel = await interaction.channel.guild.channels.create({
+                        name: `🎙️ Library Hub | ${this.settings.gameMode}`,
+                        type: ChannelType.GuildVoice,
+                        permissionOverwrites: [
+                            {
+                                id: interaction.channel.guild.roles.everyone.id,
+                                deny: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+                            },
+                            ...Array.from(this.players.entries()).filter(([id, p]) => !p.isBot).map(([id]) => ({
+                                id: id,
+                                allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+                            })),
+                        ],
+                        reason: 'Mafia Voice Hub',
+                    });
+                    this.voiceChannelId = voiceChannel.id;
+
+                    // Move players who are in voice
+                    for (const [userId, player] of this.players.entries()) {
+                        if (!player.isBot) {
+                            try {
+                                const member = await interaction.guild.members.fetch(userId).catch(() => null);
+                                if (member && member.voice.channelId) {
+                                    await member.voice.setChannel(voiceChannel).catch(() => null);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    await thread.send(`🎙️ **Voice Hub Synced.** Connect to <#${voiceChannel.id}> for the briefing.`);
+                } else if (this.settings.voiceSupport === 'existing') {
+                    // Use the host's current VC as the hub
+                    const hostMember = await interaction.guild.members.fetch(this.hostId).catch(() => null);
+                    if (hostMember && hostMember.voice.channelId) {
+                        this.voiceChannelId = hostMember.voice.channelId;
+                        await thread.send(`🎧 **Existing Frequency Locked.** Audio protocols will be enforced in <#${this.voiceChannelId}>.`);
+                    } else {
+                        await thread.send(`⚠️ **Audio Sync Failed.** Host is not connected to a voice sector. Falling back to text-only.`);
+                    }
+                }
+            } catch (e) {
+                console.error('[Mafia] Failed to initialize Voice Hub:', e);
             }
-        } catch (e) {
-            console.error('[Mafia] Failed to initialize Voice Hub:', e);
         }
 
         this.emit('gameStarted', { lobbyId: this.hostId, threadId: thread.id, voiceId: this.voiceChannelId });
@@ -605,6 +655,8 @@ class MafiaGame extends EventEmitter {
                 } else if (p.role.name === 'The Bookburner') {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                     optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
+                } else if (p.role.name === 'The Conservator') {
+                    optionsData = alivePlayers.filter(ap => ap.id !== p.role.lastTargetId).map(ap => ({ label: ap.name, value: ap.id }));
                 } else {
                     optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
                 }
@@ -777,6 +829,23 @@ class MafiaGame extends EventEmitter {
             const timers = await handleBotDaySpeech(this);
             if (timers && Array.isArray(timers)) {
                 this.botTimers.push(...timers);
+            }
+
+            // --- DM REFRESH: DISCUSSION PROTOCOLS ---
+            const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+            for (const p of this.getAlivePlayers()) {
+                if (p.isBot) continue;
+                
+                const willLabel = p.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
+                const willRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`mafia_will_${this.hostId}`)
+                        .setLabel(willLabel)
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                
+                const content = `☀️ **Phase: Day ${this.dayCount} (Discussion)**\nThe archives are open for debate. You may update your last will using the terminal below.`;
+                await this.refreshControlPanel(p, content, [willRow]);
             }
         }
         
@@ -1079,16 +1148,14 @@ class MafiaGame extends EventEmitter {
 
         // 3. Silence in Main Thread
         try {
-            if (this.thread) {
-                await this.thread.members.remove(userId).catch(e => {
-                    console.error(`[Mafia Redaction] Failed to eject ${userId} from thread ${this.threadId}:`, e.message);
-                });
-            }
+            // [VIGILANT REDACTION] 
+            // We no longer remove them from the thread so they can spectate.
+            // Enforcement is handled by the messageCreate event listener.
             
             // Notify user in DM
             const player = this.players.get(userId);
             if (player && player.user) {
-                await player.user.send(`💀 **Connection Terminated.** You have been redacted from the living archives. You can continue to spectate the simulation from <#${this.graveyardThreadId}> and by listening in the Hub Voice channel.`).catch(() => null);
+                await player.user.send(`💀 **Connection Locked.** You have been redacted from the living records. You can still spectate the sanctuary in real-time, but your biometrics have been locked from sending new records to the chat.\n\n*(You can still speak in the <#${this.graveyardThreadId}> archives!)*`).catch(() => null);
             }
         } catch (e) {}
     }
