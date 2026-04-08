@@ -248,7 +248,10 @@ function buildStartedLobbyPayload(game) {
         null
     )
         .setColor('#2ecc71')
-        .addFields({ name: '🎙️ Audio Status', value: '> **Library Hub:** `Operational`\n> **Uplink:** `Encrypted`' })
+        .addFields(
+            { name: '🎙️ Audio Status', value: '> **Library Hub:** `Operational`\n> **Uplink:** `Encrypted`' },
+            { name: '🛡️ Sanctuary Integrity', value: game.isSecure ? '> **Mode:** `Secure Redaction` (Private)\n> **Protocol:** `Member Exile Active`' : '> **Mode:** `Public Records` (Vulnerable)\n> **Protocol:** `Partial Containment`' }
+        )
         .setTimestamp();
     
     if (queue.size > 0) {

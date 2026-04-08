@@ -84,8 +84,8 @@ function resolveNightStack(game) {
                         
                         if (game.archiveThreadId && !target.isBot) {
                             try {
-                                const mThread = game.thread.guild.channels.cache.get(game.archiveThreadId);
-                                if (mThread) mThread.members.add(target.id);
+                                const mThread = await game.thread.guild.channels.fetch(game.archiveThreadId).catch(() => null);
+                                if (mThread) await mThread.members.add(target.id).catch(() => null);
                             } catch(e) {}
                         }
                     }

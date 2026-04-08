@@ -151,11 +151,11 @@ class MafiaManager {
     }
 
     getLobbyByGuild(guildId) {
-        return Array.from(this.lobbies.values()).find(g => g.guildId === guildId);
+        return Array.from(this.lobbies.values()).find(g => g.guildId === guildId && g.state === 'LOBBY');
     }
 
     getGameByGuild(guildId) {
-        return Array.from(this.games.values()).find(g => g.guildId === guildId);
+        return Array.from(this.games.values()).find(g => g.guildId === guildId && g.state !== 'GAME_OVER');
     }
 
     startGame(hostId, threadId) {
@@ -281,7 +281,7 @@ class MafiaManager {
             for (const gData of gamesArray) {
                 const game = new Game(gData.lobbyMessageId, { id: gData.hostId });
                 game.fromJSON(gData);
-                await game.syncPlayers(client);
+                await game.syncState(client);
                 
                 this.setupGameListeners(game);
                 

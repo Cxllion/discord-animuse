@@ -96,6 +96,7 @@ class MafiaGame extends EventEmitter {
         this.lastActivityAt = Date.now();
         this.stagnationNoticeSent = false;
         this.phaseEndTime = null; // Absolute timestamp for persistence
+        this.isSecure = true; // Sanctuary Security Status
     }
 
     async destroy() {
@@ -209,6 +210,32 @@ class MafiaGame extends EventEmitter {
         return Array.from(this.players.values()).filter(p => p.alive);
     }
 
+    async refreshControlPanel(player, content, components) {
+        if (player.isBot) return;
+
+        // 1. Delete old panel if it exists
+        if (player.controlPanelMessageId) {
+            try {
+                const oldMsg = await player.user.send('Refreshed.').catch(() => null);
+                if (oldMsg) {
+                    const dmChannel = oldMsg.channel;
+                    const prevPanel = await dmChannel.messages.fetch(player.controlPanelMessageId).catch(() => null);
+                    if (prevPanel) await prevPanel.delete().catch(() => null);
+                    await oldMsg.delete().catch(() => null);
+                }
+            } catch (e) {}
+        }
+
+        // 2. Send new panel
+        try {
+            const newMsg = await player.user.send({ content, components });
+            player.controlPanelMessageId = newMsg.id;
+            this.emit('saveState');
+        } catch (e) {
+            console.error(`[Mafia Refresh] Failed to send panel to ${player.name}:`, e);
+        }
+    }
+
     async start(interaction) {
         if (this.state !== 'LOBBY') return false;
         
@@ -225,23 +252,24 @@ class MafiaGame extends EventEmitter {
         }
 
         this.state = 'PROLOGUE';
+        this.isSecure = true; // Track if we are in a private thread
         
         let thread;
         try {
             // Private thread for the main game to allow removing dead players 
-            // (Setting it to type 12: Private Thread)
             thread = await interaction.channel.threads.create({
                 name: `📚 Final Library | ${this.settings.gameMode}`,
                 autoArchiveDuration: 60,
-                type: 12, 
-                reason: 'Mafia game session',
+                type: 12, // PrivateThread
+                reason: 'Mafia secure simulation',
             });
         } catch (e) {
-            console.error('Private thread creation failed, falling back to public:', e);
+            console.warn('[Mafia] Secure Redaction Failed. Falling back to Public records:', e.message);
+            this.isSecure = false;
             thread = await interaction.channel.threads.create({
-                name: `📚 Final Library | ${this.settings.gameMode}`,
+                name: `📚 Final Library (Public) | ${this.settings.gameMode}`,
                 autoArchiveDuration: 60,
-                reason: 'Started a game of Mafia',
+                reason: 'Mafia public simulation',
             });
         }
         
@@ -360,12 +388,19 @@ class MafiaGame extends EventEmitter {
         const { buildRoleCard } = require('./MafiaUI');
         for (const p of this.players.values()) {
             if (!p.isBot && p.role) {
-                try {
-                    const card = buildRoleCard(p, this);
-                    await p.user.send(card);
-                } catch (e) {
-                    console.log(`[WARN] Transmission error to survivor ${p.name}: Potential block.`);
-                }
+                const { buildRoleCard } = require('./MafiaUI');
+                const card = buildRoleCard(p, this);
+                
+                // Add Will button to the role card panel
+                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                const willRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`mafia_will_${this.hostId}`)
+                        .setLabel('✍️ Write Last Will')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                
+                await this.refreshControlPanel(p, { embeds: card.embeds }, [willRow]);
             }
         }
         
@@ -598,10 +633,9 @@ class MafiaGame extends EventEmitter {
                 const endTime = Math.floor(Date.now() / 1000) + nightDuration;
                 const willStatus = p.lastWill ? `📜 Current will: *"${p.lastWill}"*` : `📜 You haven't written a last will yet.`;
                 const roleInfo = p.role && p.role.priority !== 99 ? `**Your Role:** ${p.role.emoji} ${p.role.name}` : '';
-                await p.user.send({ 
-                    content: `🌑 **Night ${this.dayCount}** · Ends <t:${endTime}:R>\n${roleInfo}\n${willStatus}`, 
-                    components 
-                });
+                const content = `🌑 **Night ${this.dayCount}** · Ends <t:${endTime}:R>\n${roleInfo}\n${willStatus}`;
+                
+                await this.refreshControlPanel(p, content, components);
             } catch (e) {
                 console.error(`Failed to DM player ${p.name}:`, e);
             }
@@ -664,7 +698,25 @@ class MafiaGame extends EventEmitter {
             for (const r of readings) {
                 const viewer = this.players.get(r.viewerId);
                 if (viewer && !viewer.isBot) {
-                    try { await viewer.user.send(r.message); } catch(e){}
+                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                    const willRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`mafia_will_${this.hostId}`)
+                            .setLabel('✍️ Update Last Will')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                    await this.refreshControlPanel(viewer, r.message, [willRow]);
+                }
+            }
+        }
+        
+        // --- CRITIC TARGET LOSS ADAPTATION ---
+        for (const p of this.players.values()) {
+            if (p.alive && p.role?.name === 'The Critic' && p.criticTarget) {
+                const target = this.players.get(p.criticTarget);
+                if (target && !target.alive) {
+                    // Target was killed at night, Critic fails objective
+                    // (Optionally convert to Anomaly here if desired, but for now just fail)
                 }
             }
         }
@@ -1024,7 +1076,11 @@ class MafiaGame extends EventEmitter {
 
         // 3. Silence in Main Thread
         try {
-            await this.thread.members.remove(userId).catch(() => null);
+            if (this.thread) {
+                await this.thread.members.remove(userId).catch(e => {
+                    console.error(`[Mafia Redaction] Failed to eject ${userId} from thread ${this.threadId}:`, e.message);
+                });
+            }
             
             // Notify user in DM
             const player = this.players.get(userId);
@@ -1040,18 +1096,28 @@ class MafiaGame extends EventEmitter {
         console.log(`[Mafia] Resuming phase: ${this.state} (Day ${this.dayCount})`);
         
         if (this.state === 'PROLOGUE') {
-            this.activeTimer = setTimeout(() => this.startNight(), 5000);
+            this.activeTimer = setTimeout(() => {
+                if (!this.isDestroyed) this.startNight();
+            }, 5000);
         } else {
             const remaining = this.phaseEndTime ? Math.max(5000, this.phaseEndTime - Date.now()) : 10000;
             
             if (this.state === 'NIGHT') {
-                this.activeTimer = setTimeout(() => this.endNight(), remaining);
+                this.activeTimer = setTimeout(() => {
+                    if (!this.isDestroyed) this.endNight();
+                }, remaining);
             } else if (this.state === 'DAY') {
-                this.activeTimer = setTimeout(() => this.startVoting(), remaining);
+                this.activeTimer = setTimeout(() => {
+                    if (!this.isDestroyed) this.startVoting();
+                }, remaining);
             } else if (this.state === 'VOTING') {
-                this.activeTimer = setTimeout(() => this.endDay(), remaining);
+                this.activeTimer = setTimeout(() => {
+                    if (!this.isDestroyed) this.endDay();
+                }, remaining);
             } else if (this.state === 'TWILIGHT') {
-                this.activeTimer = setTimeout(() => this.startNight(), remaining);
+                this.activeTimer = setTimeout(() => {
+                    if (!this.isDestroyed) this.startNight();
+                }, remaining);
             }
         }
     }
@@ -1074,6 +1140,7 @@ class MafiaGame extends EventEmitter {
             stagnationNoticeSent: this.stagnationNoticeSent,
             phaseEndTime: this.phaseEndTime,
             voiceChannelId: this.voiceChannelId,
+            isSecure: this.isSecure,
             players: Array.from(this.players.entries()).map(([id, p]) => ({ id, ...p.toJSON() }))
         };
     }
@@ -1095,6 +1162,7 @@ class MafiaGame extends EventEmitter {
         this.stagnationNoticeSent = data.stagnationNoticeSent || false;
         this.phaseEndTime = data.phaseEndTime || null;
         this.voiceChannelId = data.voiceChannelId || null;
+        this.isSecure = data.isSecure !== undefined ? data.isSecure : true;
 
         if (data.players) {
             for (const pData of data.players) {
@@ -1106,20 +1174,39 @@ class MafiaGame extends EventEmitter {
     }
 
     /**
-     * Re-synchronizes participant User objects from Discord after a state restoration.
-     * Prevents "Cannot read properties of undefined (reading 'send')" for restored users.
+     * Re-synchronizes all Discord objects (Users, Threads, Channels) after a state restoration.
+     * Ensures that 'missing' references are hydrated before the simulation resumes.
      */
-    async syncPlayers(client) {
+    async syncState(client) {
+        // 1. Restore Thread Reference
+        if (this.threadId) {
+            try {
+                const thread = await client.channels.fetch(this.threadId).catch(() => null);
+                if (thread) this.thread = thread;
+            } catch (e) {
+                console.warn(`[Mafia] Failed to hydrate thread ${this.threadId} during restoration.`);
+            }
+        }
+
+        // 2. Restore Voice Hub Reference
+        if (this.voiceChannelId) {
+            try {
+                // Fetching the voice channel to ensure current reference
+                await client.channels.fetch(this.voiceChannelId).catch(() => null);
+            } catch (e) {}
+        }
+
+        // 3. Sync Player User objects
         const participantIds = Array.from(this.players.keys());
         for (const id of participantIds) {
             try {
                 const player = this.players.get(id);
                 if (player && !player.isBot) {
-                    const user = await client.users.fetch(id);
+                    const user = await client.users.fetch(id).catch(() => null);
                     if (user) player.user = user;
                 }
             } catch (e) {
-                console.error(`[Mafia] Failed to sync user ${id} during restoration:`, e);
+                console.error(`[Mafia] Failed to sync user ${id} during restoration:`, e.message);
             }
         }
     }

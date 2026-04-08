@@ -1,5 +1,5 @@
 const MafiaManager = require('../mafia/MafiaManager');
-const { MessageFlags } = require('discord.js');
+const { MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
 const handleMafiaInteraction = async (interaction) => {
     // 1. EXTRACT LOBBY ID ROBUSTLY
@@ -322,11 +322,15 @@ const handleMafiaInteraction = async (interaction) => {
         // Night ability target selector (DM)
         if (interaction.customId.startsWith('mafia_night_target_')) {
             if (game.state !== 'NIGHT') return interaction.update({ content: 'The night has passed.', components: [] });
+            
             const p = game.players.get(interaction.user.id);
             const targetId = interaction.values[0];
+            
             if (p && p.alive) {
+                await interaction.deferUpdate();
+                
                 p.nightActionTarget = targetId;
-                const targetName = game.players.get(targetId)?.name || 'Unknown';
+                const targetName = game.players.get(targetId)?.name || (targetId === 'ignite' ? 'All Doused' : 'Unknown');
                 let response = `Target locked: **${targetName}**.`;
                 
                 if (p.role && p.role.feedback) {
@@ -334,15 +338,46 @@ const handleMafiaInteraction = async (interaction) => {
                     response = p.role.feedback[randomIdx].replace('{target}', targetName);
                 } else if (p.role && p.role.name === 'The Bookburner') {
                     if (targetId === 'ignite') {
-                        const randomIdx = Math.floor(Math.random() * p.role.feedback_ignite.length);
-                        response = p.role.feedback_ignite[randomIdx];
+                        const randomIdx = Math.floor(Math.random() * (p.role.feedback_ignite?.length || 1));
+                        response = p.role.feedback_ignite ? p.role.feedback_ignite[randomIdx] : 'Ignition sequence initiated.';
                     } else {
-                        const randomIdx = Math.floor(Math.random() * p.role.feedback_douse.length);
-                        response = p.role.feedback_douse[randomIdx].replace('{target}', targetName);
+                        const randomIdx = Math.floor(Math.random() * (p.role.feedback_douse?.length || 1));
+                        response = p.role.feedback_douse ? p.role.feedback_douse[randomIdx].replace('{target}', targetName) : `Target doused: **${targetName}**.`;
                     }
                 }
+
+                // Reconstruct components for persistence
+                const components = [];
+                const alivePlayers = game.getAlivePlayers();
                 
-                await interaction.update({ content: response, components: [] });
+                let optionsData = [];
+                if (p.role.name === 'The Scribe') {
+                    optionsData = Array.from(game.players.values()).filter(ap => !ap.alive && !game.guiltDeaths.includes(ap)).map(ap => ({ label: ap.name, value: ap.id }));
+                } else if (p.role.name === 'The Bookburner') {
+                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
+                    optionsData.unshift({ label: '🔥 Ignite All Doused', description: 'Erase everyone currently doused', value: 'ignite' });
+                } else {
+                    optionsData = alivePlayers.filter(ap => ap.id !== p.id).map(ap => ({ label: ap.name, value: ap.id }));
+                }
+
+                if (optionsData.length > 0) {
+                    const dropdown = new StringSelectMenuBuilder()
+                        .setCustomId(`mafia_night_target_${game.hostId}`)
+                        .setPlaceholder(`${p.role.emoji} Change target (Current: ${targetName})`)
+                        .addOptions(optionsData.slice(0, 25));
+                    components.push(new ActionRowBuilder().addComponents(dropdown));
+                }
+
+                const willLabel = p.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
+                const willRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`mafia_will_${game.hostId}`)
+                        .setLabel(willLabel)
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                components.push(willRow);
+
+                await game.refreshControlPanel(p, response, components);
             } else {
                 await interaction.update({ content: 'You cannot act right now.', components: [] });
             }
