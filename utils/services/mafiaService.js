@@ -9,6 +9,10 @@ class MafiaService {
      */
     async recordMatchResults(userIds, isWin) {
         if (!supabase) return;
+        if (process.env.TEST_MODE === 'true') {
+            logger.info(`[Test Mode] Skipping match result recording for ${userIds.length} players.`, 'MafiaService');
+            return;
+        }
         
         try {
             for (const userId of userIds) {

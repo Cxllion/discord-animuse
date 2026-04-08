@@ -16,6 +16,15 @@ const calculateLevel = (xp) => {
 };
 
 /**
+ * Calculates minimum XP required for a level.
+ * @param {number} level 
+ * @returns {number} xp
+ */
+const calculateMinXp = (level) => {
+    return Math.pow(level / 0.1, 2);
+};
+
+/**
  * Calculates progress to next level.
  * @param {number} xp 
  * @param {number} level 
@@ -106,27 +115,7 @@ const addXp = async (userId, guildId, member = null, message = null) => {
 
             // --- Milestone Check & Role Assignment ---
             if (member) {
-                // Find all roles the user should have based on new level
-                const qualifyingRoles = levelRoles.filter(lr => lr.level <= newLevel);
-                let newTierEarned = null;
-
-                for (const lr of qualifyingRoles) {
-                    if (!member.roles.cache.has(lr.role_id)) {
-                        const role = member.guild.roles.cache.get(lr.role_id);
-                        const botMember = member.guild.members.me;
-                        
-                        if (role && botMember.permissions.has('ManageRoles') && role.position < botMember.roles.highest.position) {
-                            try {
-                                const cleanName = role.name.replace(/^\d+\s*\|\s*/, '');
-                                await member.roles.add(role);
-                                logger.info(`Assigned Level ${lr.level} Role ${cleanName} to ${member.user.tag}`, 'Leveling');
-                                if (lr.level === newLevel) newTierEarned = role;
-                            } catch (e) {
-                                logger.error(`Failed to assign level role ${lr.level} to ${member.user.tag}:`, e, 'Leveling');
-                            }
-                        }
-                    }
-                }
+                const newTierEarned = await syncLevelRoles(member, newLevel);
 
                 // --- Milestone Announcement (Themed Embed) ---
                 if (newTierEarned && message) {
@@ -228,6 +217,111 @@ const getTopUsers = async (guildId) => {
     return data || [];
 };
 
+/**
+ * Syncs level roles for a member (adds missing, removes extra).
+ * @param {import('discord.js').GuildMember} member 
+ * @param {number} level 
+ * @returns {import('discord.js').Role|null} The role for the specified level, if it exists and was processed.
+ */
+const syncLevelRoles = async (member, level) => {
+    const { getLevelRoles } = require('../core/database');
+    const levelRoles = await getLevelRoles(member.guild.id);
+    const botMember = member.guild.members.me;
+    let targetLevelRole = null;
+
+    if (!botMember.permissions.has('ManageRoles')) return null;
+
+    for (const lr of levelRoles) {
+        const role = member.guild.roles.cache.get(lr.role_id);
+        if (!role || role.position >= botMember.roles.highest.position) continue;
+
+        if (lr.level <= level) {
+            if (!member.roles.cache.has(lr.role_id)) {
+                await member.roles.add(role).catch(() => {});
+            }
+            if (lr.level === level) targetLevelRole = role;
+        } else {
+            if (member.roles.cache.has(lr.role_id)) {
+                await member.roles.remove(role).catch(() => {});
+            }
+        }
+    }
+    return targetLevelRole;
+};
+
+/**
+ * Adjusts a user's XP by a specific amount.
+ * @param {string} userId 
+ * @param {string} guildId 
+ * @param {number} amount 
+ * @param {import('discord.js').GuildMember} [member=null]
+ */
+const adjustXp = async (userId, guildId, amount, member = null) => {
+    if (!supabase) return null;
+
+    // Get current state
+    const current = await getUserRank(userId, guildId);
+    const newXp = Math.max(0, (current?.xp || 0) + amount);
+    const newLevel = calculateLevel(newXp);
+
+    const { error } = await supabase
+        .from('users')
+        .upsert({ 
+            user_id: userId, 
+            guild_id: guildId, 
+            xp: newXp, 
+            level: newLevel 
+        }, { onConflict: 'user_id, guild_id' });
+
+    if (error) {
+        logger.error(`Adjust XP Error: ${error.message}`, null, 'Leveling');
+        return null;
+    }
+
+    if (member) await syncLevelRoles(member, newLevel);
+    return { xp: newXp, level: newLevel };
+};
+
+/**
+ * Sets a user to a specific level.
+ * @param {string} userId 
+ * @param {string} guildId 
+ * @param {number} level 
+ * @param {import('discord.js').GuildMember} [member=null]
+ */
+const setLevel = async (userId, guildId, level, member = null) => {
+    if (!supabase) return null;
+
+    const newXp = calculateMinXp(level);
+
+    const { error } = await supabase
+        .from('users')
+        .upsert({ 
+            user_id: userId, 
+            guild_id: guildId, 
+            xp: newXp, 
+            level: level 
+        }, { onConflict: 'user_id, guild_id' });
+
+    if (error) {
+        logger.error(`Set Level Error: ${error.message}`, null, 'Leveling');
+        return null;
+    }
+
+    if (member) await syncLevelRoles(member, level);
+    return { xp: newXp, level: level };
+};
+
+/**
+ * Resets a user's leveling data.
+ * @param {string} userId 
+ * @param {string} guildId 
+ * @param {import('discord.js').GuildMember} [member=null]
+ */
+const resetUserLevel = async (userId, guildId, member = null) => {
+    return await setLevel(userId, guildId, 0, member);
+};
+
 const getLevelingStats = async (guildId) => {
     if (!supabase) return { totalXp: 0, activeUsers: 0, avgLevel: 0 };
 
@@ -250,5 +344,10 @@ module.exports = {
     getUserRank,
     getLevelProgress,
     getTopUsers,
-    getLevelingStats
+    getLevelingStats,
+    adjustXp,
+    setLevel,
+    resetUserLevel,
+    calculateMinXp,
+    calculateLevel
 };

@@ -1,0 +1,30 @@
+const welcomeMessages = [
+    `📖 **A new scholar enters the archives.**\nWelcome to our collection, {user}.`,
+    `✨ **The library doors open.**\nPlease make yourself comfortable, {user}.`,
+    `📜 **Registration complete.**\nYour story begins here, {user}.`,
+    `🔖 **Another volume added to the shelf.**\nWelcome to the community, {user}.`,
+    `🖊️ **The ink is fresh.**\nGlad to have you with us, {user}.`,
+    `🏺 **An ancient soul enters the halls.**\nWelcome to the library, {user}.`,
+    `🏛️ **The foundation grows stronger.**\nHonoured to have you in our archives, {user}.`,
+    `🕯️ **The lanterns flicker in greeting.**\nStep into the light, {user}.`,
+    `🗝️ **The master key turns.**\nThe records are now open to you, {user}.`,
+    `🧬 **Sequence indexed. Identity verified.**\nAccess granted to the core, {user}.`,
+    `🔮 **The prophecy foretold your arrival.**\nWelcome to the Animuse Archives, {user}.`,
+    `🏺 **A rare artifacts discovery.**\n{user} has been added to our unique items list.`,
+    `🎭 **The curtain rises on a new act.**\nYour journey starts now, {user}.`,
+    `🧭 **Navigation systems online.**\nPlot your course through the library, {user}.`,
+    `🛰️ **Signal detected in the outer sector.**\nWelcome to the station, {user}.`,
+    `📜 **The decree has been signed.**\nOfficial recognition granted to {user}.`,
+    `🧪 **A new element added to the mixture.**\nWelcome to the lab, {user}.`,
+    `🔭 **The celestial alignment is perfect.**\n{user} has joined the observation deck.`,
+    `🏗️ **Construction of your legacy begins.**\nWelcome to the site, {user}.`,
+    `💎 **A diamond in the rough.**\nGlad you found your way here, {user}.`,
+    `🔥 **The hearth is warm and inviting.**\nCome in and stay a while, {user}.`,
+    `🌿 **The garden of knowledge grows.**\n{user} has been planted in our community.`,
+    `🌊 **The tide brings in a new traveler.**\nWelcome ashore, {user}.`,
+    `⚡ **Energy levels stabilized.**\n{user} is now integrated into the system.`,
+    `🦉 **The owl of wisdom hooted your name.**\nWelcome to the tower, {user}.`,
+    `⚖️ **The scales are balanced.**\nJustice and knowledge await you, {user}.`
+];
+
+module.exports = { welcomeMessages };

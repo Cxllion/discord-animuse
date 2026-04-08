@@ -46,6 +46,10 @@ module.exports = {
                 .setDescription('View your historical survival records and biometrics.')
         )
         .addSubcommand(sub =>
+            sub.setName('restore')
+                .setDescription('Resume a session that was interrupted by a system restart (Available for 10 mins).')
+        )
+        .addSubcommand(sub =>
             sub.setName('help')
                 .setDescription('Open the Survival Guide to learn the rules and roles.')
         ),
@@ -71,28 +75,36 @@ module.exports = {
         if (subcommand === 'host') {
             await interaction.deferReply();
             
-            // Global Session Check: Only one session (Lobby or Game) bot-wide.
-            const totalLobbies = MafiaManager.lobbies.size;
-            const totalGames = MafiaManager.games.size;
+            // Guild Session Check: Only one session (Lobby or Game) per server.
+            const existingLobbyInGuild = MafiaManager.getLobbyByGuild(interaction.guildId);
+            const existingGameInGuild = MafiaManager.getGameByGuild(interaction.guildId);
 
-            if (totalLobbies > 0 || totalGames > 0) {
-                const existingLobby = MafiaManager.getLobbyByHost(interaction.user.id);
-                const existingGame = Array.from(MafiaManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
-
-                if (existingLobby) {
-                    await existingLobby.bumpLobby(interaction.channel);
+            if (existingLobbyInGuild || existingGameInGuild) {
+                const gameInServer = existingLobbyInGuild || existingGameInGuild;
+                
+                // If the user already has a lobby, allow them to relocate it.
+                if (gameInServer.hostId === interaction.user.id && gameInServer.state === 'LOBBY') {
+                    await gameInServer.bumpLobby(interaction.channel);
                     return interaction.editReply({ 
                         content: '✅ **Sanctuary Relocated.** Your active lobby has been moved here for better visibility within the archives.' 
                     });
                 }
 
-                if (existingGame) {
-                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Mafia Session in another thread. Finish that session first.' });
+                if (gameInServer.hostId === interaction.user.id) {
+                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Mafia Session in another thread in this server. Finish that session first.' });
                 }
 
                 return interaction.editReply({ 
-                    content: '❌ **Bot Capacity Reached.** Another Mafia Session is currently underway. Only one session can be supported at a time across the entire Sanctuary.' 
+                    content: '❌ **Sanctuary Occupied.** Another Mafia Session is already underway in this server. Only one session can be supported per sanctuary at a time.' 
                 });
+            }
+
+            // Still check if the USER is hosting elsewhere to prevent bypasses
+            const userIsHostingElsewhere = Array.from(MafiaManager.lobbies.values()).find(g => g.hostId === interaction.user.id);
+            const userIsGamingElsewhere = Array.from(MafiaManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
+            
+            if (userIsHostingElsewhere || userIsGamingElsewhere) {
+                return interaction.editReply({ content: '❌ **Identity Conflict.** You are already hosting a Mafia Session in another server. You cannot maintain multiple archival records simultaneously.' });
             }
 
             const msg = await interaction.editReply('Sealing the Final Library gates...');
@@ -103,7 +115,26 @@ module.exports = {
             return;
         }
 
-        const game = MafiaManager.getGameByThread(interaction.channelId) || MafiaManager.getGameByLobby(interaction.channelId);
+        if (subcommand === 'restore') {
+            await interaction.deferReply({ flags: 64 });
+            
+            // Look for a pending restore for this user or this guild
+            const pending = Array.from(MafiaManager.pendingRestores.values())
+                .find(d => d.game.hostId === interaction.user.id || (d.game.guildId === interaction.guildId && interaction.member.permissions.has(PermissionFlagsBits.Administrator)));
+            
+            if (!pending) {
+                return interaction.editReply({ content: '❌ **Restoration Failed.** No buffered game states found for your signature or this sanctuary. Lobbies are only eligible for restoration for 10 minutes after a restart.' });
+            }
+
+            const restoredGame = await MafiaManager.restoreGame(pending.game.hostId, interaction.client);
+            if (restoredGame) {
+                return interaction.editReply({ content: `✅ **Sanctuary Restored.** The archives have been re-synchronized in <#${restoredGame.threadId || restoredGame.channelId}>.` });
+            } else {
+                return interaction.editReply({ content: '❌ **Restoration Failed.** Could not re-establish the archival connection.' });
+            }
+        }
+
+        const game = MafiaManager.getGameByThread(interaction.channelId) || MafiaManager.getGameByLobby(interaction.channelId) || MafiaManager.getLobbyByHost(interaction.user.id);
         
         if (subcommand === 'status' || subcommand === 'role' || subcommand === 'will') {
             if (!game || game.state === 'GAME_OVER') {
@@ -177,8 +208,10 @@ module.exports = {
 
         if (subcommand === 'end') {
             await interaction.deferReply({ flags: 64 });
-            MafiaManager.endGame(game.threadId || game.lobbyMessageId);
-            await interaction.editReply({ content: '✅ **Sanctuary Purged.** The session has been forcefully terminated and records erased.' });
+            // Priority for key: threadId -> hostId -> lobbyMessageId
+            const key = game.threadId || game.hostId || game.lobbyMessageId;
+            MafiaManager.endGame(key);
+            await interaction.editReply({ content: '✅ **Sanctuary Purged.** The session has been forcefully terminated and records archived.' });
         } else if (subcommand === 'skip') {
             if (game.state === 'GAME_OVER') {
                 return interaction.reply({ content: 'Game is already over.', flags: MessageFlags.Ephemeral });

@@ -21,6 +21,12 @@ module.exports = {
         // --- Activity Pulse (For Hybrid Sorting) ---
         // Implementation: pulseChannelActivity has a 5m per-channel cooldown
         await pulseChannelActivity(message.guild.id, message.channel.id);
+        
+        // --- Anti-Ghosting: Protect Welcome ---
+        if (!message.author.bot) {
+            const { markAsSpoken } = require('../utils/services/welcomeService');
+            await markAsSpoken(message.author.id, message.guild.id);
+        }
 
         if (!config) return; // DB error or fresh guild
 

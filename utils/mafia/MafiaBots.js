@@ -101,6 +101,8 @@ async function handleBotDaySpeech(game) {
         console.error('[MAFIA-AI] Could not setup webhook for bot speech:', e);
     }
     
+    const timers = [];
+    
     for (const bot of aliveBots) {
         if (!bot.alive || !bot.role) continue;
         
@@ -145,7 +147,7 @@ async function handleBotDaySpeech(game) {
         }
         
         if (message) {
-            setTimeout(async () => {
+            const timer = setTimeout(async () => {
                 if (game.state === 'DAY' && !game.isDestroyed) {
                     if (archiveWebhook) {
                         await archiveWebhook.send({
@@ -159,8 +161,10 @@ async function handleBotDaySpeech(game) {
                     }
                 }
             }, Math.random() * 5000 + 2000);
+            timers.push(timer);
         }
     }
+    return timers;
 }
 
 module.exports = { handleBotNightActions, handleBotDayVoting, handleBotDaySpeech };

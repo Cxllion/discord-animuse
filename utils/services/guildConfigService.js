@@ -48,6 +48,9 @@ const fetchConfig = async (guildId) => {
             mute_role_id: null,
             booster_role_id: null,
             premium_role_id: null,
+            welcome_message: null,
+            greeting_messages: [],
+            welcome_dm_briefing: true,
             boutique_thumbnail: null,
             boutique_footer: null
         };

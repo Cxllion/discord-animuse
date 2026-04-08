@@ -87,6 +87,7 @@ const getNavigationRow = (i, current = null) => {
         { label: 'Bot Insight', description: 'System health and performance metrics.', value: 'opt_insight', emoji: '📊' },
         { label: 'Server Purge', description: 'Clean up undocumented ghost roles.', value: 'opt_purge', emoji: '🧹' },
         { label: 'Role Organizing', description: 'Re-sort the library hierarchy.', value: 'opt_organize', emoji: '📏' },
+        { label: 'Welcome Wing', description: 'Arrival protocols and orientations.', value: 'opt_welcome', emoji: '🚪' },
         { label: 'Muse Bureau', description: 'Auxiliary flavor and extra settings.', value: 'opt_muses', emoji: '🎭' }
     ];
 
@@ -183,6 +184,10 @@ const handleDashboardInteraction = async (i) => {
         if (choice === 'opt_channels') {
             const { displayChannelDashboard } = require('./channelDashboard');
             return displayChannelDashboard(i, true);
+        }
+        if (choice === 'opt_welcome') {
+            const { displayWelcomeDashboard } = require('./welcomeDashboard');
+            return displayWelcomeDashboard(i, true);
         }
         if (choice === 'opt_muses') {
             const { displayMuseBureau } = require('./museBureau');

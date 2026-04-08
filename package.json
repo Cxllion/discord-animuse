@@ -11,7 +11,8 @@
     "test:manual": "node test-bot.js",
     "prod": "npx pm2 start ecosystem.config.js",
     "pm2:logs": "npx pm2 logs animuse-bot",
-    "pm2:status": "npx pm2 status"
+    "pm2:status": "npx pm2 status",
+    "preview": "nodemon preview.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.87",
@@ -28,6 +29,7 @@
     "node": "22.x"
   },
   "devDependencies": {
-    "jest": "^30.3.0"
+    "jest": "^30.3.0",
+    "nodemon": "^3.1.14"
   }
 }

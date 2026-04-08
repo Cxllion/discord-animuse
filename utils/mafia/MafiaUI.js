@@ -3,10 +3,10 @@ const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
 
 function buildLobbyPayload(game) {
-    const embed = baseEmbed('📚 The Final Library | Mafia Lobby', null, null)
+    const embed = baseEmbed('📚 The Final Library | Sanctuary Lobby', null, null)
         .setColor('#8B5CF6') 
         .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivors:** ${game.players.size}/15 (Min: 4)`)
-        .setFooter({ text: 'The world is ending. The library must endure.' })
+        .setFooter({ text: 'Protocol 1: Trust no one but the archives.' })
         .setTimestamp();
 
     let playersList = Array.from(game.players.values()).map(p => {
@@ -18,8 +18,8 @@ function buildLobbyPayload(game) {
     if (playersList.length === 0) playersList = 'Waiting for players...';
 
     embed.addFields(
-        { name: '👥 Players Joined', value: playersList },
-        { name: '⏱️ Phase Timers', value: `Discussion: \`${game.settings.discussionTime}s\` · Voting: \`${game.settings.votingTime}s\` · Night: \`${game.settings.nightTime}s\` · Prologue: \`${game.settings.prologueTime}s\``, inline: false }
+        { name: '👥 Joined Survivors', value: playersList },
+        { name: '⏱️ Archival Protocols', value: `> **Discussion:** \`${game.settings.discussionTime}s\`\n> **Voting:** \`${game.settings.votingTime}s\`\n> **Night:** \`${game.settings.nightTime}s\`\n> **Prologue:** \`${game.settings.prologueTime}s\``, inline: false }
     );
 
     const row = new ActionRowBuilder().addComponents(
@@ -103,46 +103,55 @@ function buildSurvivalGuide(page = 'intro') {
             { label: 'Rules & Phases', value: 'intro', emoji: '📖' },
             { label: 'Archivists (Town)', value: 'archivist', emoji: '🛡️' },
             { label: 'Revisions (Mafia)', value: 'revision', emoji: '🔪' },
-            { label: 'Unbound (Neutral)', value: 'unbound', emoji: '🃏' }
+            { label: 'Unbound (Neutral)', value: 'unbound', emoji: '🃏' },
+            { label: 'Game Modes', value: 'modes', emoji: '🎴' }
         ]);
     
     menu.options.find(o => o.data.value === page).data.default = true;
 
     if (page === 'intro') {
-        embed.setTitle('📖 The Archivist\'s Guide: Rules & Phases')
-            .setDescription('The Final Library is humanity\'s last hope. You must use deduction to survive.')
+        embed.setTitle('📖 Protocol Overview: Rules & Phases')
+            .setDescription('The Final Library is humanity\'s last hope. You must use deduction to survive the Viral Rot.')
             .addFields(
-                { name: '🎯 The Core Objective', value: '**Archivists** (Town) must identify and exile all infected **Revisions** (Mafia).\n**Revisions** win when they equal or outnumber the Archivists.' },
-                { name: '🌑 Night Phase', value: 'The thread locks. If you have an ability, you will receive a **DM with a dropdown**. Choose your target. Revisions secretly coordinate their kill in their private thread.' },
-                { name: '🌅 Day Phase', value: 'The **Morning Report** reveals who died and their Last Will. Open discussion begins to find suspects.' },
-                { name: '⚖️ Voting Phase', value: 'Vote buttons appear below the chat. You can change your vote, but only your final choice counts. A **Skip Vote** majority or a tie results in no exile.' },
-                { name: '✍️ Last Will', value: 'Write a message via the Night DM or `/mafia will`. If you die, it is publicly revealed in the morning.' }
+                { name: '🎯 The Primary Directive', value: '**Archivists** (Town) must identify and redact all corrupted **Revisions** (Mafia).\n**Revisions** win when they achieve numerical parity with the Archivists.' },
+                { name: '🌑 Night Cycle', value: 'The Sanctuary locks. If you hold a protocol role, you will receive a **Priority DM**. Choose your target carefully. Revisions coordinate their deletions in their private Hub.' },
+                { name: '🌅 Morning Report', value: 'The **Archive Diagnostic** reveals who was erased and their Last Will. Open discussion begins to isolate suspects.' },
+                { name: '⚖️ Council Voting', value: 'Ballots appear below the chat. Choices are confidential until the phase ends. A **Skip Vote** majority or a tie results in no erasure.' },
+                { name: '✍️ Final Record (Last Will)', value: 'Draft your last message via `/mafia will`. Should your biometrics fail, your record is revealed to all survivors.' }
             );
     } else if (page === 'archivist') {
         embed.setTitle('🛡️ The Archivists (Town)')
-            .setDescription('The innocent defenders of the library. Their goal is to exile all Revisions.')
+            .setDescription('The loyal guardians of humanity\'s records. Their mission is to purge the corruption.')
             .addFields(
-                { name: 'The Indexer [Cop]', value: 'Scans one player each night to learn if their faction is Archivist or Revision.' },
-                { name: 'The Conservator [Doctor]', value: 'Selects one player each night to protect them from being killed.' },
-                { name: 'The Ghostwriter [Vigilante]', value: 'Can kill a player at night. However, if they kill an innocent Archivist, they will die of guilt the next night.' },
-                { name: 'The Scribe [Tracker/Investigator]', value: 'Checks a dead body to see who visited them the previous night. Becomes "Ink-Bound" and cannot vote against the suspect the following day.' },
-                { name: 'The Plurality [Mayor]', value: 'Their vote counts as two during the daytime Voting Phase.' }
+                { name: 'The Indexer `(Cop)`', value: 'Performs a biological scan to determine a player\'s true alignment.' },
+                { name: 'The Conservator `(Doctor)`', value: 'Maintains a protective barrier over one survivor each night.' },
+                { name: 'The Ghostwriter `(Vigilante)`', value: 'Authorized to execute suspects. If an innocent Archivist is erased, they will self-redact out of guilt.' },
+                { name: 'The Scribe `(Tracker)`', value: 'Analyzes deceased remains to find one random visitor from the previous night. Bound by biometrics and cannot vote the suspect next day.' },
+                { name: 'The Plurality `(Mayor)`', value: 'Their authority grants their vote double-weight during the Council phase.' }
             );
     } else if (page === 'revision') {
-        embed.setTitle('🔪 The Revisions (Mafia)')
-            .setDescription('The corrupted invaders. They know each other and secretly coordinate to take over.')
+        embed.setTitle('🩸 The Revisions (Mafia)')
+            .setDescription('The corrupted invaders. They have compromised the archives and work together to erase the rest.')
             .addFields(
-                { name: 'The Shredder [Mafia Goon/Killer]', value: 'The designated killer of the faction. Wakes up to eliminate one Archivist each night.' },
-                { name: 'The Censor [Roleblocker]', value: 'Selects one player each night. That player is blocked from using their ability for the night.' },
-                { name: 'The Plagiarist [Godfather]', value: 'Appears as an innocent Archivist if scanned by The Indexer [Cop].' }
+                { name: 'The Shredder `(Goon)`', value: 'The primary deletion agent. Authorized to eliminate one Archivist each night.' },
+                { name: 'The Censor `(Roleblocker)`', value: 'Imposes a mandatory quarantine on one survivor, preventing their night action from executing.' },
+                { name: 'The Plagiarist `(Godfather)`', value: 'Appears as a clean Archivist during Indexer diagnostics.' }
             );
     } else if (page === 'unbound') {
         embed.setTitle('🃏 The Unbound (Neutral)')
-            .setDescription('Wildcards with their own solo win conditions. They win independently.')
+            .setDescription('Irregular signatures with their own survival protocols. They play for their own victory.')
             .addFields(
-                { name: 'The Anomaly [Jester]', value: 'Wins the game immediately if they can trick the Town into voting them out during the day.' },
-                { name: 'The Critic [Executioner]', value: 'Assigned a random Archivist as their target at the start. Wins if they can get that specific target voted out during the day.' },
-                { name: 'The Bookburner [Arsonist]', value: 'Secretly douses one player each night. Can choose to ignite all doused players at once on a later night.' }
+                { name: 'The Anomaly `(Jester)`', value: 'Wins immediately if they successfully manipulate the sanctuary into exiling them.' },
+                { name: 'The Critic `(Executioner)`', value: 'Holds a specific vendetta against one Archivist. Wins if that target is exiled by the council.' },
+                { name: 'The Bookburner `(Arsonist)`', value: 'Saturates survivors with toxins over several nights, eventually igniting them all in a single sector breach.' }
+            );
+    } else if (page === 'modes') {
+        embed.setTitle('🎴 Sanctuary Simulation Modes')
+            .setDescription('Different protocols for different archival needs.')
+            .addFields(
+                { name: 'Classic Archive', value: 'A balanced, competitive simulation with standard roles: Indexer, Conservator, Shredder, and Archivists.' },
+                { name: 'Unabridged Archive (Chaos)', value: 'Total chaos. Any role from the library (Ghostwriter, Censor, Bookburner, etc.) might be present in a random composition.' },
+                { name: 'Ink Rot (Cult)', value: 'Features the dreaded **The Corruptor**, who can spread infection to honest Archivists, growing their faction night by night.' }
             );
     }
 
@@ -167,7 +176,7 @@ function buildSettingsPayload(game, category = 'discussion') {
             .setCustomId(`mafia_setmode_${game.hostId}`)
             .setPlaceholder('Select Game Mode')
             .addOptions([
-                { label: 'First Edition', description: 'Classic balanced gameplay.', value: 'First Edition' },
+                { label: 'Classic Archive', description: 'Classic balanced gameplay.', value: 'Classic Archive' },
                 { label: 'Unabridged Archive (Chaos)', description: 'All unique roles potentially active.', value: 'Chaos' },
                 { label: 'Ink Rot', description: 'Cult mechanics.', value: 'Ink Rot' }
             ])
@@ -280,18 +289,21 @@ function buildMorningReport(game, deaths) {
         .setTimestamp();
 
     if (deaths.length === 0) {
-        embed.setDescription('The library was unusually quiet. No bio-signatures were erased from the master record.');
+        embed.setDescription('The Sanctuary was unusually quiet last night. No bio-signatures were redacted from the master record.');
     } else {
-        embed.setDescription(`The sanctuary's monitors flicker. ${deaths.length === 1 ? 'One survivor has' : `${deaths.length} survivors have`} been erased.`);
+        embed.setDescription(`The Sanctuary's monitors flicker. **${deaths.length}** signature${deaths.length === 1 ? ' has' : 's have'} been erased from the roster.`);
         
         for (const d of deaths) {
             const roleStr = reveal
                 ? (d.target.role ? `${d.target.role.emoji} **${d.target.role.name}** (${d.target.role.faction})` : '`Unknown`')
-                : '🔒 **Classified**';
-            const fieldTitle = d.isGuilt ? '💔 Guilt Consumes' : '💀 Data Erasure';
+                : '🔒 **REDACTED**';
+            
+            const variantTitles = ["CRITICAL BREACH", "DATA ERASURE", "SYSTEM PURGE", "SECTOR FAILURE", "BIOMETRIC LOSS"];
+            const fieldTitle = d.isGuilt ? '💔 GUILT OVERRIDE' : `💀 ${variantTitles[Math.floor(Math.random() * variantTitles.length)]}`;
+            
             let reportStr = d.isGuilt
-                ? `**${d.target.name}** could not bear the guilt of erasing an innocent Archivist. They have taken their own life.\n**Role:** ${roleStr}`
-                : `**${d.target.name}** has been erased.\n**Role:** ${roleStr}`;
+                ? `**${d.target.name}** could not stand the weight of erasing an innocent survivor. Their mind has been rewritten out of guilt.\n**Role:** ${roleStr}`
+                : `**${d.target.name}** has been unceremoniously erased from the library.\n**Role:** ${roleStr}`;
             
             if (d.target.lastWill) {
                 reportStr += `\n\n📜 **Last Will:**\n> *"${d.target.lastWill}"*`;
@@ -302,6 +314,14 @@ function buildMorningReport(game, deaths) {
             embed.addFields({ name: fieldTitle, value: reportStr });
         }
     }
+
+    const alive = Array.from(game.players.values()).filter(p => p.alive);
+    const dead = Array.from(game.players.values()).filter(p => !p.alive);
+    
+    embed.addFields(
+        { name: `🧍 Survivors (${alive.length})`, value: alive.length > 0 ? alive.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' },
+        { name: `💀 Redacted (${dead.length})`, value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' }
+    );
 
     return { embeds: [embed] };
 }
@@ -348,7 +368,6 @@ function buildRoleCard(p, game) {
         null
     )
         .setColor(color)
-        .setThumbnail(`https://raw.githubusercontent.com/Cxllion/animuse-assets/main/roles/${p.role.name.toLowerCase().replace(/\s+/g, '_')}.png`)
         .setTimestamp();
 
     if (isRevision) {
@@ -370,9 +389,9 @@ function buildRoleCard(p, game) {
 
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
     if (p.role.priority !== 99) {
-        embed.addFields({ name: '⚡ Night Ability', value: 'You will receive a DM each night with a target dropdown. Select your target before the timer expires.' });
+        embed.addFields({ name: '⚡ Protocol Level', value: `Level **${p.role.priority}** Clearance. You hold a mandatory Night Action.` });
     } else {
-        embed.addFields({ name: '💤 Night Ability', value: 'You have no active night ability. Your power lies in your vote and your voice during the day.' });
+        embed.addFields({ name: '💤 Protocol Level', value: 'Level **99** Clearance. No active night action authorized.' });
     }
 
     return { embeds: [embed] };

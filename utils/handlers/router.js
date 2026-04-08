@@ -5,6 +5,7 @@ const { handleBingoInteraction, handleBingoModals } = require('./bingoHandlers')
 const { handleHelpInteraction } = require('./helpHandlers');
 const { handleChannelDashboardInteraction } = require('./channelDashboard');
 const { handleMuseBureauInteraction } = require('./museBureau');
+const { handleWelcomeInteraction } = require('./welcomeDashboard');
 const { handleBoutiqueInteraction } = require('./boutiqueHandler');
 const { handleDashboardInteraction } = require('./roleDashboard');
 const { handleMafiaInteraction } = require('./mafiaHandler');
@@ -56,19 +57,25 @@ const routeInteraction = async (interaction) => {
             return true;
         }
 
-        // 5. Muse Bureau (Misc)
+        // 5. Welcome Wing
+        if (customId.startsWith('welcome_') || customId.startsWith('modal_welcome_')) {
+            await handleWelcomeInteraction(interaction);
+            return true;
+        }
+
+        // 6. Muse Bureau (Misc)
         if (customId.startsWith('muse_')) {
             await handleMuseBureauInteraction(interaction);
             return true;
         }
 
-        // 6. Master Boutique
+        // 7. Master Boutique
         if (customId.startsWith('boutique_')) {
             await handleBoutiqueInteraction(interaction);
             return true;
         }
 
-        // 7. Role Architecture Dashboard
+        // 8. Role Architecture Dashboard
         const roleDashIds = [
             'role_dash_menu', 'dash_home', 'autorole_set_member', 'autorole_set_bot', 'autorole_set_booster', 'autorole_set_premium',
             'autorole_sync', 'cat_create', 'level_role_add', 'level_role_bind_select', 'level_deploy_standard',

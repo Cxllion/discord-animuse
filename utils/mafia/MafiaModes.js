@@ -22,7 +22,7 @@ function generateRolesForMode(modeName, playerCount) {
     let revisionCount = Math.max(1, Math.floor(playerCount / 4));
     let townCount = playerCount - revisionCount;
 
-    if (modeName === 'First Edition') {
+    if (modeName === 'Classic Archive' || modeName === 'First Edition') {
         roles.push(new TheShredder()); revisionCount--;
         if (revisionCount > 0) { roles.push(new ThePlagiarist()); revisionCount--; }
         while (revisionCount > 0) { roles.push(new Revision()); revisionCount--; }

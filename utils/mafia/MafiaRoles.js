@@ -18,6 +18,11 @@ class Role {
             "You've closed the doors on **{target}**, voting for their expulsion."
         ];
     }
+    toJSON() {
+        const json = { ...this };
+        delete json.player;
+        return json;
+    }
     useAbility(game, targetId) { return null; }
     
     // UI function to get Discord ActionRow with valid targets if any

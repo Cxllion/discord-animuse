@@ -44,6 +44,7 @@ module.exports = {
         // HUMAN MEMBER - Continue with welcome flow
 
         // --- STAGE 1: PUBLIC WELCOME (IMAGE) ---
+        let welcomeMsg = null;
         if (config.welcome_channel_id) {
             const channel = guild.channels.cache.get(config.welcome_channel_id);
             if (channel && channel.isTextBased()) {
@@ -52,9 +53,16 @@ module.exports = {
                     const buffer = await generateWelcomeCard(member);
                     const attachment = new AttachmentBuilder(buffer, { name: 'welcome-card.webp' });
 
-                    await channel.send({
+                    const messageOptions = {
                         files: [attachment]
-                    });
+                    };
+
+                    // Add Custom Welcome Message if configured
+                    if (config.welcome_message) {
+                        messageOptions.content = config.welcome_message.replace(/{user}/g, member.toString());
+                    }
+
+                    welcomeMsg = await channel.send(messageOptions);
 
                 } catch (error) {
                     logger.error(`Failed to send welcome card in ${guild.name}:`, error, 'Welcome');
@@ -63,44 +71,58 @@ module.exports = {
         }
 
         // --- STAGE 1.5: PUBLIC GREETING (TEXT) ---
+        let greetingMsg = null;
         if (config.greeting_channel_id) {
             const channel = guild.channels.cache.get(config.greeting_channel_id);
             if (channel && channel.isTextBased()) {
-                const greetings = [
-                    `📖 **A new scholar enters the archives.**\nWelcome to our collection, ${member}.`,
-                    `✨ **The library doors open.**\nPlease make yourself comfortable, ${member}.`,
-                    `📜 **Registration complete.**\nYour story begins here, ${member}.`,
-                    `🔖 **Another volume added to the shelf.**\nWelcome to the community, ${member}.`,
-                    `🖊️ **The ink is fresh.**\nGlad to have you with us, ${member}.`
-                ];
+                const { welcomeMessages: defaultGreetings } = require('../utils/config/welcomeMessages');
+                let greetings = [...defaultGreetings];
 
-                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                // Use custom greetings if configured
+                if (config.greeting_messages && config.greeting_messages.length > 0) {
+                    greetings = config.greeting_messages;
+                }
+
+                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)].replace(/{user}/g, member.toString());
 
                 try {
-                    await channel.send({ content: randomGreeting });
+                    greetingMsg = await channel.send({ content: randomGreeting });
                 } catch (error) {
                     logger.error(`Failed to send greeting in ${guild.name}:`, error, 'Welcome');
                 }
             }
         }
 
-        // --- STAGE 2: USER BRIEFING (DM) ---
-        const baseEmbed = require('../utils/generators/baseEmbed');
-        const briefingEmbed = baseEmbed('🔰 Welcome to AniMuse!', 
-            `You've just joined **${guild.name}**. I am the Great Librarian, here to guide you through our collection.`, 
-            null
-        )
-            .addFields(
-                { name: '👋 Profile Card', value: 'Use `/profile` to view your archival signature. You can customize it with themes!', inline: true },
-                { name: '🔎 Search Records', value: 'Use `/search` to find anime/manga details from the global database.', inline: true },
-                { name: '📈 Muse Tiers', value: 'Engaging in the library earns you XP. Check `/rank` to see your progress.', inline: true }
-            )
-            .setColor('#A78BFA');
+        // --- STAGE 1.7: TRACKING (For Anti-Ghosting) ---
+        if (config.welcome_antighost_enabled !== false && (welcomeMsg || greetingMsg)) {
+            const { trackWelcome } = require('../utils/services/welcomeService');
+            await trackWelcome(member.id, guild.id, {
+                welcome_msg_id: welcomeMsg?.id,
+                welcome_channel_id: welcomeMsg?.channel.id,
+                greeting_msg_id: greetingMsg?.id,
+                greeting_channel_id: greetingMsg?.channel.id
+            });
+        }
 
-        try {
-            await member.send({ embeds: [briefingEmbed] });
-        } catch (error) {
-            // User has DMs disabled, ignore silently
+        // --- STAGE 2: USER BRIEFING (DM) ---
+        if (config.welcome_dm_briefing !== false) {
+            const baseEmbed = require('../utils/generators/baseEmbed');
+            const briefingEmbed = baseEmbed('🔰 Welcome to AniMuse!', 
+                `You've just joined **${guild.name}**. I am the Great Librarian, here to guide you through our collection.`, 
+                null
+            )
+                .addFields(
+                    { name: '👋 Profile Card', value: 'Use `/profile` to view your archival signature. You can customize it with themes!', inline: true },
+                    { name: '🔎 Search Records', value: 'Use `/search` to find anime/manga details from the global database.', inline: true },
+                    { name: '📈 Muse Tiers', value: 'Engaging in the library earns you XP. Check `/rank` to see your progress.', inline: true }
+                )
+                .setColor('#A78BFA');
+
+            try {
+                await member.send({ embeds: [briefingEmbed] });
+            } catch (error) {
+                // User has DMs disabled, ignore silently
+            }
         }
 
         // --- STAGE 3: AUTO-ROLE ASSIGNMENT (HUMAN MEMBER ROLE) ---

@@ -73,7 +73,30 @@ class MafiaPlayer {
         this.name = data.name;
         this.isBot = data.isBot;
         this.alive = data.alive;
-        this.role = data.role;
+        
+        if (data.role) {
+            try {
+                const Roles = require('./MafiaRoles');
+                // Heuristic: Remove spaces from the display name to find the Class name
+                const className = data.role.name.replace(/\s+/g, '');
+                const RoleClass = Roles[className];
+                
+                if (RoleClass) {
+                    this.role = new RoleClass(this);
+                    // Copy over properties like targetId, isReadyToIgnite etc.
+                    Object.assign(this.role, data.role);
+                    this.role.player = this; // Restore back-link lost in JSON.stringify
+                } else {
+                    this.role = data.role;
+                }
+            } catch (e) {
+                console.error(`[Mafia] Failed to reconstruct role for ${this.name}:`, e);
+                this.role = data.role;
+            }
+        } else {
+            this.role = null;
+        }
+
         this.isDoused = data.isDoused;
         this.isRoleblocked = data.isRoleblocked;
         this.isProtected = data.isProtected;

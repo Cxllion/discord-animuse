@@ -15,6 +15,8 @@ class MafiaManager {
         this.globalQueues = new Collection();
         this.client = null; // Set during loadState
         this.pulseInterval = null; 
+        // Map of hostId -> { game, expiresAt }
+        this.pendingRestores = new Collection();
     }
 
     startPulse(client) {
@@ -40,6 +42,26 @@ class MafiaManager {
         for (const id of toDisband) {
             console.log(`[Mafia] Auto-disbanding stagnant lobby (Host: ${id})`);
             this.endGame(id);
+        }
+
+        // --- PENDING RESTORES EXPIRY ---
+        for (const [hostId, data] of this.pendingRestores) {
+            if (now > data.expiresAt) {
+                console.log(`[Mafia] Restore window expired for Host: ${hostId}. Archiving session.`);
+                const g = data.game;
+                // Archive the thread if it exists
+                if (g.threadId) {
+                    client.channels.fetch(g.threadId).then(thread => {
+                        if (thread) {
+                            thread.send('🗑️ **Sanctuary Lost.** This session was not restored in time and has been redacted from the records.').then(() => {
+                                thread.setLocked(true);
+                                thread.setArchived(true);
+                            });
+                        }
+                    }).catch(() => null);
+                }
+                this.pendingRestores.delete(hostId);
+            }
         }
     }
 
@@ -67,7 +89,10 @@ class MafiaManager {
     async createGame(lobbyMessageId, hostUser, channel) {
         const Game = require('./MafiaGame');
         const game = new Game(lobbyMessageId, hostUser);
-        if (channel) game.channelId = channel.id;
+        if (channel) {
+            game.channelId = channel.id;
+            game.guildId = channel.guildId;
+        }
         
         if (this.hostPreferences.has(hostUser.id)) {
             game.settings = { ...game.settings, ...this.hostPreferences.get(hostUser.id) };
@@ -126,12 +151,44 @@ class MafiaManager {
         return this.lobbies.get(hostId);
     }
 
+    getLobbyByGuild(guildId) {
+        return Array.from(this.lobbies.values()).find(g => g.guildId === guildId);
+    }
+
+    getGameByGuild(guildId) {
+        return Array.from(this.games.values()).find(g => g.guildId === guildId);
+    }
+
     startGame(hostId, threadId) {
         const game = this.lobbies.get(hostId);
         if (game) {
             game.threadId = threadId;
             this.games.set(threadId, game);
         }
+        return game;
+    }
+
+    async restoreGame(hostId, client) {
+        const data = this.pendingRestores.get(hostId);
+        if (!data) return null;
+
+        const game = data.game;
+        this.pendingRestores.delete(hostId);
+
+        this.lobbies.set(game.hostId, game);
+        if (game.threadId) {
+            this.games.set(game.threadId, game);
+            try {
+                const thread = await client.channels.fetch(game.threadId);
+                if (thread) {
+                    game.thread = thread;
+                    await thread.send(`🔄 **Sanctuary Restored.** The archives have been re-synchronized. Resuming protocol...`);
+                    game.resumePhase();
+                }
+            } catch(e) {}
+        }
+        
+        this.saveState();
         return game;
     }
 
@@ -154,6 +211,18 @@ class MafiaManager {
 
             this.games.delete(threadId);
             this.lobbies.delete(hostId);
+
+            // ARCHIVE THREAD
+            if (game.threadId) {
+                try {
+                    const thread = game.thread || await this.client?.channels.fetch(game.threadId).catch(() => null);
+                    if (thread) {
+                        await thread.setLocked(true).catch(() => null);
+                        await thread.setArchived(true).catch(() => null);
+                    }
+                } catch(e) {}
+            }
+
             this.saveState();
         }
     }
@@ -184,44 +253,70 @@ class MafiaManager {
         try {
             const data = fs.readFileSync(STATE_FILE, 'utf8');
             const payload = JSON.parse(data);
-            const gamesArray = payload.games || [];
+            let gamesArray = payload.games || [];
+            
+            // --- TEST MODE SAFEGUARD ---
+            if (process.env.TEST_MODE === 'true') {
+                console.log('[Mafia] Test Mode detected: Skipping archival restoration to ensure a clean slate.');
+                gamesArray = [];
+            }
             
             this.startPulse(client);
             if (payload.prefs) {
-                this.hostPreferences = new Map(payload.prefs);
+                // Migrate legacy 'First Edition' to 'Classic Archive'
+                const migratedPrefs = payload.prefs.map(([k, v]) => {
+                    if (v && v.gameMode === 'First Edition') v.gameMode = 'Classic Archive';
+                    return [k, v];
+                });
+                this.hostPreferences = new Map(migratedPrefs);
             }
             if (payload.queues) {
                 this.globalQueues = new Collection(payload.queues.map(([k, v]) => [k, new Set(v)]));
             }
             
             const Game = require('./MafiaGame');
+            const restoreWindow = 10 * 60 * 1000; // 10 minutes
+
             for (const gData of gamesArray) {
                 const game = new Game(gData.lobbyMessageId, { id: gData.hostId });
                 game.fromJSON(gData);
-                
-                // Restore both collections
-                this.lobbies.set(game.hostId, game);
-                if (game.threadId) {
-                    this.games.set(game.threadId, game);
-                }
+                await game.syncPlayers(client);
                 
                 this.setupGameListeners(game);
                 
-                if (game.threadId && game.state !== 'LOBBY') {
-                    try {
-                        const channel = await client.channels.fetch(game.threadId);
-                        if (channel) {
-                            game.thread = channel;
-                            game.resumePhase();
-                        } else {
-                            this.endGame(game.threadId);
-                        }
-                    } catch(e) {
-                        this.endGame(game.threadId);
-                    }
-                }
+                // Add to PENDING instead of LIVE
+                this.pendingRestores.set(game.hostId, {
+                    game: game,
+                    expiresAt: Date.now() + restoreWindow
+                });
             }
-            console.log(`[Mafia] Restored ${this.lobbies.size} total game states.`);
+            console.log(`[Mafia] Buffered ${this.pendingRestores.size} game states for restoration.`);
+
+            // --- AGGRESSIVE ORPHAN SCAN ---
+            // Scan all active threads in servers we have games in.
+            // If any thread name starts with "📚 Final Library" but IS NOT in our buffers, archive it.
+            const guildsToScan = new Set(gamesArray.map(g => g.guildId).filter(id => id));
+            for (const guildId of guildsToScan) {
+                try {
+                    const guild = await client.guilds.fetch(guildId).catch(() => null);
+                    if (!guild) continue;
+                    
+                    const { threads } = await guild.channels.fetchActiveThreads().catch(() => ({ threads: new Collection() }));
+                    for (const thread of threads.values()) {
+                        if (thread.name.includes('Final Library') || thread.name.includes('Viral Rot Secret Hub')) {
+                            // Check if this threadId is in our pending list
+                            const isPending = Array.from(this.pendingRestores.values()).some(d => d.game.threadId === thread.id || d.game.archiveThreadId === thread.id || d.game.graveyardThreadId === thread.id);
+                            
+                            if (!isPending) {
+                                console.log(`[Mafia] Redacting orphan thread: ${thread.name} (${thread.id})`);
+                                await thread.send('⚠️ **Record Redacted.** This sanctuary was lost during a system destabilization and is no longer valid.').catch(() => null);
+                                await thread.setLocked(true).catch(() => null);
+                                await thread.setArchived(true).catch(() => null);
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }
         } catch (e) {
             console.error('Failed to load mafia state', e);
         }

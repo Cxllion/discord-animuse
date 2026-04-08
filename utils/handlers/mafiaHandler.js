@@ -2,20 +2,37 @@ const MafiaManager = require('../mafia/MafiaManager');
 const { MessageFlags } = require('discord.js');
 
 const handleMafiaInteraction = async (interaction) => {
+    // 1. EXTRACT LOBBY ID ROBUSTLY
     const parts = interaction.customId.split('_');
-    let lobbyId;
+    let lobbyId = null;
+
+    // The hostId is typically the first 17-20 digit numeric string in the ID
+    // or follows a specific sequence.
+    // Standard format: [prefix]_[action]_[hostId]_[optional_targetId]
     
-    // Extract Lobby ID based on interaction schema
-    if (interaction.customId.startsWith('mafia_night_target_') || 
-        interaction.customId.startsWith('mafia_setphase_') ||
-        interaction.customId.startsWith('mafia_help_general_') ||
-        interaction.customId.startsWith('mafia_lobby_back_') ||
-        interaction.customId.startsWith('mafia_here_')) {
+    if (interaction.customId.includes('_vote_')) {
+        // mafia_vote_123456789_target OR archive_vote_...
+        lobbyId = parts[2];
+    } else if (interaction.customId.includes('_night_target_')) {
+        // mafia_night_target_123456789 OR archive_night_target_...
         lobbyId = parts[3];
-    } else if (interaction.customId.startsWith('mafia_vote_')) {
-        lobbyId = parts[2];
-    } else {
-        lobbyId = parts[2];
+    } else if (interaction.customId.startsWith('mafia_setphase_val_')) {
+        lobbyId = parts[3];
+    } else if (interaction.customId.startsWith('mafia_setphase_cat_')) {
+        lobbyId = parts[3];
+    } else if (parts[0] === 'mafia' || parts[0] === 'archive') {
+        // Default: use the 3rd or 2nd part, but be careful with many parts
+        // Find the first part that looks like a snowflake
+        const found = parts.find(p => /^\d{17,20}$/.test(p));
+        if (found) lobbyId = found;
+        else lobbyId = parts[2] || parts[1];
+    }
+
+    // Double check that lobbyId looks like a Discord snowflake
+    if (lobbyId && !/^\d{17,20}$/.test(lobbyId)) {
+        // If not a snowflake, search all parts for one
+        const found = parts.find(p => /^\d{17,20}$/.test(p));
+        if (found) lobbyId = found;
     }
     
     // ═══════════════════════════════════════
@@ -25,20 +42,25 @@ const handleMafiaInteraction = async (interaction) => {
     // Survival Guide Select Menu
     if (interaction.customId === 'mafia_help_menu') {
         const page = interaction.values[0];
-        return interaction.update(require('../mafia/MafiaUI').buildSurvivalGuide(page));
+        try {
+            return await interaction.update(require('../mafia/MafiaUI').buildSurvivalGuide(page));
+        } catch (e) {
+            console.error('Help menu update failed:', e);
+            return;
+        }
     }
 
     // Survival Guide General Button (Lobby)
     if (interaction.customId.startsWith('mafia_help_general_')) {
         const { buildSurvivalGuide } = require('../mafia/MafiaUI');
-        return interaction.reply(buildSurvivalGuide());
+        return await interaction.reply(buildSurvivalGuide());
     }
 
     const game = MafiaManager.getGameByLobby(lobbyId) || MafiaManager.getGameByThread(interaction.channelId);
 
     if (!game) {
-        return interaction.reply({ 
-            content: '❌ **Session Redacted.** This game session no longer exists or has expired. Please note that only one active Archive Session is supported at a time across the sanctuary. Use `/mafia host` to start a new one if the archives are clear.', 
+        return await interaction.reply({ 
+            content: '❌ **Session Redacted.** This game session no longer exists or has expired. Use `/mafia host` to start a new one if the archives are clear.', 
             flags: MessageFlags.Ephemeral 
         });
     }
@@ -168,7 +190,7 @@ const handleMafiaInteraction = async (interaction) => {
         // Voting buttons
         if (interaction.customId.startsWith('mafia_vote_')) {
             const voteParts = interaction.customId.split('_');
-            const targetPlayerId = voteParts[3];
+            const targetPlayerId = voteParts.slice(3).join('_'); // Robustly join remaining parts in case targetId has underscores
             
             if (game.state !== 'VOTING') return interaction.reply({ content: 'Voting is currently closed.', flags: MessageFlags.Ephemeral });
             
@@ -199,14 +221,23 @@ const handleMafiaInteraction = async (interaction) => {
 
         // Spectate button
         if (interaction.customId.startsWith('mafia_spectate_')) {
-            if (!game.thread) return interaction.reply({ content: 'Session not active yet.', flags: MessageFlags.Ephemeral });
-            if (game.players.has(interaction.user.id)) return interaction.reply({ content: 'You are already playing!', flags: MessageFlags.Ephemeral });
+            if (!game.thread) return await interaction.reply({ content: 'Session not active yet.', flags: MessageFlags.Ephemeral });
+            if (game.players.has(interaction.user.id)) return await interaction.reply({ content: 'You are already playing!', flags: MessageFlags.Ephemeral });
             
             try {
                 await game.thread.members.add(interaction.user.id);
-                return interaction.reply({ content: '👁️ You have entered the archives as a spectator.', flags: MessageFlags.Ephemeral });
+                
+                // --- HOST NOTIFICATION ---
+                try {
+                    const host = await interaction.client.users.fetch(game.hostId);
+                    if (host) {
+                        await host.send(`👁️ **Spectator Alert:** <@${interaction.user.id}> has entered the archives of your session in **${interaction.guild.name}**.`);
+                    }
+                } catch(e) {}
+
+                return await interaction.reply({ content: '👁️ You have entered the archives as a spectator.', flags: MessageFlags.Ephemeral });
             } catch (e) {
-                return interaction.reply({ content: 'Failed to add you as a spectator.', flags: MessageFlags.Ephemeral });
+                return await interaction.reply({ content: 'Failed to add you as a spectator.', flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -376,7 +407,7 @@ const handleMafiaInteraction = async (interaction) => {
             for (let i = 0; i < needed; i++) {
                 const botNumber = game.players.size + 1;
                 const randomName = thematicNames[Math.floor(Math.random() * thematicNames.length)] + ` [${botNumber}]`;
-                const botId = `mock_bot_${Date.now()}_${i}`;
+                const botId = `mock-bot-${Date.now()}-${i}`; // Switched to hyphens to avoid split conflicts
                 game.addPlayer({ id: botId, username: randomName, displayName: randomName }, true);
             }
             
