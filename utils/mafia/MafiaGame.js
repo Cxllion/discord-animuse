@@ -296,7 +296,11 @@ class MafiaGame extends EventEmitter {
             return alivePlayers.filter(ap => ap.id !== player.id).map(ap => ({ label: ap.name, value: ap.id }));
         }
 
-        // --- DEFAULT DROPDOWN (Indexer, Censor, Ghostwriter, Corruptor, etc.) ---
+        if (roleName === 'The Corruptor') {
+            return alivePlayers.filter(ap => ap.id !== player.id && ap.role?.faction !== 'Revisions').map(ap => ({ label: ap.name, value: ap.id }));
+        }
+
+        // --- DEFAULT DROPDOWN (Indexer, Censor, Ghostwriter, etc.) ---
         return alivePlayers.filter(ap => ap.id !== player.id).map(ap => ({ label: ap.name, value: ap.id }));
     }
 
@@ -309,36 +313,73 @@ class MafiaGame extends EventEmitter {
 
         try {
             const guild = this.thread.guild;
+            const updateTasks = [];
+            let taskCounter = 0;
+
             for (const [id, p] of this.players) {
                 if (p.isBot) continue;
 
                 const member = await guild.members.fetch(id).catch(() => null);
                 if (!member || member.voice.channelId !== this.voiceChannelId) continue;
 
-                if (!p.alive) {
-                    // DEAD: Strictly isolated from the living frequency
-                    await member.voice.setMute(true, 'Redacted survivor').catch(() => null);
-                    await member.voice.setDeaf(true, 'Redacted survivor').catch(() => null);
-                    continue;
+                let targetMute = false;
+                let targetDeaf = false;
+                let reason = 'Protocol Update';
+
+                if (specialMode === 'GAME_OVER' || this.state === 'GAME_OVER') {
+                    targetMute = false;
+                    targetDeaf = false;
+                    reason = 'Restoration Pulse';
+                } else if (!p.alive) {
+                    targetMute = true;
+                    targetDeaf = false;
+                    reason = 'Redacted Observation';
+                } else if (specialMode === 'TWILIGHT') {
+                    targetMute = id !== focusId;
+                    targetDeaf = false;
+                    reason = 'Twilight Focus';
+                } else if (specialMode === 'NIGHT') {
+                    targetMute = false;
+                    targetDeaf = true;
+                    reason = 'Night Silence';
+                } else {
+                    targetMute = false;
+                    targetDeaf = false;
+                    reason = 'Day Protocols';
                 }
 
-                // ALIVE: Phase Protocols
-                if (specialMode === 'TWILIGHT') {
-                    // Last Words: Only focus can speak
-                    await member.voice.setMute(id !== focusId, 'Twilight: Last Words Protocol').catch(() => null);
-                    await member.voice.setDeaf(false).catch(() => null);
-                } else if (specialMode === 'NIGHT') {
-                    // Archive Silence: Everyone is deafened to prevent coordination outside secret threads
-                    await member.voice.setMute(false).catch(() => null);
-                    await member.voice.setDeaf(true, 'Protocol 2: Night Silence').catch(() => null);
-                } else {
-                    // Day/Discussion: Open comms
-                    await member.voice.setMute(false).catch(() => null);
-                    await member.voice.setDeaf(false).catch(() => null);
+                const needsMuteUpdate = member.voice.mute !== targetMute;
+                const needsDeafUpdate = member.voice.deaf !== targetDeaf;
+
+                if (needsMuteUpdate || needsDeafUpdate) {
+                    const currentTaskIdx = taskCounter++;
+                    updateTasks.push((async () => {
+                        await new Promise(r => setTimeout(r, currentTaskIdx * 20));
+                        try {
+                            if (needsMuteUpdate) await member.voice.setMute(targetMute, reason).catch(() => null);
+                            if (needsDeafUpdate) await member.voice.setDeaf(targetDeaf, reason).catch(() => null);
+                        } catch (e) {}
+                    })());
                 }
+            }
+
+            if (updateTasks.length > 0) {
+                await Promise.all(updateTasks);
             }
         } catch (e) {
             console.error('[Mafia] Voice protocol override failed:', e);
+        }
+    }
+
+    async checkNightSkip() {
+        if (this.state !== 'NIGHT' || this.isDestroyed) return;
+        
+        const alivePlayers = this.getAlivePlayers();
+        const pendingRoles = alivePlayers.filter(p => !p.isBot && p.role && p.role.priority !== 99 && !p.nightActionTarget);
+        
+        if (pendingRoles.length === 0) {
+            if (this.activeTimer) clearTimeout(this.activeTimer);
+            this.endNight();
         }
     }
 
@@ -592,9 +633,9 @@ class MafiaGame extends EventEmitter {
             } catch (e) { console.error('Failed to create graveyard thread', e); }
 
             const revisions = Array.from(this.players.values()).filter(p => p.role?.faction === 'Revisions' && !p.isBot);
-            if (revisions.length > 1) {
+            if (revisions.length > 1 || this.settings.gameMode === 'Ink Rot') {
                 try {
-                    const archiveThread = await interaction.channel.threads.create({
+                    const archiveThread = await thread.parent.threads.create({
                         name: `🌑 Viral Rot Secret Hub`,
                         autoArchiveDuration: 60,
                         type: 12, 
@@ -602,7 +643,7 @@ class MafiaGame extends EventEmitter {
                     });
                     this.archiveThreadId = archiveThread.id;
                     for (const p of revisions) {
-                        await archiveThread.members.add(p.id);
+                        await archiveThread.members.add(p.id).catch(() => null);
                     }
                     await archiveThread.send(`🌑 **Revisions, coordinate your strategy here.**\nCurrently active: ${revisions.map(p => `<@${p.id}>`).join(', ')}`);
                 } catch (e) { console.error('Failed to create mafia secret thread', e); }
@@ -633,6 +674,11 @@ class MafiaGame extends EventEmitter {
             return true;
         }
 
+        if (alive.length === 0) {
+            this.endGameWithWin('Draw');
+            return true;
+        }
+
         if (archive === 0) {
             // Arsonist is a threat to the town, check if it's the last one left
             if (arsonists.length === 0) {
@@ -653,6 +699,9 @@ class MafiaGame extends EventEmitter {
         this.state = 'GAME_OVER';
         this.emit('stateChanged', 'GAME_OVER');
         clearTimeout(this.activeTimer);
+        
+        // --- VOICE RESTORATION ---
+        await this.updateVoiceStates('GAME_OVER');
 
         const aliveParticipants = Array.from(this.players.values()).filter(p => !p.isBot);
         const winners = [];
@@ -687,6 +736,9 @@ class MafiaGame extends EventEmitter {
             await this.thread.send(gameOverMsg);
             await this.thread.setLocked(false, 'Sanctuary session concluded.');
             
+            // --- AUDIO RESTORATION ---
+            await this.updateVoiceStates('GAME_OVER');
+
             try {
                 const { buildEndedLobbyPayload } = require('./MafiaUI');
                 const lobbyMsg = await this.thread.parent.messages.fetch(this.lobbyMessageId);
@@ -697,32 +749,35 @@ class MafiaGame extends EventEmitter {
         }
         
         this.emit('gameEnded', this.threadId);
+    }
+
+    async resetSession() {
+        if (this.isDestroyed) return;
         
-        // --- AGGRESSIVE ARCHIVAL ---
-        // We do this almost immediately (5s) to allow users to see the Victory screen,
-        // then lock it down forever.
-        setTimeout(async () => {
-            try {
-                if (this.thread && !this.thread.archived) {
-                    await this.thread.setLocked(true).catch(() => null);
-                    await this.thread.setArchived(true).catch(() => null);
-                }
-                if (this.archiveThreadId) {
-                    const secret = (this.thread && this.thread.parent) ? await this.thread.parent.threads.fetch(this.archiveThreadId).catch(()=>null) : null;
-                    if (secret && !secret.archived) {
-                        await secret.setLocked(true).catch(() => null);
-                        await secret.setArchived(true).catch(() => null);
-                    }
-                }
-                if (this.graveyardThreadId) {
-                    const grave = (this.thread && this.thread.parent) ? await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(()=>null) : null;
-                    if (grave && !grave.archived) {
-                        await grave.setLocked(true).catch(() => null);
-                        await grave.setArchived(true).catch(() => null);
-                    }
-                }
-            } catch (e) {}
-        }, 5000);
+        // 1. Reset state
+        this.state = 'LOBBY';
+        this.dayCount = 0;
+        this.phaseEndTime = null;
+        if (this.activeTimer) clearTimeout(this.activeTimer);
+        this.activeTimer = null;
+        
+        // 2. Clear players
+        this.players.clear();
+        this.visitHistory = [];
+        this.guiltDeaths = [];
+        this.stagnationNoticeSent = false;
+        this.stagnationExpiresAt = null;
+        this.lastActivityAt = Date.now();
+        
+        // 3. Clear threads
+        this.threadId = null;
+        this.thread = null;
+        this.archiveThreadId = null;
+        this.graveyardThreadId = null;
+        this.voiceChannelId = null;
+        
+        this.emit('saveState');
+        this.emit('stateChanged', 'LOBBY');
     }
 
     async startNight() {
@@ -838,8 +893,19 @@ class MafiaGame extends EventEmitter {
     async endNight() {
         if (this.isDestroyed || this.state === 'GAME_OVER') return;
         await this.cleanupPhaseMessage();
-        const res = await resolveNightStack(this);
-        const { deaths, readings } = res;
+        
+        const { resolveNightStack } = require('./MafiaStack');
+        const { deaths, readings, diagnosticLog } = await resolveNightStack(this);
+
+        // --- SPECTATOR DIAGNOSTIC ---
+        if (this.graveyardThreadId && diagnosticLog.length > 0) {
+            try {
+                const grave = await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(() => null);
+                if (grave) {
+                    await grave.send(`🔍 **Security Diagnostic: Night ${this.dayCount}**\n${diagnosticLog.map(l => `> ${l}`).join('\n')}`);
+                }
+            } catch (e) {}
+        }
         
         const guiltDeaths = (this.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
         const allDeaths = [...guiltDeaths, ...deaths];
@@ -848,10 +914,26 @@ class MafiaGame extends EventEmitter {
             this.moveToGraveyard(d.target.id);
         }
         
-        this.emit('nightEnded', res);
+        this.emit('nightEnded', { deaths, readings });
 
         // --- VOICE PROTOCOL: REDACT DECEASED ---
         await this.updateVoiceStates();
+
+        // --- INFECTION PROTOCOL: SYNC NEW REVISIONS ---
+        for (const r of readings) {
+            if (r.message.includes('infected') || r.message.includes('Viral Rot')) {
+                const target = this.players.get(r.viewerId);
+                if (target && !target.isBot) {
+                    const { buildRoleCard } = require('./MafiaUI');
+                    const card = buildRoleCard(target, this);
+                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                    const willRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`mafia_will_${this.hostId}`).setLabel('✍️ Write Last Will').setStyle(ButtonStyle.Secondary)
+                    );
+                    await this.refreshControlPanel(target, { embeds: card.embeds }, [willRow]);
+                }
+            }
+        }
 
         if (this.thread) {
             const { buildMorningReport } = require('./MafiaUI');
@@ -878,8 +960,21 @@ class MafiaGame extends EventEmitter {
             if (p.alive && p.role?.name === 'The Critic' && p.criticTarget) {
                 const target = this.players.get(p.criticTarget);
                 if (target && !target.alive) {
-                    // Target was killed at night, Critic fails objective
-                    // (Optionally convert to Anomaly here if desired, but for now just fail)
+                    // Target was killed at night, Critic recalibrates
+                    const alivePotential = Array.from(this.players.values()).filter(tp => tp.id !== p.id && tp.alive && tp.role?.faction === 'Archivists');
+                    if (alivePotential.length > 0) {
+                        p.criticTarget = alivePotential[Math.floor(Math.random() * alivePotential.length)].id;
+                        const newTarget = this.players.get(p.criticTarget);
+                        if (!p.isBot) {
+                            await p.user?.send(`⚠️ **Recalibration Required:** Your primary biometric target was erased by a third party. Synchronizing to new archival target: **${newTarget.name}**.`).catch(() => null);
+                        }
+                    } else {
+                        // No Archivists left to target, convert to Anomaly/Survivor variant
+                        p.won = false; // Reset if they previously won on a target that is now dead (though they win on Exile, not kill)
+                        if (!p.isBot) {
+                            await p.user?.send(`⚠️ **Objective Lost:** There are no valid archival targets remaining. Your survival biometrics are now your primary directive. stay alive to win.`).catch(() => null);
+                        }
+                    }
                 }
             }
         }
@@ -1053,6 +1148,16 @@ class MafiaGame extends EventEmitter {
                     content: `${currentContent}**Current Tallies:**\n${tallyStr}`,
                     components: isFinal ? [] : board.components
                 });
+
+                // --- CONSENSUS SKIP: ALL VOTES CAST ---
+                if (!isFinal && this.state === 'VOTING') {
+                    const alivePlayers = this.getAlivePlayers();
+                    const totalVotes = alivePlayers.filter(p => p.voteTarget).length;
+                    if (totalVotes === alivePlayers.length) {
+                        if (this.activeTimer) clearTimeout(this.activeTimer);
+                        await this.endDay();
+                    }
+                }
             }
         } catch (e) {
             console.error('Failed to update voting board', e);
@@ -1082,6 +1187,10 @@ class MafiaGame extends EventEmitter {
                         p.deathDay = this.dayCount;
                         afkErased.push(p);
                         this.moveToGraveyard(p.id);
+                        await this.updateVoiceStates(); 
+                        
+                        // --- EARLY WIN CHECK ---
+                        if (this.checkWin()) return;
                     } else {
                         afkWarned.push(p);
                     }
@@ -1098,17 +1207,14 @@ class MafiaGame extends EventEmitter {
             }
             if (afkWarned.length > 0) {
                 const pings = afkWarned.map(p => `<@${p.id}>`).join(' ');
-                await this.thread.send(`⚠️ **Biometric Instability:** ${pings}, you have missed a vote. This is your **last chance**. If you miss the next archive update, you will be **redacted** from the records.`);
+                await this.thread.send(`⚠️ **Biometric Instability:** ${pings}, you have missed a vote. This is your **last chance**. If you miss the next update, you will be **redacted**.`);
             }
-            if (afkErased.length > 0 && this.checkWin()) return;
         }
         
         const tallies = {};
         for (const p of this.players.values()) {
             if (p.alive && p.voteTarget) {
-                if (p.role?.name === 'The Scribe' && p.inkBoundTarget === p.voteTarget) continue;
-
-                const weight = p.role?.name === 'The Plurality' ? 2 : 1;
+                const weight = (p.role?.name === 'The Head Curator' || p.role?.name === 'The Plurality') ? 2 : 1;
                 tallies[p.voteTarget] = (tallies[p.voteTarget] || 0) + weight;
             }
         }
@@ -1204,51 +1310,34 @@ class MafiaGame extends EventEmitter {
 
     async moveToGraveyard(userId) {
         if (this.isDestroyed || !this.thread) return;
+        const player = this.players.get(userId);
 
-        // 1. Move to Graveyard Thread
-        if (this.graveyardThreadId) {
-            try {
+        try {
+            // 1. Move to Graveyard Thread
+            if (this.graveyardThreadId && !player?.isBot) {
                 const grave = await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(() => null);
                 if (grave) {
                     await grave.members.add(userId).catch(() => null);
                     await grave.send(`🕯️ **Survivor Entry:** <@${userId}> has been redacted from the living records and entered the spectator archives.`);
                 }
-            } catch (e) {}
-        }
-
-        // 1.1 Redact from Secret Biolink (Infected Chat)
-        if (this.archiveThreadId) {
-            try {
-                const secretHub = await this.thread.parent.threads.fetch(this.archiveThreadId).catch(() => null);
-                if (secretHub) {
-                    await secretHub.members.remove(userId).catch(() => null);
-                }
-            } catch (e) {}
-        }
-
-        // 2. Internal Voice Mute Protocol
-        try {
-            if (this.voiceChannelId) {
-                const member = await this.thread.guild.members.fetch(userId).catch(() => null);
-                if (member && member.voice.channelId === this.voiceChannelId) {
-                    await member.voice.setDeaf(false).catch(() => null); // Undeafen if they were dead at night
-                    await member.voice.setMute(true, 'Biological Redaction (Spectator)').catch(() => null);
-                }
             }
-        } catch (e) {}
 
-        // 3. Silence in Main Thread
-        try {
-            // [VIGILANT REDACTION] 
-            // We no longer remove them from the thread so they can spectate.
-            // Enforcement is handled by the messageCreate event listener.
-            
-            // Notify user in DM
-            const player = this.players.get(userId);
-            if (player && player.user) {
+            // 2. Redact from Secret Biolink (Infected Chat)
+            if (this.archiveThreadId) {
+                const secretHub = await this.thread.parent.threads.fetch(this.archiveThreadId).catch(() => null);
+                if (secretHub) await secretHub.members.remove(userId).catch(() => null);
+            }
+
+            // 3. Update Voice (Final hardening for this player)
+            await this.updateVoiceStates();
+
+            // 4. DM Notification
+            if (player && player.user && !player.isBot) {
                 await player.user.send(`💀 **Connection Locked.** You have been redacted from the living records. You can still spectate the sanctuary in real-time, but your biometrics have been locked from sending new records to the chat.\n\n*(You can still speak in the <#${this.graveyardThreadId}> archives!)*`).catch(() => null);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('[Mafia] Graveyard transition failed:', e);
+        }
     }
 
     resumePhase() {
@@ -1302,7 +1391,9 @@ class MafiaGame extends EventEmitter {
             phaseEndTime: this.phaseEndTime,
             voiceChannelId: this.voiceChannelId,
             isSecure: this.isSecure,
-            players: Array.from(this.players.entries()).map(([id, p]) => ({ id, ...p.toJSON() }))
+            players: Array.from(this.players.entries()).map(([id, p]) => ({ id, ...p.toJSON() })),
+            visitHistory: this.visitHistory,
+            guiltDeaths: this.guiltDeaths.map(p => p.id)
         };
     }
 
@@ -1331,6 +1422,11 @@ class MafiaGame extends EventEmitter {
                 player.fromJSON(pData);
                 this.players.set(pData.id, player);
             }
+        }
+
+        this.visitHistory = data.visitHistory || [];
+        if (data.guiltDeaths && Array.isArray(data.guiltDeaths)) {
+            this.guiltDeaths = data.guiltDeaths.map(id => this.players.get(id)).filter(Boolean);
         }
     }
 

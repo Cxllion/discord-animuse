@@ -7,6 +7,8 @@ async function resolveNightStack(game) {
 
     // Collect all actions from players
     const actions = [];
+    const diagnosticLog = [];
+
     for (const p of alivePlayersList) {
         if (p.nightActionTarget && p.role) {
             // --- AUTHORIZATION CHECK ---
@@ -14,14 +16,16 @@ async function resolveNightStack(game) {
             const isAuthorized = authorizedOptions.some(opt => opt.value === p.nightActionTarget);
             
             if (!isAuthorized) {
-                console.log(`[MAFIA-STACK] Unauthorized action discarded: ${p.name} -> ${p.nightActionTarget}`);
+                diagnosticLog.push(`⚠️ **Unauthorized Override:** ${p.name} (${p.role.name}) attempted to target \`${p.nightActionTarget}\` [ACCESS DENIED].`);
                 p.nightActionTarget = null;
                 continue;
             }
 
             let target = game.players.get(p.nightActionTarget);
             if (p.nightActionTarget === 'ignite') target = { id: 'ignite', name: 'Ignition Framework', isProtected: false };
+            
             if (target) {
+                diagnosticLog.push(`📡 **Frequency Locked:** ${p.name} (${p.role.name}) targeted **${target.name}**.`);
                 actions.push({
                     source: p,
                     target: target,
@@ -50,7 +54,9 @@ async function resolveNightStack(game) {
         
         // Skip if source was roleblocked earlier in the stack
         if (source.isRoleblocked) continue;
-        if (!source.alive) continue;
+        // [SIMULTANEOUS RESOLUTION] We no longer check if source.alive here.
+        // Actions theoretically happen at the same time, though ordered for side-effects.
+        // This ensures dying players still get their results.
 
         switch (priority) {
             case 1: // Redactions (Censor)
@@ -89,12 +95,17 @@ async function resolveNightStack(game) {
                 if (!deaths.find(d => d.target.id === target.id)) {
                     // Convert target's faction if applicable
                     if (target.role && target.role.faction === 'Archivists') {
-                        target.role.faction = 'Revisions';
+                        // [VANILLA CONVERSION] Strip powers upon infection for balance
+                        const { Revision } = require('./MafiaRoles');
+                        target.role = new Revision(target);
+                        target.role.faction = 'Revisions'; 
+                        
                         readings.push({ viewerId: target.id, message: `🩸 **You have been infected.** The Viral Rot has taken hold. You are now aligned with the **Revisions** (Infected). You win with them.` });
                         
                         if (game.archiveThreadId && !target.isBot) {
                             try {
-                                const mThread = await game.thread.guild.channels.fetch(game.archiveThreadId).catch(() => null);
+                                const guild = game.thread.guild;
+                                const mThread = await guild.channels.fetch(game.archiveThreadId).catch(() => null);
                                 if (mThread) await mThread.members.add(target.id).catch(() => null);
                             } catch(e) {}
                         }
@@ -115,8 +126,7 @@ async function resolveNightStack(game) {
                     if (visitors.length > 0) {
                         const v = visitors[Math.floor(Math.random() * visitors.length)];
                         const visitorName = game.players.get(v.sourceId)?.name || "Unknown";
-                        readings.push({ viewerId: source.id, message: `Your forensic scan of ${target.name}'s bio-signature revealed traces of ${visitorName} (from night ${v.night}).\n\n⚠️ **You are now Ink-Bound (Biosync Conflict) and cannot vote for them.**` });
-                        source.inkBoundTarget = v.sourceId;
+                        readings.push({ viewerId: source.id, message: `Your forensic scan of ${target.name}'s bio-signature revealed traces of ${visitorName} (from night ${v.night}).\n\n*(Lore: You have developed a slight Biosync Conflict with them, but your voting biometrics remain stable.)*` });
                     } else {
                         readings.push({ viewerId: source.id, message: `Your forensic scan of ${target.name} found no discernable bio-traces recorded.` });
                     }
@@ -125,13 +135,26 @@ async function resolveNightStack(game) {
         }
     }
 
+    // Capture summary of effects for diagnostics
+    for (const act of actions) {
+        const { source, target, role, priority } = act;
+        if (source.isRoleblocked) {
+            diagnosticLog.push(`🚫 **Protocol Failure:** ${source.name} was quarantined (Censored) and failed to execute.`);
+            continue;
+        }
+
+        if (priority === 2) diagnosticLog.push(`🛡️ **Barrier Sync:** ${target.name} was shielded by the Conservator.`);
+        if (priority === 3 && target.isProtected) diagnosticLog.push(`🛡️ **Redaction Deflected:** Archive shields saved ${target.name} from erasure.`);
+        if (priority === 4 && target.role?.faction === 'Revisions') diagnosticLog.push(`🩸 **Infection Spread:** ${target.name} has been co-opted by the Viral Rot.`);
+    }
+
     // Apply deaths
     for (const d of deaths) {
         d.target.die();
         d.target.deathDay = game.dayCount;
     }
 
-    return { deaths, readings };
+    return { deaths, readings, diagnosticLog };
 }
 
 module.exports = { resolveNightStack };

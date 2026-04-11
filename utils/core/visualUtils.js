@@ -189,10 +189,41 @@ const resolveBannerUrl = async (user, member, bannerConfig) => {
     return null;
 };
 
+/**
+ * Checks if a string contains only characters that are likely supported by custom decorative fonts.
+ * @param {string} text 
+ * @returns {boolean}
+ */
+const isFontSafe = (text) => {
+    if (!text) return true;
+    // Basic printable ASCII range: 0x20 (space) to 0x7E (~)
+    // We also allow standard whitespace characters
+    return /^[\x20-\x7E\s]*$/.test(text);
+};
+
+/**
+ * Resolves a member's name for display on graphics. 
+ * Falls back to username if display name contains unsafe characters.
+ * @param {object} member Discord GuildMember
+ * @returns {string}
+ */
+const getResolvableName = (member) => {
+    if (!member) return 'Unknown User';
+    const displayName = member.displayName;
+    const username = member.user.username;
+
+    if (!isFontSafe(displayName)) {
+        return username;
+    }
+    return displayName;
+};
+
 module.exports = {
     normalizeColor,
     generateColorTokens,
     parseMetadata,
     sanitizeTitle,
-    resolveBannerUrl
+    resolveBannerUrl,
+    isFontSafe,
+    getResolvableName
 };

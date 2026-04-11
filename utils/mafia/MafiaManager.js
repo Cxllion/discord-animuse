@@ -72,13 +72,9 @@ class MafiaManager {
         });
 
         game.on('gameEnded', (threadId) => {
-            // Keep in memory for a bit to allow post-game chat, then cleanup
-            setTimeout(async () => {
-                const g = this.games.get(threadId);
-                if (g) {
-                    await this.endGame(threadId);
-                }
-            }, 300000); // 5 minutes post-game cleanup
+            // Remove thread mapping but keep the lobby mapping for reset potential
+            this.games.delete(threadId);
+            this.saveState();
         });
 
         game.on('saveState', () => this.saveState());
@@ -220,13 +216,14 @@ class MafiaManager {
             this.lobbies.delete(hostId);
 
             // ARCHIVE ALL RELEVANT THREADS
+            // (Only archive if we are explicitly disbanding or the game is ending)
             const threadsToClose = [game.threadId, game.graveyardThreadId, game.archiveThreadId].filter(id => id);
             for (const tId of threadsToClose) {
                 try {
                     const thread = await this.client?.channels.fetch(tId).catch(() => null);
                     if (thread) {
                         await thread.setLocked(true).catch(() => null);
-                        await thread.setArchived(true).catch(() => null);
+                        // We don't archive immediately so people can see the link back
                     }
                 } catch(e) {}
             }

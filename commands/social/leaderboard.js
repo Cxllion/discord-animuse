@@ -3,6 +3,7 @@ const { getTopUsers, getUserRank, getLevelProgress } = require('../../utils/serv
 const { generateLeaderboard } = require('../../utils/generators/leaderboardGenerator');
 const { getUserBannerConfig, getUserColor, getBulkUserAvatarConfig } = require('../../utils/core/database');
 const { getAnilistUser } = require('../../utils/services/anilistService');
+const { getResolvableName } = require('../../utils/core/visualUtils');
 
 module.exports = {
     category: 'social',
@@ -32,7 +33,7 @@ module.exports = {
             if (member) {
                 topUsers.push({
                     ...raw,
-                    username: member.displayName, // Use priority nickname
+                    username: getResolvableName(member), // Respect font safety (fallback to username if nickname is aesthetic/special)
                     avatarUrl: member.user.displayAvatarURL({ extension: 'png', size: 256 }) // Default to GLOBAL Avatar (interconnected with Profile default)
                 });
             } else {
@@ -121,7 +122,7 @@ module.exports = {
         }
 
         // 4. Generate
-        let challengerName = interaction.member ? interaction.member.displayName : interaction.user.username;
+        let challengerName = getResolvableName(interaction.member);
         const buffer = await generateLeaderboard(interaction.user, challengerData, topUsers, bgUrl, color, challengerName, challengerAvatarUrl);
         const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard.webp' });
 

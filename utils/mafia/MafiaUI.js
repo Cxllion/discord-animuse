@@ -288,7 +288,15 @@ function buildEndedLobbyPayload(game, winner) {
         { name: `💀 Casualties (${dead.length})`, value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' }
     );
 
-    return { embeds: [embed], components: [] };
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`mafia_reset_${game.hostId}`)
+            .setLabel('♻️ Reset Sanctuary')
+            .setStyle(ButtonStyle.Success)
+    );
+
+    return { embeds: [embed], components: [row] };
 }
 
 function buildMorningReport(game, deaths) {
@@ -336,13 +344,17 @@ function buildMorningReport(game, deaths) {
     return { embeds: [embed] };
 }
 
-function buildGameOverPayload(game, winner) {
+function buildGameOverPayload(game, winner, secondaryWinners = []) {
     const embed = baseEmbed('📚 The Final Library | Sanctuary Debrief', 
         `**Simulation Terminated.**\n\n**Victor:** ${winner.toUpperCase()}`, 
         null
     )
         .setColor(winner === 'Archivists' ? '#2ecc71' : (winner === 'Revisions' ? '#e74c3c' : '#f1c40f'))
         .setTimestamp();
+
+    if (secondaryWinners.length > 0) {
+        embed.addFields({ name: '🌟 Outstanding Victors', value: secondaryWinners.map(name => `• **${name}**`).join('\n') });
+    }
 
     const playersList = Array.from(game.players.values()).map(p => {
         const roleStr = p.role ? `${p.role.emoji} ${p.role.name}` : 'Unknown';

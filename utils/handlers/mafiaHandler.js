@@ -107,6 +107,18 @@ const handleMafiaInteraction = async (interaction) => {
             return;
         }
 
+        // Reset Button (from Victory Payload)
+        if (interaction.customId.startsWith('mafia_reset_')) {
+            if (interaction.user.id !== game.hostId) {
+                return interaction.reply({ content: '❌ **Access Denied.** Only the host can reset the sanctuary archives.', flags: MessageFlags.Ephemeral });
+            }
+
+            await game.resetSession();
+            const { buildLobbyPayload } = require('../mafia/MafiaUI');
+            await interaction.update(buildLobbyPayload(game));
+            return;
+        }
+
 
         // Back to Lobby (settings back button)
         if (interaction.customId.startsWith('mafia_lobby_back_')) {
@@ -398,6 +410,9 @@ const handleMafiaInteraction = async (interaction) => {
                 components.push(willRow);
 
                 await game.refreshControlPanel(p, response, components);
+                
+                // --- UX: CHECK FOR NIGHT SKIP ---
+                await game.checkNightSkip();
             } else {
                 await interaction.update({ content: 'You cannot act right now.', components: [] });
             }

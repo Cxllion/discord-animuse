@@ -5,8 +5,27 @@ function handleBotNightActions(game) {
     for (const bot of aliveBots) {
         if (!bot.role || bot.role.priority === 99) continue;
 
-        const options = game.getNightActionOptions(bot);
+        let options = game.getNightActionOptions(bot);
         if (options.length === 0) continue;
+
+        // --- STRATEGIC INTELLIGENCE: FACTION AWARENESS ---
+        if (bot.role.faction === 'Revisions') {
+            // Revisions should NEVER target other Revisions
+            options = options.filter(opt => {
+                const target = game.players.get(opt.value);
+                return !target || target.role?.faction !== 'Revisions';
+            });
+        } else if (bot.role.faction === 'Archivists') {
+            // Archivists should prioritize people they haven't cleared yet
+            // (Naive implementation: priority for Non-Bots or random)
+            if (options.length > 1) {
+                const nonSelf = options.filter(opt => opt.value !== bot.id);
+                if (nonSelf.length > 0) options = nonSelf;
+            }
+        }
+
+        // Fallback if filtering left no options
+        if (options.length === 0) options = game.getNightActionOptions(bot);
 
         if (!bot.nightActionTarget) {
             const targetData = options[Math.floor(Math.random() * options.length)];

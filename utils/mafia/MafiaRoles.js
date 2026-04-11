@@ -154,13 +154,13 @@ class TheIndexer extends Role {
     }
 }
 
-class ThePlurality extends Role {
+class TheHeadCurator extends Role {
     constructor(player) {
         super(player);
-        this.name = 'The Plurality';
+        this.name = 'The Head Curator';
         this.faction = 'Archivists';
         this.emoji = '👑';
-        this.description = 'Mayor: Their vote counts as two during the Day phase.';
+        this.description = 'Chief Archivist: Their vote counts as two during the Day phase.';
         this.priority = 99; // Passive
     }
 }
@@ -194,7 +194,7 @@ class TheScribe extends Role {
         this.name = 'The Scribe';
         this.faction = 'Archivists';
         this.emoji = '🖋️';
-        this.description = 'Forensic Medium: Checks a dead body at night to find one random person who interacted with them. Becomes Ink-Bound and cannot vote for that suspect next Day.';
+        this.description = 'Forensic Medium: Checks a dead body at night to find one random person who interacted with them. Becomes Ink-Bound (Lore) to that suspect.';
         this.priority = 5; // Readings
         this.feedback = [
             "You kneel beside the bio-hazard zone, tracing the visitors of **{target}**.",
@@ -343,7 +343,7 @@ module.exports = {
     TheConservator, 
     TheShredder, 
     TheIndexer, 
-    ThePlurality,
+    TheHeadCurator,
     TheGhostwriter,
     TheScribe,
     TheCensor,

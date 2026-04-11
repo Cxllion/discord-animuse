@@ -5,7 +5,7 @@ const {
     TheConservator,
     TheShredder,
     TheIndexer,
-    ThePlurality,
+    TheHeadCurator,
     TheGhostwriter,
     TheScribe,
     TheCensor,
@@ -19,7 +19,7 @@ const {
 function generateRolesForMode(modeName, playerCount) {
     const roles = [];
 
-    let revisionCount = Math.max(1, Math.floor(playerCount / 4));
+    let revisionCount = Math.max(1, Math.floor((playerCount - 1) / 3));
     let townCount = playerCount - revisionCount;
 
     if (modeName === 'Classic Archive' || modeName === 'First Edition') {
@@ -34,7 +34,7 @@ function generateRolesForMode(modeName, playerCount) {
     } 
     else if (modeName === 'Unabridged Archive' || modeName === 'Chaos' || modeName === 'Redacted Files') {
         const unboundPool = [new TheAnomaly(), new TheCritic(), new TheBookburner()];
-        const archivistPool = [new TheGhostwriter(), new TheScribe(), new TheConservator(), new TheIndexer(), new ThePlurality()];
+        const archivistPool = [new TheGhostwriter(), new TheScribe(), new TheConservator(), new TheIndexer(), new TheHeadCurator()];
         const revisionPool = [new TheShredder(), new TheCensor(), new ThePlagiarist()];
         
         // Essential starters

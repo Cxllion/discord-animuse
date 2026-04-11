@@ -295,27 +295,35 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.letterSpacing = '1.2px';
         ctx.fillText(`#${i + 1}`, leftX, y - 4); // Optical center (y-5 + 1)
 
-        // Name
-        ctx.font = 'bold 14px monalqo, sans-serif';
-        ctx.fillStyle = user ? '#FFF' : 'rgba(255,255,255,0.2)';
-        ctx.letterSpacing = '0.5px';
+        // Name & XP (Dynamic Scaling)
         const uName = user ? (user.username || user.user_id) : '---';
-        const truncName = uName.length > 14 ? uName.substring(0, 13) + '..' : uName;
-        ctx.fillText(truncName, leftX + 40, y - 4); // Optical center
+        const val = user ? `LVL ${user.level}` : '-';
+        
+        // Measure level width first to calculate remaining space for name
+        ctx.font = '900 14px monalqo, sans-serif';
+        const valWidth = ctx.measureText(val).width;
+        
+        // Available width: Space between rank/icon and the level pill on the right
+        const nameLeftEdge = leftX + 40;
+        const levelRightEdge = rightX - 8;
+        const availableWidth = (levelRightEdge - nameLeftEdge) - valWidth - 15; // 15px margin of safety
 
-        // XP/Level
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.fillStyle = user ? '#FFF' : 'rgba(255,255,255,0.2)';
+        const nameSize = fitText(ctx, uName, availableWidth, 14);
+        ctx.font = `bold ${nameSize}px monalqo, sans-serif`;
+        ctx.fillText(uName, nameLeftEdge, y - 4);
+        ctx.restore();
+
+        // Render Level
+        ctx.save();
         ctx.textAlign = 'right';
-        ctx.textBaseline = 'middle'; // Center in pill
+        ctx.textBaseline = 'middle';
         ctx.font = '900 14px monalqo, sans-serif';
         ctx.fillStyle = TEXT_COLOR;
-        const val = user ? `LVL ${user.level}` : '-';
-
-        // LVL Pill Removed for clean unified look
-        if (isCustom && user) {
-            // Optional: Subtle highlight could go here, but keeping it clean as requested
-        }
-
-        ctx.fillText(val, rightX - 8, y - 4); // Optical center
+        ctx.fillText(val, levelRightEdge, y - 4);
+        ctx.restore();
     }
 
 
