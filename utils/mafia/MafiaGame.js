@@ -449,7 +449,11 @@ class MafiaGame extends EventEmitter {
 
         try {
             const client = require('./MafiaManager').client;
-            const voiceChannel = await client.channels.fetch(this.voiceChannelId).catch(() => null);
+            if (!client) return;
+
+            // --- CACHE-FIRST LOGIC ---
+            // We use client.channels.cache.get to avoid API network latency.
+            const voiceChannel = client.channels.cache.get(this.voiceChannelId);
             if (!voiceChannel) return;
 
             const updateTasks = [];
@@ -489,7 +493,7 @@ class MafiaGame extends EventEmitter {
                 if (needsMuteUpdate || needsDeafCleanup) {
                     const currentTaskIdx = taskCounter++;
                     updateTasks.push((async () => {
-                        await new Promise(r => setTimeout(r, currentTaskIdx * 30));
+                        await new Promise(r => setTimeout(r, currentTaskIdx * 100)); // Increased stagger for large groups
                         try {
                             if (needsMuteUpdate) await member.voice.setMute(targetMute, reason).catch(() => null);
                             if (needsDeafCleanup) await member.voice.setDeaf(false, 'Mute-Only Protocol').catch(() => null);
@@ -513,7 +517,7 @@ class MafiaGame extends EventEmitter {
             if (!this.isDestroyed && this.voiceChannelId) {
                 this.updateVoiceStates().catch(() => null);
             }
-        }, 10000); // 10s pulse for performance
+        }, 60000); // 60s pulse for performance (Long Interval Optimization)
     }
 
     stopVoiceScan() {
@@ -767,38 +771,67 @@ class MafiaGame extends EventEmitter {
 
         await thread.send(`📜 The Final Library is sealed... The last record of humanity begins!\n🎙️ **Audio Uplink Active:** Connect to the **Library Hub** VC for coordinate biometrics.\nCheck your DMs for your Role Cards. ${roleEx}\n\n*Wait quietly... Night falls over the ruined world.*`);
         
-        // --- PARALLEL ROLE DISTRIBUTION ---
-        const distributionTasks = Array.from(this.players.values()).map(async (p) => {
-            if (p.role && p.role.name === 'The Critic') {
-                const possibleTargets = Array.from(this.players.values()).filter(t => t.id !== p.id && (!t.role || t.role.faction !== 'Revisions'));
-                if (possibleTargets.length > 0) {
-                    p.criticTarget = possibleTargets[Math.floor(Math.random() * possibleTargets.length)].id;
+        // --- CHUNKED ROLE DISTRIBUTION (Burst Protection) ---
+        const playerList = Array.from(this.players.values());
+        const CHUNK_SIZE = 4;
+        
+        for (let i = 0; i < playerList.length; i += CHUNK_SIZE) {
+            const chunk = playerList.slice(i, i + CHUNK_SIZE);
+            
+            const chunkTasks = chunk.map(async (p) => {
+                // Initialize Critic Targeting if applicable
+                if (p.role && p.role.name === 'The Critic') {
+                    const possibleTargets = playerList.filter(t => t.id !== p.id && (!t.role || t.role.faction !== 'Revisions'));
+                    if (possibleTargets.length > 0) {
+                        p.criticTarget = possibleTargets[Math.floor(Math.random() * possibleTargets.length)].id;
+                    }
                 }
-            }
 
-            if (!p.isBot) {
-                try {
-                    const canvasBuffer = await generateRoleCard(p.role, p.name, this.thread?.guild?.name || 'The Final Library');
-                    const attachment = { files: [{ attachment: canvasBuffer, name: `role_card_${p.id}.png` }] };
-                    
-                    await p.user.send({ 
-                        content: `📜 **Biometrics Scanned.** Your identity in the sanctuary has been established.`,
-                        ...attachment
-                    }).catch(async () => {
+                if (!p.isBot) {
+                    try {
+                        let msg;
+                        if (p.roleCardUrl) {
+                            // --- CDN REUSE (Performance Anchor) ---
+                            msg = await p.user.send({
+                                embeds: [
+                                    baseEmbed('📜 Biometrics Restored', `Your archival identity has been re-synchronized.`, null)
+                                        .setImage(p.roleCardUrl)
+                                        .setColor(p.role.faction === 'Revisions' ? Lore.COLORS.VICTORY_MAFIA : Lore.COLORS.LOBBY)
+                                ]
+                            });
+                        } else {
+                            // --- INITIAL GENERATION ---
+                            const canvasBuffer = await generateRoleCard(p.role, p.name, this.thread?.guild?.name || 'The Final Library');
+                            const attachment = { files: [{ attachment: canvasBuffer, name: `role_card_${p.id}.png` }] };
+                            
+                            msg = await p.user.send({ 
+                                content: `📜 **Biometrics Scanned.** Your identity in the sanctuary has been established.`,
+                                ...attachment
+                            });
+
+                            // Capture URL for future reuse
+                            if (msg.attachments.size > 0) {
+                                p.roleCardUrl = msg.attachments.first().url;
+                            }
+                        }
+                    } catch (e) {
+                        // DM Failure Handling
                         if (this.thread) {
                             await this.thread.send({ 
                                 content: `⚠️ <@${p.id}>, your archival connection is restricted (DMs closed). Your role is **${p.role.name}** (${p.role.faction}).\n> ${p.role.description}`,
                                 flags: 64 
                             }).catch(() => null);
                         }
-                    });
-                } catch (e) {
-                    logger.error(`Failed to generate or send role card to ${p.name}`, e, 'Mafia');
+                        logger.error(`Failed to generate or send role card to ${p.name}`, e, 'Mafia');
+                    }
                 }
-            }
-        });
+            });
 
-        await Promise.all(distributionTasks);
+            await Promise.all(chunkTasks);
+            if (i + CHUNK_SIZE < playerList.length) {
+                await new Promise(r => setTimeout(r, 500)); // 0.5s rest between batches
+            }
+        }
         
         this.activeTimer = setTimeout(async () => {
             if (this.state === 'GAME_OVER') return;
@@ -1034,9 +1067,12 @@ class MafiaGame extends EventEmitter {
         
         const alivePlayers = this.getAlivePlayers();
         const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        // --- PARALLEL DM UPDATES ---
-        const nightUpdates = alivePlayers.map(async (p) => {
+        // --- STAGGERED DM UPDATES (Burst Protection) ---
+        const nightUpdates = alivePlayers.map(async (p, index) => {
             if (p.isBot) return;
+
+            // Small stagger to prevent DM rate limits in large games
+            await new Promise(r => setTimeout(r, index * 150));
 
             const components = [];
             
@@ -1207,6 +1243,11 @@ class MafiaGame extends EventEmitter {
         if (this.isDestroyed || this.state === 'GAME_OVER' || this.state === 'LOBBY') return;
         
         logger.info(`[Mafia] Resuming phase: ${this.state} (Day ${this.dayCount})`, 'Mafia');
+
+        // Restart Active Voice Scanner if VC exists
+        if (this.voiceChannelId) {
+            this.startVoiceScan();
+        }
         
         if (this.state === 'PROLOGUE') {
             this.activeTimer = setTimeout(() => {

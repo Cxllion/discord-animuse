@@ -502,7 +502,10 @@ class MafiaManager {
                             d.game.graveyardThreadId === thread.id
                         );
                         
-                        if (!isPending && (process.env.TEST_MODE === 'true' || (validGuildIds && !validGuildIds.has(guildId)))) {
+                        // 1-minute safety buffer for newly created threads
+                        const isNew = (Date.now() - (thread.createdTimestamp || 0)) < 60000;
+
+                        if (!isPending && !isNew && (process.env.TEST_MODE === 'true' || (validGuildIds && !validGuildIds.has(guildId)))) {
                             logger.info(`[Mafia] [Bulletproof] Redacting orphan thread: ${thread.name} (${thread.id})`, 'Mafia');
                             await thread.send('⚠️ **Record Redacted.** This sanctuary was lost during a previous system cycle and has been archived.').catch(() => null);
                             await thread.setLocked(true).catch(() => null);
@@ -518,8 +521,11 @@ class MafiaManager {
                 for (const hub of hubs.values()) {
                     const isPending = Array.from(this.pendingRestores.values()).some(d => d.game.voiceChannelId === hub.id);
                     const isActive = Array.from(this.lobbies.values()).concat(Array.from(this.games.values())).some(g => g.voiceChannelId === hub.id);
+                    
+                    // 1-minute safety buffer for newly created channels
+                    const isNew = (Date.now() - (hub.createdTimestamp || 0)) < 60000;
 
-                    if (!isPending && !isActive && (process.env.TEST_MODE === 'true' || (validGuildIds && !validGuildIds.has(guildId)))) {
+                    if (!isPending && !isActive && !isNew && (process.env.TEST_MODE === 'true' || (validGuildIds && !validGuildIds.has(guildId)))) {
                         logger.info(`[Mafia] [Bulletproof] Redacting lingering voice hub: ${hub.name} (${hub.id})`, 'Mafia');
                         await hub.delete('Orphaned Sanctuary Hub').catch(() => null);
                     }

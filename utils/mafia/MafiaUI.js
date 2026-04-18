@@ -319,39 +319,73 @@ function buildMorningReport(game, deaths) {
 
     if (deaths.length === 0) {
         const lore = Lore.STORY.MORNING_QUIET[Math.floor(Math.random() * Lore.STORY.MORNING_QUIET.length)];
-        embed.setDescription(lore);
+        embed.setDescription(`### **ALL RECORDS SECURE**\n${lore}`);
     } else {
-        embed.setDescription(`The Sanctuary's monitors flicker. **${deaths.length}** signature${deaths.length === 1 ? ' has' : 's have'} been erased from the roster.`);
+        embed.setDescription(`### **${deaths.length} SIGNATURE${deaths.length === 1 ? '' : 'S'} ERASED**\nThe Sanctuary's monitors flicker. Fatal biometric redactions were detected during the night cycle.`);
         
         for (const d of deaths) {
             const roleStr = reveal
                 ? (d.target.role ? `${d.target.role.emoji} **${d.target.role.name}** (${d.target.role.faction})` : '`Unknown`')
                 : '🔒 **REDACTED**';
             
-            const variantTitles = ["CRITICAL BREACH", "DATA ERASURE", "SYSTEM PURGE", "SECTOR FAILURE", "BIOMETRIC LOSS"];
-            const fieldTitle = d.isGuilt ? '💔 GUILT OVERRIDE' : `💀 ${variantTitles[Math.floor(Math.random() * variantTitles.length)]}`;
-            
+            // --- FORENSIC CATEGORIZATION ---
+            let statusHeader = "💀 ARCHIVAL ERASURE";
+            let statusColor = "REDACTION";
+            let codDescription = "Their signal was unceremoniously redacted.";
+
+            if (d.isGuilt) {
+                statusHeader = "💔 BIOMETRIC FLATLINE";
+                statusColor = "GUILT";
+                codDescription = "Redacted due to internal safeguard overload (Remorse).";
+            } else if (d.source?.role?.faction === 'Revisions') {
+                statusHeader = "🛑 VIRAL OVERWRITE";
+                statusColor = "ROT";
+                codDescription = "Their biometric record was corrupted by the Viral Rot.";
+            } else if (d.source?.role?.name === 'The Bookburner') {
+                statusHeader = "🔥 THERMAL PURGE";
+                statusColor = "BOOKBURNING";
+                codDescription = "Incinerated during a localized core-venting event.";
+            } else if (d.source?.role?.name === 'The Ghostwriter') {
+                statusHeader = "💀 LITERARY REDACTION";
+                codDescription = "Their story is no longer readable. Systematic erasure.";
+            } else if (d.source?.role?.name === 'The Shredder') {
+                statusHeader = "💀 PHYSICAL ERASURE";
+                codDescription = "Their signature was shredded by a physical security override.";
+            }
+
             let lorePool = d.isGuilt ? Lore.STORY.ERASURE_GUILT : Lore.STORY.ERASURE_KILL;
-            let lore = lorePool[Math.floor(Math.random() * lorePool.length)].replace('{name}', d.target.name);
+            let lore = lorePool[Math.floor(Math.random() * lorePool.length)].replace('{name}', `**${d.target.name}**`);
             
-            let reportStr = `${lore}\n**Role:** ${roleStr}`;
+            let reportStr = `**Status:** ${codDescription}\n**Identity:** ${roleStr}`;
             
             if (d.target.lastWill) {
-                reportStr += `\n\n📜 **Last Will:**\n> *"${d.target.lastWill}"*`;
+                reportStr += `\n\n📜 **Retrieved Last Will:**\n> *"${d.target.lastWill}"*`;
             } else {
-                reportStr += `\n\n📜 *No Last Will was found.*`;
+                reportStr += `\n\n📜 *No readable Last Will was found.*`;
             }
             
-            embed.addFields({ name: fieldTitle, value: reportStr });
+            embed.addFields({ 
+                name: `[ ${statusHeader}: ${d.target.name.toUpperCase()} ]`, 
+                value: `${lore}\n\n${reportStr}`
+            });
         }
     }
 
     const alive = Array.from(game.players.values()).filter(p => p.alive);
     const dead = Array.from(game.players.values()).filter(p => !p.alive);
     
+    // Compacted Roster
     embed.addFields(
-        { name: `🧍 Survivors (${alive.length})`, value: alive.length > 0 ? alive.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' },
-        { name: `💀 Redacted (${dead.length})`, value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' }
+        { 
+            name: `🧍 Survivors (${alive.length})`, 
+            value: alive.length > 0 ? alive.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None',
+            inline: false
+        },
+        { 
+            name: `💀 Redacted (${dead.length})`, 
+            value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None',
+            inline: false
+        }
     );
 
     const row = new ActionRowBuilder().addComponents(
@@ -624,6 +658,11 @@ function buildDayHUD(player, game) {
     const roleName = player.role.name.toUpperCase();
     let content = `☀️ **Phase: Day ${game.dayCount} (Discussion)**\n`;
     content += `**Identity:** \`${roleName}\`\n\n`;
+
+    if (player.lastNightResult) {
+        content += `📊 **LATEST INTELLIGENCE:**\n> ${player.lastNightResult}\n\n`;
+    }
+
     content += `The archives are open. Use the thread to deliberate with fellow survivors.`;
 
     const willLabel = player.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';

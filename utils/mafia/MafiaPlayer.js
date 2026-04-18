@@ -27,6 +27,9 @@ class MafiaPlayer {
         this.missedVotes = 0; // Track AFK voting
         this.controlPanelMessageId = null; // Track persistent DM panel
         this.initialVoiceChannelId = null; // Original VC to return to
+        this.lastControlState = null; // Track UI hash for dirty-checking
+        this.lastNightResult = null; // Persistent investigation findings
+        this.roleCardUrl = null; // Cached Discord CDN URL for role image
     }
 
     assignRole(roleObject) {
@@ -45,6 +48,7 @@ class MafiaPlayer {
         this.isRoleblocked = false;
         this.isProtected = false;
         this.inkBoundTarget = null;
+        this.lastNightResult = null; // Clear old findings when new night starts
     }
 
     resetForDay() {
@@ -70,7 +74,10 @@ class MafiaPlayer {
             deathDay: this.deathDay,
             missedVotes: this.missedVotes,
             controlPanelMessageId: this.controlPanelMessageId,
-            initialVoiceChannelId: this.initialVoiceChannelId
+            initialVoiceChannelId: this.initialVoiceChannelId,
+            lastControlState: this.lastControlState,
+            lastNightResult: this.lastNightResult,
+            roleCardUrl: this.roleCardUrl
         };
     }
 
@@ -83,15 +90,13 @@ class MafiaPlayer {
         if (data.role) {
             try {
                 const Roles = require('./MafiaRoles');
-                // Heuristic: Remove spaces from the display name to find the Class name
                 const className = data.role.name.replace(/\s+/g, '');
                 const RoleClass = Roles[className];
                 
                 if (RoleClass) {
                     this.role = new RoleClass(this);
-                    // Copy over properties like targetId, isReadyToIgnite etc.
                     Object.assign(this.role, data.role);
-                    this.role.player = this; // Restore back-link lost in JSON.stringify
+                    this.role.player = this; 
                 } else {
                     this.role = data.role;
                 }
@@ -116,6 +121,9 @@ class MafiaPlayer {
         this.missedVotes = data.missedVotes || 0;
         this.controlPanelMessageId = data.controlPanelMessageId || null;
         this.initialVoiceChannelId = data.initialVoiceChannelId || null;
+        this.lastControlState = data.lastControlState || null;
+        this.lastNightResult = data.lastNightResult || null;
+        this.roleCardUrl = data.roleCardUrl || null;
     }
 }
 

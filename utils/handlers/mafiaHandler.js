@@ -78,18 +78,20 @@ const handleMafiaInteraction = async (interaction) => {
 
         // Join Button (from Action Hub)
         if (interaction.customId.startsWith('mafia_join_')) {
+            await interaction.deferUpdate();
             if (game.addPlayer(interaction.user)) {
                 const { buildActionHub } = require('../mafia/MafiaUI');
-                await interaction.update(buildActionHub(game, interaction.user));
+                await interaction.editReply(buildActionHub(game, interaction.user));
                 await game.refreshLobby(interaction.channel);
             } else {
-                await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
+                await interaction.followUp({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
             return;
         }
 
         // Leave Button (from Action Hub)
         if (interaction.customId.startsWith('mafia_leave_')) {
+            await interaction.deferUpdate();
             const oldHostId = game.hostId;
             if (game.removePlayer(interaction.user.id)) {
                 // If host migrated, load new host's preferences
@@ -99,10 +101,10 @@ const handleMafiaInteraction = async (interaction) => {
                 }
 
                 const { buildActionHub } = require('../mafia/MafiaUI');
-                await interaction.update(buildActionHub(game, interaction.user));
+                await interaction.editReply(buildActionHub(game, interaction.user));
                 await game.refreshLobby(interaction.channel);
             } else {
-                await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
+                await interaction.followUp({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
             return;
         }
@@ -459,19 +461,17 @@ const handleMafiaInteraction = async (interaction) => {
         const { buildActionHub } = require('../mafia/MafiaUI');
         
         if (action === 'join') {
+            await interaction.deferUpdate();
             if (game.addPlayer(interaction.user)) {
-                await interaction.update(buildActionHub(game, interaction.user));
+                await interaction.editReply(buildActionHub(game, interaction.user));
                 await game.refreshLobby(interaction.channel);
-            } else {
-                await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
         }
         else if (action === 'leave') {
+            await interaction.deferUpdate();
             if (game.removePlayer(interaction.user.id)) {
-                await interaction.update(buildActionHub(game, interaction.user));
+                await interaction.editReply(buildActionHub(game, interaction.user));
                 await game.refreshLobby(interaction.channel);
-            } else {
-                await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
         }
         else if (action === 'personal_stats') {

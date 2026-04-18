@@ -14,10 +14,11 @@ class MafiaVoice {
         if (!game.voiceChannelId) return;
 
         try {
-            const guild = await game.thread?.guild.fetch();
-            if (!guild) return;
+            const client = require('./MafiaManager').client;
+            if (!client) return;
 
-            const voiceChannel = await guild.channels.fetch(game.voiceChannelId).catch(() => null);
+            // --- CACHE-FIRST LOGIC ---
+            const voiceChannel = client.channels.cache.get(game.voiceChannelId);
             if (!voiceChannel) return;
 
             // Gather all players who are currently in this voice channel
@@ -69,9 +70,10 @@ class MafiaVoice {
     static async restoreStates(game) {
         if (!game.voiceChannelId) return;
         try {
-            const guild = await game.thread?.guild.fetch();
-            if (!guild) return;
-            const voiceChannel = await guild.channels.fetch(game.voiceChannelId).catch(() => null);
+            const client = require('./MafiaManager').client;
+            if (!client) return;
+
+            const voiceChannel = client.channels.cache.get(game.voiceChannelId);
             if (voiceChannel) {
                 for (const [id, member] of voiceChannel.members) {
                     if (member.voice.mute) {

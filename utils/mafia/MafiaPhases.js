@@ -341,6 +341,9 @@ class MafiaPhases {
             for (const r of readings) {
                 const viewer = game.players.get(r.viewerId);
                 if (viewer && !viewer.isBot) {
+                    // --- INVESTIGATION MEMORY ---
+                    viewer.lastNightResult = r.message;
+                    
                     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
                     const willRow = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setCustomId(`mafia_will_${game.hostId}`).setLabel('✍️ Update Last Will').setStyle(ButtonStyle.Secondary)
