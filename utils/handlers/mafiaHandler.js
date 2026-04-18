@@ -73,7 +73,7 @@ const handleMafiaInteraction = async (interaction) => {
         // Access Terminal (lobby button)
         if (interaction.customId.startsWith('mafia_access_')) {
             const { buildActionHub } = require('../mafia/MafiaUI');
-            return interaction.reply(buildActionHub(game, interaction.user));
+            return await interaction.reply(buildActionHub(game, interaction.user));
         }
 
         // Join Button (from Action Hub)
@@ -81,7 +81,7 @@ const handleMafiaInteraction = async (interaction) => {
             if (game.addPlayer(interaction.user)) {
                 const { buildActionHub } = require('../mafia/MafiaUI');
                 await interaction.update(buildActionHub(game, interaction.user));
-                await game.bumpLobby(interaction.channel);
+                await game.refreshLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
@@ -100,23 +100,51 @@ const handleMafiaInteraction = async (interaction) => {
 
                 const { buildActionHub } = require('../mafia/MafiaUI');
                 await interaction.update(buildActionHub(game, interaction.user));
-                await game.bumpLobby(interaction.channel);
+                await game.refreshLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
             return;
         }
 
-        // Reset Button (from Victory Payload)
-        if (interaction.customId.startsWith('mafia_reset_')) {
+        // Play Again Button (from Victory Payload)
+        if (interaction.customId.startsWith('mafia_play_again_')) {
             if (interaction.user.id !== game.hostId) {
-                return interaction.reply({ content: '❌ **Access Denied.** Only the host can reset the sanctuary archives.', flags: MessageFlags.Ephemeral });
+                return interaction.reply({ content: '❌ **Access Denied.** Only the host can re-initialize the sanctuary.', flags: MessageFlags.Ephemeral });
             }
 
-            await game.resetSession();
-            const { buildLobbyPayload } = require('../mafia/MafiaUI');
-            await interaction.update(buildLobbyPayload(game));
+            await interaction.deferUpdate();
+            await MafiaManager.playAgain(game, interaction.client);
             return;
+        }
+
+        // Host Conflict: Continue Existing
+        if (interaction.customId.startsWith('mafia_host_conflict_continue_')) {
+            return await interaction.update({ 
+                content: '✅ **Archives Synchronized.** Your existing session remains active. Use `/mafia status` to locate it if needed.', 
+                embeds: [], 
+                components: [] 
+            });
+        }
+
+        // Host Conflict: End Session
+        if (interaction.customId.startsWith('mafia_host_conflict_end_')) {
+            await MafiaManager.endGame(game.hostId);
+            return await interaction.update({ 
+                content: '🔴 **Record Terminated.** Your previous session has been redacted. You may now start a new one.', 
+                embeds: [], 
+                components: [] 
+            });
+        }
+
+        // Host Conflict: New Session
+        if (interaction.customId.startsWith('mafia_host_conflict_new_')) {
+            await MafiaManager.endGame(game.hostId);
+            return await interaction.update({ 
+                content: '🚫 **Record Purged.** Archives are now clear. Please run `/mafia host` again to establish your new sanctuary.', 
+                embeds: [], 
+                components: [] 
+            });
         }
 
 
@@ -133,10 +161,7 @@ const handleMafiaInteraction = async (interaction) => {
             MafiaManager.hostPreferences.set(game.hostId, game.settings);
             MafiaManager.saveState();
             await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
-            } catch(e) {}
+            await game.refreshLobby(interaction.channel);
             return;
         }
 
@@ -149,14 +174,20 @@ const handleMafiaInteraction = async (interaction) => {
             else if (current === 'existing') game.settings.voiceSupport = 'disabled';
             else game.settings.voiceSupport = 'new';
 
-            MafiaManager.hostPreferences.set(game.hostId, game.settings);
-            MafiaManager.saveState();
             await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
-            } catch(e) {}
+            await game.refreshLobby(interaction.channel);
             return;
+        }
+
+        // Save preferences as default
+        if (interaction.customId.startsWith('mafia_save_prefs_')) {
+            if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can save preferences.', flags: MessageFlags.Ephemeral });
+            
+            await MafiaManager.saveHostPreferences(interaction.user.id, game.settings);
+            return interaction.reply({ 
+                content: '✅ **Identity Synced.** Your current sanctuary settings have been saved as your global default. They will be auto-applied to all future simulations you host.', 
+                flags: MessageFlags.Ephemeral 
+            });
         }
 
         // Queue for next game
@@ -166,16 +197,25 @@ const handleMafiaInteraction = async (interaction) => {
                 MafiaManager.globalQueues.set(channelId, new Set());
             }
             const queue = MafiaManager.globalQueues.get(channelId);
+            const isPlayer = game.players.has(interaction.user.id);
             
             if (queue.has(interaction.user.id)) {
                 queue.delete(interaction.user.id);
-                await interaction.update(require('../mafia/MafiaUI').buildStartedLobbyPayload(game));
+                const { buildSpectatePayload } = require('../mafia/MafiaUI');
+                await interaction.update(buildSpectatePayload(game));
                 return interaction.followUp({ content: 'You have left the next-game queue.', flags: MessageFlags.Ephemeral });
             } else {
                 queue.add(interaction.user.id);
                 MafiaManager.saveState();
-                await interaction.update(require('../mafia/MafiaUI').buildStartedLobbyPayload(game));
-                return interaction.followUp({ content: '✅ You have joined the waitlist for the next session!', flags: MessageFlags.Ephemeral });
+                const { buildSpectatePayload } = require('../mafia/MafiaUI');
+                await interaction.update(buildSpectatePayload(game));
+                
+                let response = '✅ You have joined the waitlist for the next session!';
+                if (isPlayer && game.state !== 'GAME_OVER') {
+                    response += '\n\n⚠️ **Note:** As you are currently a participant, we will ask if you wish to remain in the lobby once this session concludes.';
+                }
+                
+                return interaction.followUp({ content: response, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -210,6 +250,7 @@ const handleMafiaInteraction = async (interaction) => {
         if (interaction.customId.startsWith('mafia_will_')) {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'You must join the game first.', flags: MessageFlags.Ephemeral });
+            if (!p.alive) return interaction.reply({ content: '❌ **Status: Redacted.** Your biometric records are locked. Dead players cannot update their records.', flags: MessageFlags.Ephemeral });
             
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
             const modal = new ModalBuilder().setCustomId(`mafia_setwill_${lobbyId}`).setTitle('Compose Last Will');
@@ -232,6 +273,10 @@ const handleMafiaInteraction = async (interaction) => {
             
             if (game.state !== 'VOTING') return interaction.reply({ content: 'Voting is currently closed.', flags: MessageFlags.Ephemeral });
             
+            if (game.isLocked()) {
+                return interaction.reply({ content: '⏳ **System Locking...** Consensus period is ending. No further ballots accepted.', flags: MessageFlags.Ephemeral });
+            }
+
             const p = game.players.get(interaction.user.id);
             if (!p || !p.alive) return interaction.reply({ content: 'The dead cannot vote.', flags: MessageFlags.Ephemeral });
             
@@ -259,12 +304,8 @@ const handleMafiaInteraction = async (interaction) => {
 
         // Spectate button
         if (interaction.customId.startsWith('mafia_spectate_')) {
-            if (!game.thread) return await interaction.reply({ content: 'Session not active yet.', flags: MessageFlags.Ephemeral });
-            if (game.players.has(interaction.user.id)) return await interaction.reply({ content: 'You are already playing!', flags: MessageFlags.Ephemeral });
-            
-            try {
-                await game.thread.members.add(interaction.user.id);
-                
+            const result = await game.addSpectator(interaction.user);
+            if (result.success) {
                 // --- HOST NOTIFICATION ---
                 try {
                     const host = await interaction.client.users.fetch(game.hostId);
@@ -273,9 +314,9 @@ const handleMafiaInteraction = async (interaction) => {
                     }
                 } catch(e) {}
 
-                return await interaction.reply({ content: '👁️ You have entered the archives as a spectator.', flags: MessageFlags.Ephemeral });
-            } catch (e) {
-                return await interaction.reply({ content: 'Failed to add you as a spectator.', flags: MessageFlags.Ephemeral });
+                return await interaction.reply({ content: '👁️ You have entered the archives as a spectator. You have been granted visual access to the simulation hub.', flags: MessageFlags.Ephemeral });
+            } else {
+                return await interaction.reply({ content: `❌ **Access Denied:** ${result.message}`, flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -292,6 +333,22 @@ const handleMafiaInteraction = async (interaction) => {
             MafiaManager.endGame(game.hostId);
             return interaction.update({ content: '🗑️ **Sanctuary Disbanded.** This session has been removed from the records.', embeds: [], components: [] });
         }
+
+        // --- NEW: PHASE 2 INTERACTIONS ---
+
+        // View Roster Dashboard
+        if (interaction.customId.startsWith('mafia_roster_view_')) {
+            const { buildRosterPayload } = require('../mafia/MafiaUI');
+            return await interaction.reply(buildRosterPayload(game));
+        }
+
+        // Refresh DM Panel (Now handled by phase transitions, but keep for legacy if still in older messages)
+        if (interaction.customId.startsWith('mafia_dm_refresh_')) {
+            return await interaction.reply({ 
+                content: '🔄 **Terminal Synchronized.** Your control panel now automatically re-syncs at the start of every phase.', 
+                flags: MessageFlags.Ephemeral 
+            });
+        }
     }
 
     // ═══════════════════════════════════════
@@ -301,6 +358,7 @@ const handleMafiaInteraction = async (interaction) => {
         if (interaction.customId.startsWith('mafia_setwill_')) {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'Player biometrics not found.', flags: MessageFlags.Ephemeral });
+            if (!p.alive) return interaction.reply({ content: '❌ **Status: Redacted.** Dead players cannot update their records.', flags: MessageFlags.Ephemeral });
             p.lastWill = interaction.fields.getTextInputValue('last_will_input').slice(0, 1000);
             MafiaManager.saveState();
             return interaction.reply({ content: `✅ **Last Will Recorded.** It will be revealed upon your erasure.`, flags: MessageFlags.Ephemeral });
@@ -320,10 +378,7 @@ const handleMafiaInteraction = async (interaction) => {
             MafiaManager.hostPreferences.set(game.hostId, game.settings);
             MafiaManager.saveState();
             await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game));
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
-            } catch(e) {}
+            await game.refreshLobby(interaction.channel);
             return;
         }
 
@@ -350,23 +405,22 @@ const handleMafiaInteraction = async (interaction) => {
             MafiaManager.hostPreferences.set(game.hostId, game.settings);
             MafiaManager.saveState();
             await interaction.update(require('../mafia/MafiaUI').buildSettingsPayload(game, cat));
-            try {
-                const lobbyMsg = await interaction.channel.messages.fetch(game.lobbyMessageId);
-                await lobbyMsg.edit(require('../mafia/MafiaUI').buildLobbyPayload(game));
-            } catch(e) {}
+            await game.refreshLobby(interaction.channel);
             return;
         }
         
-        // Night ability target selector (DM)
-        if (interaction.customId.startsWith('mafia_night_target_')) {
-            if (game.state !== 'NIGHT') return interaction.update({ content: 'The night has passed.', components: [] });
+        // Night ability target selector (DM - Terminal Revamp)
+        if (interaction.customId.startsWith('mafia_night_target_') || interaction.customId.startsWith('mafia_action_')) {
+            if (game.state !== 'NIGHT') return interaction.update({ content: '>>> 🔄 **Terminal Error:** Night protocols have concluded.', components: [] });
             
+            if (game.isLocked()) {
+                return interaction.reply({ content: '⏳ **Static Interference...** Morning is approaching. Night protocols are now locked.', flags: MessageFlags.Ephemeral });
+            }
+
             const p = game.players.get(interaction.user.id);
             const targetId = interaction.values[0];
             
             if (p && p.alive) {
-                await interaction.deferUpdate();
-                
                 p.nightActionTarget = targetId;
                 const targetName = game.players.get(targetId)?.name || (targetId === 'ignite' ? 'All Doused' : 'Unknown');
                 let response = `Target locked: **${targetName}**.`;
@@ -384,37 +438,18 @@ const handleMafiaInteraction = async (interaction) => {
                     }
                 }
 
-                // Reconstruct components for persistence
-                const components = [];
-                const optionsData = game.getNightActionOptions(p);
+                // 1. Acknowledge with Ephemeral (Per User Request)
+                await interaction.reply({ content: `✅ **Protocol Recorded:** ${response}`, flags: MessageFlags.Ephemeral });
 
-                if (optionsData.length === 0 && p.role.name === 'The Scribe') {
-                    optionsData.push({ label: 'No bodies to scan yet', value: 'none', description: 'Wait for a casualty.' });
-                }
-
-                if (optionsData.length > 0) {
-                    const dropdown = new StringSelectMenuBuilder()
-                        .setCustomId(`mafia_night_target_${game.hostId}`)
-                        .setPlaceholder(`${p.role.emoji} Change target (Current: ${targetName})`)
-                        .addOptions(optionsData.slice(0, 25));
-                    components.push(new ActionRowBuilder().addComponents(dropdown));
-                }
-
-                const willLabel = p.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
-                const willRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`mafia_will_${game.hostId}`)
-                        .setLabel(willLabel)
-                        .setStyle(ButtonStyle.Secondary)
-                );
-                components.push(willRow);
-
-                await game.refreshControlPanel(p, response, components);
+                // 2. Refresh HUD (This will remove the dropdown because player.nightActionTarget is now set)
+                const { buildNightHUD } = require('../mafia/MafiaUI');
+                const hud = buildNightHUD(p, game);
+                await game.refreshControlPanel(p, hud.content, hud.components);
                 
-                // --- UX: CHECK FOR NIGHT SKIP ---
+                // 3. UX: Check for phase skipping if everyone has acted
                 await game.checkNightSkip();
             } else {
-                await interaction.update({ content: 'You cannot act right now.', components: [] });
+                await interaction.reply({ content: '❌ **Biometric Failure:** You cannot act in your current state.', flags: MessageFlags.Ephemeral });
             }
             return;
         }
@@ -426,7 +461,7 @@ const handleMafiaInteraction = async (interaction) => {
         if (action === 'join') {
             if (game.addPlayer(interaction.user)) {
                 await interaction.update(buildActionHub(game, interaction.user));
-                await game.bumpLobby(interaction.channel);
+                await game.refreshLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You have already entered the sanctuary!', flags: MessageFlags.Ephemeral });
             }
@@ -434,7 +469,7 @@ const handleMafiaInteraction = async (interaction) => {
         else if (action === 'leave') {
             if (game.removePlayer(interaction.user.id)) {
                 await interaction.update(buildActionHub(game, interaction.user));
-                await game.bumpLobby(interaction.channel);
+                await game.refreshLobby(interaction.channel);
             } else {
                 await interaction.reply({ content: 'You are not in the lobby!', flags: MessageFlags.Ephemeral });
             }
@@ -462,7 +497,8 @@ const handleMafiaInteraction = async (interaction) => {
             }
             
             await interaction.deferUpdate();
-            const payload = require('../mafia/MafiaUI').buildStartedLobbyPayload(game);
+            const { buildSpectatePayload } = require('../mafia/MafiaUI');
+            const payload = buildSpectatePayload(game);
             await interaction.editReply(payload);
             await game.start(interaction);
         }
@@ -482,7 +518,7 @@ const handleMafiaInteraction = async (interaction) => {
             }
             
             await interaction.update(buildActionHub(game, interaction.user));
-            await game.bumpLobby(interaction.channel);
+            await game.refreshLobby(interaction.channel);
         }
         else if (action === 'disband') {
             if (interaction.user.id !== game.hostId) return interaction.reply({ content: 'Only the host can disband the sanctuary.', flags: MessageFlags.Ephemeral });
@@ -493,13 +529,14 @@ const handleMafiaInteraction = async (interaction) => {
         }
         else if (action === 'settings') {
             if (interaction.user.id !== game.hostId) {
-                return interaction.reply({ content: 'Only the host can change settings.', flags: MessageFlags.Ephemeral });
+                return await interaction.reply({ content: 'Only the host can change settings.', flags: MessageFlags.Ephemeral });
             }
-            await interaction.reply(require('../mafia/MafiaUI').buildSettingsPayload(game));
+            return await interaction.reply(require('../mafia/MafiaUI').buildSettingsPayload(game));
         }
         else if (action === 'last_will') {
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'You must join the game first.', flags: MessageFlags.Ephemeral });
+            if (!p.alive) return interaction.reply({ content: '❌ **Status: Redacted.** Dead players cannot update their records.', flags: MessageFlags.Ephemeral });
             
             const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
             const modal = new ModalBuilder().setCustomId(`mafia_setwill_${lobbyId}`).setTitle('Compose Last Will');
@@ -517,4 +554,10 @@ const handleMafiaInteraction = async (interaction) => {
     }
 };
 
-module.exports = { handleMafiaInteraction };
+module.exports = { 
+    handleMafiaInteraction,
+    routerConfig: {
+        prefixes: ['mafia_', 'archive_'],
+        handle: handleMafiaInteraction
+    }
+};

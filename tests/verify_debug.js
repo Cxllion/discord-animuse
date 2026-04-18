@@ -27,11 +27,6 @@ async function runTests() {
         const game = new MafiaGame('guild_1', 'channel_1', 'host_1', mockClient, mockManager);
         console.log('✅ Game Instantiated');
 
-        // Override Adapter safeSend/safeUpdate to log instead of failing
-        game.adapter.safeSend = async (chan, content) => console.log(`[MockDiscord] Send to ${chan}:`, typeof content === 'string' ? content : 'Embed/File');
-        game.adapter.fetchUser = async (id) => ({ id });
-        game.adapter.safeReply = async () => { };
-
         // Test 1: Add Mock Players
         await game.addMockPlayers(5);
         if (game.players.size !== 6) throw new Error(`Expected 6 players (1 host + 5 mock), got ${game.players.size}`);
@@ -62,4 +57,7 @@ async function runTests() {
     }
 }
 
-runTests();
+// Only run dynamically if referenced directly
+if (require.main === module) {
+    runTests();
+}

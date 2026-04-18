@@ -7,8 +7,21 @@ module.exports = {
     name: Events.ClientReady,
     once: true,
     async execute(client) {
-        logger.info(`Ready! Logged in as ${client.user.tag}`, 'System');
-        logger.info(`Animuse is now online and serving in ${client.guilds.cache.size} guilds.`, 'System');
+        // --- Sanctuary Status Board ---
+        const modeLabel = client.isTestBot ? 'ARCHIVAL TEST' : 'GRAND LIBRARY (PROD)';
+        const shardLabel = `${client.shardId + 1}/${client.shardCount}`;
+        const cmdCount = client.commands?.size || 0;
+        const guildCount = client.guilds.cache.size;
+
+        console.log('\n┌──────────────────────────────────────────┐');
+        console.log(`│   🏮  ANIMUSE SANCTUARY ONLINE  🏮      │`);
+        console.log(`├──────────────────────────────────────────┤`);
+        console.log(`│  Identity : ${client.user.tag.padEnd(28)} │`);
+        console.log(`│  Mode     : ${modeLabel.padEnd(28)} │`);
+        console.log(`│  Shard    : ${shardLabel.padEnd(28)} │`);
+        console.log(`│  Library  : ${guildCount.toString().padEnd(2)} Guilds | ${cmdCount.toString().padEnd(2)} Volumes      │`);
+        console.log(`│  Status   : Systems Operational ♡        │`);
+        console.log('└──────────────────────────────────────────┘\n');
         
         // Initialize Interval Tracker
         client.intervals = [];
@@ -57,13 +70,13 @@ module.exports = {
                 logger.error('Command deployment failure:', e, 'Deployer');
             }
         } else {
-            logger.info('Command deployment skipped (DEPLOY_ON_START=false)', 'Deployer');
+            logger.debug('Command deployment skipped (DEPLOY_ON_START=false)', 'Deployer');
         }
 
         client.isSystemsGo = true;
 
         try {
-            require('../utils/mafia/MafiaManager').loadState(client);
+            await require('../utils/mafia/MafiaManager').loadState(client);
         } catch (e) {
             logger.error('Failed to load mafia state:', e);
         }
@@ -94,7 +107,7 @@ module.exports = {
             if (result.timeout) {
                 logger.warn('⚠️ [Activity Dedup] Supabase probe timed out (15s). Ready event finishing without confirmation.', 'System');
             } else if (!result.error) {
-                logger.info('✅ [Activity Dedup] Supabase `activity_posted` table FOUND — persistent dedup is ACTIVE. Render-safe! ♡', 'System');
+                logger.debug('✅ [Activity Dedup] Supabase `activity_posted` table FOUND — persistent dedup is ACTIVE. Render-safe! ♡', 'System');
             } else {
                 logger.warn('⚠️ [Activity Dedup] Supabase `activity_posted` table NOT FOUND — falling back to local file cache. Run the migration script to activate persistent dedup.', 'System');
             }
@@ -104,35 +117,35 @@ module.exports = {
 
         if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
             setTimeout(async () => {
-                logger.info('Initializing scheduler polling (5m cycles)...', 'System');
-                
-                // Runs immediately on startup (after 10s delay)
-                checkAiringAnime(client).catch(e => logger.error('[Scheduler] Initial Airing crash:', e));
+                logger.debug('Initializing scheduler polling (5m cycles)...', 'System');
                 
                 if (!client.isTestBot) {
+                    // 1. Initial Pulses
+                    checkAiringAnime(client).catch(e => logger.error('[Scheduler] Initial Airing crash:', e));
                     checkUserActivity(client).catch(e => logger.error('[Scheduler] Initial Activity crash:', e));
+                    
+                    // 2. Main Cycles (5m)
+                    client.intervals.push(setInterval(async () => {
+                        try {
+                            await checkAiringAnime(client);
+                            await checkUserActivity(client);
+                        } catch (error) {
+                            logger.error('Notification loop failure:', error, 'Scheduler');
+                        }
+                    }, 5 * 60 * 1000));
+
+                    // 3. Sync Tasks (6h)
+                    setTimeout(async () => {
+                        syncAllUserTrackers(client).catch(e => logger.error('[Sync] Startup sync failed:', e));
+                    }, 60000);
+
+                    client.intervals.push(setInterval(async () => {
+                        syncAllUserTrackers(client).catch(e => logger.error('[Sync] Loop sync failed:', e));
+                    }, 6 * 60 * 60 * 1000));
+
                 } else {
-                    logger.info('Test bot detected. Background activity polling is DISABLED.', 'System');
+                    logger.debug('Test bot detected. ALL background schedulers (Airing, Activity, Sync) are DISABLED to prevent production buttheading. ♡', 'System');
                 }
-
-                client.intervals.push(setInterval(async () => {
-                    try {
-                        await checkAiringAnime(client);
-                        if (!client.isTestBot) await checkUserActivity(client);
-                    } catch (error) {
-                        logger.error('Notification loop failure:', error, 'Scheduler');
-                    }
-                }, 5 * 60 * 1000)); 
-
-                // --- NEW: Periodic Tracker Sync (6h) ---
-                // Scans AniList for new ongoing shows added by users
-                setTimeout(async () => {
-                    syncAllUserTrackers(client).catch(e => logger.error('[Sync] Startup sync failed:', e));
-                }, 60000); // Wait 1m after startup to avoid flooding
-
-                client.intervals.push(setInterval(async () => {
-                    syncAllUserTrackers(client).catch(e => logger.error('[Sync] Loop sync failed:', e));
-                }, 6 * 60 * 60 * 1000)); 
 
                 // --- 2. Housekeeping & Cache Maintenance (1h) ---
                 client.intervals.push(setInterval(() => {

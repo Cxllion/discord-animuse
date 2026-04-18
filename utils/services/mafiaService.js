@@ -64,6 +64,81 @@ class MafiaService {
         if (error) return null;
         return data;
     }
+
+    /**
+     * Saves a Mafia game session to Supabase.
+     * @param {string} guildId 
+     * @param {string} channelId 
+     * @param {string} hostId 
+     * @param {object} state 
+     */
+    async saveSession(guildId, channelId, hostId, state) {
+        if (!supabase) return false;
+        try {
+            const { error } = await supabase
+                .from('mafia_sessions')
+                .upsert({
+                    guild_id: guildId,
+                    channel_id: channelId,
+                    host_id: hostId,
+                    state: state,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'guild_id' });
+            
+            if (error) {
+                logger.error(`Failed to save mafia session for guild ${guildId}: ${error.message}`, 'MafiaService');
+                return false;
+            }
+            return true;
+        } catch (e) {
+            logger.error(`Mafia session save exception: ${e.message}`, 'MafiaService');
+            return false;
+        }
+    }
+
+    /**
+     * Fetches all active Mafia sessions from Supabase.
+     */
+    async getAllSessions() {
+        if (!supabase) return [];
+        try {
+            const { data, error } = await supabase
+                .from('mafia_sessions')
+                .select('*');
+            
+            if (error) {
+                logger.error(`Failed to fetch mafia sessions: ${error.message}`, 'MafiaService');
+                return [];
+            }
+            return data || [];
+        } catch (e) {
+            logger.error(`Mafia session fetch exception: ${e.message}`, 'MafiaService');
+            return [];
+        }
+    }
+
+    /**
+     * Deletes a Mafia session from Supabase.
+     * @param {string} guildId 
+     */
+    async deleteSession(guildId) {
+        if (!supabase) return false;
+        try {
+            const { error } = await supabase
+                .from('mafia_sessions')
+                .delete()
+                .eq('guild_id', guildId);
+            
+            if (error) {
+                logger.error(`Failed to delete mafia session for guild ${guildId}: ${error.message}`, 'MafiaService');
+                return false;
+            }
+            return true;
+        } catch (e) {
+            logger.error(`Mafia session delete exception: ${e.message}`, 'MafiaService');
+            return false;
+        }
+    }
 }
 
 module.exports = new MafiaService();

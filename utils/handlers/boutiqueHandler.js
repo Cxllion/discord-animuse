@@ -432,4 +432,11 @@ const handleBoutiqueInteraction = async (interaction) => {
     }
 };
 
-module.exports = { renderBoutique, handleBoutiqueInteraction };
+module.exports = { 
+    renderBoutique, 
+    handleBoutiqueInteraction,
+    routerConfig: {
+        prefixes: ['boutique_'],
+        handle: handleBoutiqueInteraction
+    }
+};

@@ -36,16 +36,15 @@ const error = (message, err = null, context = '') => {
 
     // Report to Global Webhook (Developer Alert)
     if (globalWebhook) {
-        const baseEmbed = require('../generators/baseEmbed');
-        const embed = baseEmbed('🚨 Critical System Alert', 
-            `**${message}**\n\n\`\`\`js\n${err?.message || 'No additional error info'}\n\`\`\``, 
-            null
-        )
+        const embed = new EmbedBuilder()
+            .setTitle('🚨 Critical System Alert')
+            .setDescription(`**${message}**\n\n\`\`\`js\n${err?.message || 'No additional error info'}\n\`\`\``)
             .addFields(
                 { name: 'Context', value: context || 'None', inline: true },
                 { name: 'Timestamp', value: formatTime(), inline: true }
             )
-            .setColor(0xFF0000); // Red
+            .setColor(0xFF0000) // Red
+            .setTimestamp();
 
         globalWebhook.send({ embeds: [embed] }).catch(() => {});
     }

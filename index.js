@@ -4,6 +4,9 @@ require('dotenv').config();
 const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/processHandlers');
 const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
 const logger = require('./utils/core/logger');
+const fs = require('fs');
+const path = require('path');
+const mafiaService = require('./utils/services/mafiaService');
 
 // ==========================================
 // PRODUCTION BOT INSTANCE (Oracle VPS)
@@ -29,12 +32,23 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildPresences
     ],
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+    shards: 'auto'
 });
 
+// Sharding Metadata
+client.shardId = client.shard ? client.shard.ids[0] : 0;
+client.shardCount = client.shard ? client.shard.count : 1;
+logger.debug(`[System] Initializing Shard #${client.shardId}/${client.shardCount}...`, 'System');
+
 client.commands = new Collection();
+client.intervals = []; 
 client.isSystemsGo = false;
-client.isTestBot = false;
+client.isTestBot = process.env.TEST_MODE === 'true';
+
+if (client.isTestBot) {
+    logger.debug('[System] Test Mode Detected. Background schedulers will be DISABLED. ♡', 'System');
+}
 
 // Setup Client Safety
 setupClientHandlers(client);
@@ -47,26 +61,35 @@ if (PORT) {
         res.end('Animuse Archives: Systems Operational ♡');
     });
     server.listen(PORT, () => {
-        logger.info(`[Networking] Health-Check Server Operational on Port ${PORT}.`, 'System');
+        logger.debug(`[Networking] Health-Check Server Operational on Port ${PORT}.`, 'System');
     });
 } else {
-    logger.info('[Networking] Health-Check Server is DISABLED (Optional).', 'System');
+    logger.debug('[Networking] Health-Check Server is DISABLED (Optional).', 'System');
 }
 
 (async () => {
     try {
-        logger.info(`Starting Production Environment on Oracle VPS...`, 'System');
+        const envName = client.isTestBot ? 'Test Environment' : 'Production Environment on Oracle VPS';
+        logger.debug(`Starting ${envName}...`, 'System');
         
         loadCoreResources(client);
         await initializeDatabase(client);
         
-        logger.info('Initiating Handshake with Discord Gateway...', 'System');
+        logger.debug('Initiating Handshake with Discord Gateway...', 'System');
         await client.login(process.env.DISCORD_TOKEN);
 
         // --- Graceful Shutdown Sequence ---
         const handleShutdown = async (signal) => {
             logger.info(`[ShutDown] Signal ${signal} received. Closing the Grand Library Archives... ♡`, 'System');
             
+            // 0. Gracefully archive Mafia sessions
+            try {
+                const MafiaManager = require('./utils/mafia/MafiaManager');
+                await MafiaManager.shutdown();
+            } catch (e) {
+                logger.error('[ShutDown] Failed to archive Mafia sessions:', e, 'System');
+            }
+
             // 1. Clear Active Intervals
             if (client.intervals) {
                 client.intervals.forEach(clearInterval);
@@ -86,16 +109,15 @@ if (PORT) {
         process.on('SIGINT', () => handleShutdown('SIGINT'));
         process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
+        // --- Memory Pulse (tracked for graceful shutdown) ---
+        client.intervals.push(setInterval(() => {
+            const memory = process.memoryUsage();
+            const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
+            logger.info(`Pulse: OK (Heap: ${heapUsed}MB)`, 'System');
+        }, 60000));
+
     } catch (error) {
         logger.error('Startup Critical Failure:', error, 'System');
         process.exit(1);
     }
 })();
-
-// Pulse
-setInterval(() => {
-    const memory = process.memoryUsage();
-    const heapUsed = Math.round(memory.heapUsed / 1024 / 1024);
-    logger.info(`Pulse: OK (Heap: ${heapUsed}MB)`, 'System');
-}, 60000);
-

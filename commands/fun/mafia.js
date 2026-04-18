@@ -10,6 +10,7 @@ const CONFIG = require('../../utils/config');
 
 const MafiaManager = require('../../utils/mafia/MafiaManager');
 const MafiaUI = require('../../utils/mafia/MafiaUI');
+const { generateRoleCard } = require('../../utils/generators/mafia/roleGenerator');
 
 module.exports = {
     category: 'fun',
@@ -73,40 +74,28 @@ module.exports = {
         }
 
         if (subcommand === 'host') {
-            await interaction.deferReply();
-            
-            // Guild Session Check: Only one session (Lobby or Game) per server.
-            const existingLobbyInGuild = MafiaManager.getLobbyByGuild(interaction.guildId);
-            const existingGameInGuild = MafiaManager.getGameByGuild(interaction.guildId);
+            // 1. Conflict Check: Is the user already hosting a Lobby or Active Game?
+            const existingLobby = MafiaManager.getLobbyByHost(interaction.user.id);
+            const existingGame = MafiaManager.getGameByHost(interaction.user.id);
 
-            if (existingLobbyInGuild || existingGameInGuild) {
-                const gameInServer = existingLobbyInGuild || existingGameInGuild;
+            if (existingLobby || existingGame) {
+                const gameToResolve = existingLobby || existingGame;
+                const isRunning = !!existingGame;
                 
-                // If the user already has a lobby, allow them to relocate it.
-                if (gameInServer.hostId === interaction.user.id && gameInServer.state === 'LOBBY') {
-                    await gameInServer.bumpLobby(interaction.channel);
-                    return interaction.editReply({ 
-                        content: '✅ **Sanctuary Relocated.** Your active lobby has been moved here for better visibility within the archives.' 
-                    });
-                }
+                return interaction.reply(MafiaUI.buildConflictPayload(gameToResolve, isRunning, interaction.user));
+            }
 
-                if (gameInServer.hostId === interaction.user.id) {
-                    return interaction.editReply({ content: '❌ **Access Denied.** You are already hosting an active Mafia Session in another thread in this server. Finish that session first.' });
-                }
-
-                return interaction.editReply({ 
-                    content: '❌ **Sanctuary Occupied.** Another Mafia Session is already underway in this server. Only one session can be supported per sanctuary at a time.' 
+            // 2. Global Guild Conflict: Only one session per server (Optional, but usually good for focus)
+            const guildSession = MafiaManager.getLobbyByGuild(interaction.guildId) || MafiaManager.getGameByGuild(interaction.guildId);
+            if (guildSession && guildSession.hostId !== interaction.user.id) {
+                return interaction.reply({ 
+                    content: `❌ **Sanctuary Occupied.** Another Mafia Session is already underway in this sanctuary by <@${guildSession.hostId}>. Only one active record is supported per sector.`,
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
-            // Still check if the USER is hosting elsewhere to prevent bypasses
-            const userIsHostingElsewhere = Array.from(MafiaManager.lobbies.values()).find(g => g.hostId === interaction.user.id);
-            const userIsGamingElsewhere = Array.from(MafiaManager.games.values()).find(g => g.hostId === interaction.user.id && g.state !== 'GAME_OVER');
-            
-            if (userIsHostingElsewhere || userIsGamingElsewhere) {
-                return interaction.editReply({ content: '❌ **Identity Conflict.** You are already hosting a Mafia Session in another server. You cannot maintain multiple archival records simultaneously.' });
-            }
-
+            // 3. Create Fresh Lobby
+            await interaction.deferReply();
             const msg = await interaction.editReply('Sealing the Final Library gates...');
             const game = await MafiaManager.createGame(msg.id, interaction.user, interaction.channel);
             const payload = MafiaUI.buildLobbyPayload(game);
@@ -164,18 +153,28 @@ module.exports = {
 
             if (subcommand === 'role') {
                 const player = game.players.get(interaction.user.id);
-                if (!player) return interaction.reply({ content: 'You are not a participant in this session.', flags: MessageFlags.Ephemeral });
-                if (!player.role) return interaction.reply({ content: 'Roles have not been assigned yet.', flags: MessageFlags.Ephemeral });
-
-                const header = player.role.faction === 'Revisions' ? '🩸 **The Corrupted Page (Revision)**' : '📜 **The Final Library (Archivist)**';
-                let dmStr = `${header}\n\nYou are **${player.role.emoji} ${player.role.name}** (${player.role.faction}).\n*${player.role.description}*`;
-                
-                if (player.role.name === 'The Critic' && player.criticTarget) {
-                    const tgt = game.players.get(player.criticTarget);
-                    dmStr += `\n\n🎯 **Your Target:** You must subtly manipulate the town into voting out **${tgt?.name}** during the Day phase.`;
+                if (!player || !player.role) {
+                    return interaction.reply({ content: '❌ **Biometric Mismatch.** You are not a registered participant in this archival session.', flags: MessageFlags.Ephemeral });
                 }
 
-                return interaction.reply({ content: dmStr, flags: MessageFlags.Ephemeral });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                try {
+                    const canvasBuffer = await generateRoleCard(player.role, player.name, interaction.guild.name);
+                    
+                    let content = `📜 **Archival Dossier Retrieved.**\n> **Role:** ${player.role.name}\n> **Faction:** ${player.role.faction}`;
+                    
+                    if (player.role.name === 'The Critic' && player.criticTarget) {
+                        const tgt = game.players.get(player.criticTarget);
+                        content += `\n\n🎯 **Your Target:** You must subtly manipulate the town into voting out **${tgt?.name}** during the Day phase.`;
+                    }
+
+                    return interaction.editReply({ 
+                        content,
+                        files: [{ attachment: canvasBuffer, name: `role_card_${interaction.user.id}.png` }]
+                    });
+                } catch (e) {
+                    return interaction.editReply({ content: `📜 **Role Record:** You are the **${player.role.name}** (${player.role.faction}).\n> ${player.role.description}` });
+                }
             }
 
             if (subcommand === 'will') {

@@ -13,15 +13,19 @@ class SimpleCache {
      * @param {number} ttl 
      */
     set(key, value, ttl = 60000) {
+        // Cancel any existing timer for this key before overwriting
+        const existing = this.cache.get(key);
+        if (existing?.timer) clearTimeout(existing.timer);
+
+        const timer = setTimeout(() => {
+            this.cache.delete(key);
+        }, ttl);
+
         this.cache.set(key, {
             value,
-            expiry: Date.now() + ttl
+            expiry: Date.now() + ttl,
+            timer
         });
-
-        // Auto-cleanup
-        setTimeout(() => {
-            this.delete(key);
-        }, ttl);
     }
 
     /**
@@ -34,6 +38,7 @@ class SimpleCache {
         if (!item) return null;
 
         if (Date.now() > item.expiry) {
+            if (item.timer) clearTimeout(item.timer);
             this.cache.delete(key);
             return null;
         }
@@ -46,6 +51,8 @@ class SimpleCache {
      * @param {string} key 
      */
     delete(key) {
+        const item = this.cache.get(key);
+        if (item?.timer) clearTimeout(item.timer);
         this.cache.delete(key);
     }
 }

@@ -28,6 +28,11 @@ const startDatabaseHeartbeat = (client) => {
             if (!error || error.code === 'PGRST116') {
                 client.isOfflineMode = false;
                 logger.info('✨ [Heartbeat] Database connection RESTORED. Archives are now back online! ♡', 'Database');
+                // Remove from intervals list since it's cleared
+                if (client.intervals) {
+                    const idx = client.intervals.indexOf(client._dbHeartbeat);
+                    if (idx !== -1) client.intervals.splice(idx, 1);
+                }
                 clearInterval(client._dbHeartbeat);
             }
         } catch (e) {
@@ -35,6 +40,8 @@ const startDatabaseHeartbeat = (client) => {
         }
     }, 60000); 
     
+    // Track for graceful shutdown
+    if (client.intervals) client.intervals.push(client._dbHeartbeat);
     // Ensure it doesn't block process exit if needed
     if (client._dbHeartbeat.unref) client._dbHeartbeat.unref();
 };

@@ -162,6 +162,14 @@ module.exports = {
             try {
                 const handled = await routeInteraction(interaction);
                 if (!handled) {
+                    logger.warn(`Unrouted interaction: ${interaction.customId} (Type: ${interaction.type}, Global: ${interaction.isChatInputCommand()})`, 'Interaction');
+                    // Reply ephemerally so the user doesn't see an infinite loading state
+                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '⏳ This interaction has expired or is no longer available.',
+                            flags: MessageFlags.Ephemeral
+                        }).catch(() => {});
+                    }
                 }
             } catch (error) {
                 if (isUnknownInteraction(error)) return;

@@ -356,4 +356,16 @@ const handleBingoModals = async (interaction) => {
     }
 };
 
-module.exports = { renderBingoDashboard, handleBingoInteraction, handleBingoModals, getBingoWizardPayload };
+module.exports = { 
+    renderBingoDashboard, 
+    handleBingoInteraction, 
+    handleBingoModals, 
+    getBingoWizardPayload,
+    routerConfig: {
+        prefixes: ['bingo_'],
+        handle: async (interaction) => {
+            if (interaction.isModalSubmit()) return handleBingoModals(interaction);
+            return handleBingoInteraction(interaction);
+        }
+    }
+};

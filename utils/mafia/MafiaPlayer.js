@@ -1,3 +1,4 @@
+const logger = require('../core/logger');
 class MafiaPlayer {
     constructor(user, isBot = false) {
         this.id = user.id;
@@ -95,7 +96,7 @@ class MafiaPlayer {
                     this.role = data.role;
                 }
             } catch (e) {
-                console.error(`[Mafia] Failed to reconstruct role for ${this.name}:`, e);
+                logger.error(`[Mafia] Failed to reconstruct role for ${this.name}:`, e, 'Mafia');
                 this.role = data.role;
             }
         } else {

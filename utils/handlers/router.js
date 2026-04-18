@@ -1,17 +1,38 @@
-const { handleProfileInteraction, handleProfileModals } = require('./profileHandlers');
-const { handleSearchInteraction } = require('./searchHandlers');
-const { handleTrackInteraction } = require('./trackHandlers');
-const { handleBingoInteraction, handleBingoModals } = require('./bingoHandlers');
-const { handleHelpInteraction } = require('./helpHandlers');
-const { handleChannelDashboardInteraction } = require('./channelDashboard');
-const { handleMuseBureauInteraction } = require('./museBureau');
-const { handleWelcomeInteraction } = require('./welcomeDashboard');
-const { handleBoutiqueInteraction } = require('./boutiqueHandler');
-const { handleDashboardInteraction } = require('./roleDashboard');
-const { handleMafiaInteraction } = require('./mafiaHandler');
-const { handleWordleInteraction, handleWordleModals } = require('./wordleHandlers');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../core/logger');
+const registry = require('./routerRegistry');
 const { isUnknownInteraction } = require('../core/errorHandler');
+
+/**
+ * Automatically discovers and registers all interaction handlers in the directory.
+ */
+const initializeRouter = () => {
+    const handlersPath = __dirname;
+    const files = fs.readdirSync(handlersPath);
+
+    logger.debug('Initializing Modular Interaction Router...', 'Router');
+
+    for (const file of files) {
+        // Skip self and non-handlers
+        if (file === 'router.js' || file === 'routerRegistry.js' || !file.endsWith('.js')) continue;
+
+        try {
+            const handler = require(path.join(handlersPath, file));
+            
+            if (handler && handler.routerConfig) {
+                registry.register(handler.routerConfig);
+            }
+        } catch (error) {
+            logger.error(`Failed to load handler: ${file}`, error, 'Router');
+        }
+    }
+    
+    logger.debug(`Router initialization complete.`, 'Router');
+};
+
+// Run initialization immediately on load
+initializeRouter();
 
 /**
  * Routes active components to their specific handlers.
@@ -22,101 +43,17 @@ const routeInteraction = async (interaction) => {
     if (!customId) return false;
 
     try {
-        // 1. Profile Dashboard
-        if (customId.startsWith('profile_')) {
-            if (interaction.isModalSubmit()) await handleProfileModals(interaction);
-            else await handleProfileInteraction(interaction);
-            return true;
-        }
+        const handler = registry.findHandler(customId);
 
-        if (customId.startsWith('track_')) {
-            await handleTrackInteraction(interaction);
-            return true;
-        }
-
-        if (customId === 'search_result_select') {
-            await handleSearchInteraction(interaction);
-            return true;
-        }
-
-        if (customId.startsWith('bingo_')) {
-            if (interaction.isModalSubmit()) await handleBingoModals(interaction);
-            else await handleBingoInteraction(interaction);
-            return true;
-        }
-
-        // 4. Channel Architect Dashboard
-        const channelPrefixes = ['channel_dash_', 'assign_', 'zoning_', 'sorting_', 'pin_', 'execute_assign_'];
-        const channelDirectIds = [
-            'sorting_toggle', 'sorting_pin', 'channel_dash_home', 'opt_assignment', 'opt_sorting', 
-            'opt_zoning', 'opt_archive', 'opt_home', 'pin_select_channel', 'assign_select_feature', 
-            'assign_clear_all'
-        ];
-        if (channelPrefixes.some(p => customId.startsWith(p)) || channelDirectIds.includes(customId)) {
-            await handleChannelDashboardInteraction(interaction);
-            return true;
-        }
-
-        // 5. Welcome Wing
-        if (customId.startsWith('welcome_') || customId.startsWith('modal_welcome_')) {
-            await handleWelcomeInteraction(interaction);
-            return true;
-        }
-
-        // 6. Muse Bureau (Misc)
-        if (customId.startsWith('muse_')) {
-            await handleMuseBureauInteraction(interaction);
-            return true;
-        }
-
-        // 7. Master Boutique
-        if (customId.startsWith('boutique_')) {
-            await handleBoutiqueInteraction(interaction);
-            return true;
-        }
-
-        // 8. Role Architecture Dashboard
-        const roleDashIds = [
-            'role_dash_menu', 'dash_home', 'autorole_set_member', 'autorole_set_bot', 'autorole_set_booster', 'autorole_set_premium',
-            'autorole_sync', 'cat_create', 'level_role_add', 'level_role_bind_select', 'level_deploy_standard',
-            'purge_confirm', 'purge_dryrun', 'organize_confirm', 'organize_perform', 'color_deploy_basic', 'color_deploy_premium', 
-            'role_dash_home', 'level_toggle', 'level_wing_settings', 'level_wing_milestones', 'level_wing_analytics',
-            'level_mode_toggle', 'level_msg_modal', 'level_emoji_modal', 'level_channel_select', 'level_filter_channels',
-            'opt_refresh', 'opt_flush_cache'
-        ];
-        const roleDashPrefixes = [
-            'cat_del_', 'level_role_del_', 'level_role_bind_', 'cat_view_', 'cat_role_reg_', 
-            'cat_role_unreg_', 'cat_role_create_', 'modal_cat_role_create_', 'color_page_',
-            'modal_cat_', 'modal_level_'
-        ];
-
-        if (roleDashIds.includes(customId) || roleDashPrefixes.some(p => customId.startsWith(p))) {
-            await handleDashboardInteraction(interaction);
-            return true;
-        }
-
-        // 8. Mafia System
-        if (customId.startsWith('mafia_') || customId.startsWith('archive_')) {
-            await handleMafiaInteraction(interaction);
-            return true;
-        }
-
-        // 9. Help Menu
-        if (customId.startsWith('help_')) {
-            await handleHelpInteraction(interaction);
-            return true;
-        }
-
-        // 10. Wordle Game
-        if (customId.startsWith('wordle_')) {
-            if (interaction.isModalSubmit()) await handleWordleModals(interaction);
-            else await handleWordleInteraction(interaction);
+        if (handler) {
+            await handler.handle(interaction);
             return true;
         }
 
         return false;
     } catch (error) {
         if (isUnknownInteraction(error)) return true;
+        
         const { handleInteractionError } = require('../core/errorHandler');
         await handleInteractionError(interaction, error);
         return true;

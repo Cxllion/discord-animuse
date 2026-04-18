@@ -39,7 +39,7 @@ class Archivist extends Role {
         this.name = 'Archivist';
         this.faction = 'Archivists';
         this.emoji = '📜';
-        this.description = 'Vanilla Town. You have no special abilities, but your vote matters.';
+        this.description = 'You are the Archivist. You have no special abilities, but your vote matters. Protect the sanctuary.';
         this.priority = 99;
         this.feedback = [
             "You check the oxygen seals, staying vigilant for any signs of the Rot.",
@@ -62,7 +62,7 @@ class Revision extends Role {
         this.name = 'Revision';
         this.faction = 'Revisions';
         this.emoji = '👤';
-        this.description = 'Vanilla Revision. Infiltrate and compromise the sanctuary from within.';
+        this.description = 'You are a Revision. Infiltrate and compromise the sanctuary from within.';
         this.priority = 99;
         this.feedback = [
             "You blend into the shadows, waiting for the Virus to take hold.",
@@ -85,7 +85,7 @@ class TheConservator extends Role {
         this.name = 'The Conservator';
         this.faction = 'Archivists';
         this.emoji = '🏥';
-        this.description = 'Healer: Binds a player at night, protecting them from Erasure.';
+        this.description = 'You are the Healer. Bind a player at night to protect them from Erasure.';
         this.priority = 2; // Bindings
         this.feedback = [
             "You bind **{target}** in protective parchment, shielding them from the Rot.",
@@ -114,7 +114,7 @@ class TheShredder extends Role {
         this.name = 'The Shredder';
         this.faction = 'Revisions';
         this.emoji = '🗡️';
-        this.description = 'Goon: The designated killer for the faction.';
+        this.description = 'You are the Henchman. You are the designated killer for your faction.';
         this.priority = 3; // Erasures
         this.feedback = [
             "You sharpen your tools, eager to silicate **{target}** from the sanctuary.",
@@ -137,7 +137,7 @@ class TheIndexer extends Role {
         this.name = 'The Indexer';
         this.faction = 'Archivists';
         this.emoji = '🔍';
-        this.description = 'Investigator: Reads a player\'s spine at night to learn their true faction.';
+        this.description = "You are the Investigator. Read a player's spine at night to learn their true faction.";
         this.priority = 5; // Readings
         this.feedback = [
             "You carefully scan the biometrics of **{target}**, looking for hidden infection.",
@@ -160,7 +160,7 @@ class TheHeadCurator extends Role {
         this.name = 'The Head Curator';
         this.faction = 'Archivists';
         this.emoji = '👑';
-        this.description = 'Chief Archivist: Their vote counts as two during the Day phase.';
+        this.description = 'You are the Chief Archivist. Your vote counts as two during the Day phase.';
         this.priority = 99; // Passive
     }
 }
@@ -171,7 +171,7 @@ class TheGhostwriter extends Role {
         this.name = 'The Ghostwriter';
         this.faction = 'Archivists';
         this.emoji = '✍️';
-        this.description = 'Vigilante: Can Edit Out (kill) a player at night. If they kill an Archivist, they die of guilt the next night.';
+        this.description = 'You are the Vigilante. You can Edit Out (kill) a player at night. If you kill an Archivist, you die of guilt.';
         this.priority = 3; // Erasures
         this.feedback = [
             "You prepare a lethal dose of antitoxin, preparing to flush **{target}** out.",
@@ -194,7 +194,7 @@ class TheScribe extends Role {
         this.name = 'The Scribe';
         this.faction = 'Archivists';
         this.emoji = '🖋️';
-        this.description = 'Forensic Medium: Checks a dead body at night to find one random person who interacted with them. Becomes Ink-Bound (Lore) to that suspect.';
+        this.description = 'You are the Forensic Medium. Check a dead body at night to find one person who interacted with them.';
         this.priority = 5; // Readings
         this.feedback = [
             "You kneel beside the bio-hazard zone, tracing the visitors of **{target}**.",
@@ -217,7 +217,7 @@ class TheCensor extends Role {
         this.name = 'The Censor';
         this.faction = 'Revisions';
         this.emoji = '🔇';
-        this.description = 'Roleblocker: Quarantines a player at night, stopping their ability.';
+        this.description = 'You are the Roleblocker. Quarantine a player at night to stop their ability.';
         this.priority = 1; // Redactions
         this.feedback = [
             "You trigger a localized lockdown around **{target}**, censoring their actions.",
@@ -240,7 +240,7 @@ class ThePlagiarist extends Role {
         this.name = 'The Plagiarist';
         this.faction = 'Revisions';
         this.emoji = '🃏';
-        this.description = 'Godfather: Reads as an innocent Archivist to the Indexer. Serves as the primary executioner for the faction.';
+        this.description = 'You are the Godfather. You read as an innocent Archivist and serve as the primary executioner.';
         this.priority = 3; // Erasures
         this.feedback = [
             "You sharpen your tools, eager to silicate **{target}** from the sanctuary.",
@@ -263,7 +263,7 @@ class TheCorruptor extends Role {
         this.name = 'The Corruptor';
         this.faction = 'Revisions';
         this.emoji = '🩸';
-        this.description = 'Cult Leader: Infects an Archivist with the Viral Rot at night (Specific to Ink Rot mode).';
+        this.description = 'You are the Cult Leader. Infect an Archivist with the Viral Rot at night.';
         this.priority = 4; // Rewrites
         this.feedback = [
             "You inject corrupted nanites into **{target}**, slowly rewriting their DNA.",
@@ -286,7 +286,7 @@ class TheAnomaly extends Role {
         this.name = 'The Anomaly';
         this.faction = 'Unbound';
         this.emoji = '👁️';
-        this.description = 'Jester: Wins if they successfully trick the town into Executing them during the Day phase.';
+        this.description = 'You are the Jester. You win if you successfully trick the town into Executing you.';
         this.priority = 99; // Passive
     }
 }
@@ -297,7 +297,7 @@ class TheCritic extends Role {
         this.name = 'The Critic';
         this.faction = 'Unbound';
         this.emoji = '⚖️';
-        this.description = 'Executioner: Assigned a specific Archivist at the start. Wins if the town Executes that target.';
+        this.description = 'You are the Executioner. Assigned a specific target, you win if the town Executes them.';
         this.priority = 99; 
         this.targetId = null; // Assigned at deal
     }
@@ -309,7 +309,7 @@ class TheBookburner extends Role {
         this.name = 'The Bookburner';
         this.faction = 'Unbound';
         this.emoji = '🔥';
-        this.description = 'Arsonist: Secretly saturates one player with toxins each night. Can choose to "Ignite" instead, erasing all saturated players simultaneously.';
+        this.description = 'You are the Arsonist. Secretly saturate one player with toxins each night, or Ignite to erase them all.';
         this.priority = 4; // Priming
         this.isReadyToIgnite = false;
         this.feedback_douse = [

@@ -1477,5 +1477,22 @@ module.exports = {
     handleBotInsight,
     handleAdminWing,
     handleMediaAiring,
-    getNavigationRow
+    getNavigationRow,
+    routerConfig: {
+        ids: [
+            'role_dash_menu', 'dash_home', 'autorole_set_member', 'autorole_set_bot', 'autorole_set_booster', 'autorole_set_premium',
+            'autorole_sync', 'cat_create', 'level_role_add', 'level_role_bind_select', 'level_deploy_standard',
+            'purge_confirm', 'purge_dryrun', 'organize_confirm', 'organize_perform', 'color_deploy_basic', 'color_deploy_premium', 
+            'role_dash_home', 'level_toggle', 'level_wing_settings', 'level_wing_milestones', 'level_wing_analytics',
+            'level_mode_toggle', 'level_msg_modal', 'level_emoji_modal', 'level_channel_select', 'level_filter_channels',
+            'opt_refresh', 'opt_flush_cache'
+        ],
+        prefixes: [
+            'cat_del_', 'level_role_del_', 'level_role_bind_', 'cat_view_', 'cat_role_reg_', 
+            'cat_role_unreg_', 'cat_role_create_', 'modal_cat_role_create_', 'color_page_',
+            'modal_cat_', 'modal_level_'
+        ],
+        handle: handleDashboardInteraction
+    }
 };
+

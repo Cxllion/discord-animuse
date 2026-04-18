@@ -131,4 +131,14 @@ const handleWordleModals = async (interaction) => {
     await interaction.editReply({ embeds: [embed], components: [row], files: [attachment] });
 };
 
-module.exports = { handleWordleInteraction, handleWordleModals };
+module.exports = { 
+    handleWordleInteraction, 
+    handleWordleModals,
+    routerConfig: {
+        prefixes: ['wordle_'],
+        handle: async (interaction) => {
+            if (interaction.isModalSubmit()) return handleWordleModals(interaction);
+            return handleWordleInteraction(interaction);
+        }
+    }
+};

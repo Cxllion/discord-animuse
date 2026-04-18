@@ -52,4 +52,10 @@ const handleSearchInteraction = async (interaction) => {
     }
 };
 
-module.exports = { handleSearchInteraction };
+module.exports = { 
+    handleSearchInteraction,
+    routerConfig: {
+        ids: ['search_result_select'],
+        handle: handleSearchInteraction
+    }
+};

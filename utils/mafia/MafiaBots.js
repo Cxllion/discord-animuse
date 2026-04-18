@@ -1,3 +1,4 @@
+const logger = require('../core/logger');
 function handleBotNightActions(game) {
     const aliveBots = game.getAlivePlayers().filter(p => p.isBot);
     const alivePlayers = game.getAlivePlayers();
@@ -30,7 +31,7 @@ function handleBotNightActions(game) {
         if (!bot.nightActionTarget) {
             const targetData = options[Math.floor(Math.random() * options.length)];
             bot.nightActionTarget = targetData.value;
-            console.log(`[MAFIA-AI] ${bot.name} (${bot.role.name}) targeted ${targetData.label}.`);
+            logger.info(`[MAFIA-AI] ${bot.name} (${bot.role.name}) targeted ${targetData.label}.`, 'Mafia');
         }
     }
 }
@@ -77,7 +78,7 @@ function handleBotDayVoting(game, specificBot = null) {
 
         if (targetId && targetId !== bot.id) {
             bot.voteTarget = targetId;
-            console.log(`[MAFIA-AI] ${bot.name} (Bot) finalized vote for: ${targetId}`);
+            logger.info(`[MAFIA-AI] ${bot.name} (Bot) finalized vote for: ${targetId}`, 'Mafia');
         }
     }
 }
@@ -90,19 +91,23 @@ async function handleBotDaySpeech(game) {
     
     const lastNight = game.dayCount - 1; 
 
-    let archiveWebhook = null;
-    try {
-        const webhooks = await game.thread.parent.fetchWebhooks();
-        archiveWebhook = webhooks.find(wh => wh.token);
-        if (!archiveWebhook) {
-            archiveWebhook = await game.thread.parent.createWebhook({
-                name: 'Sanctuary Archive Node',
-                avatar: 'https://cdn.discordapp.com/embed/avatars/1.png' 
-            });
+    // Retrieve or create the cached webhook for bot speech (avoids hitting webhook limit)
+    if (!game.archiveWebhook) {
+        try {
+            const webhooks = await game.thread.parent.fetchWebhooks();
+            game.archiveWebhook = webhooks.find(wh => wh.token) || null;
+            if (!game.archiveWebhook) {
+                game.archiveWebhook = await game.thread.parent.createWebhook({
+                    name: 'Sanctuary Archive Node',
+                    avatar: 'https://cdn.discordapp.com/embed/avatars/1.png' 
+                });
+            }
+        } catch (e) {
+            logger.error('[MAFIA-AI] Could not setup webhook for bot speech:', e, 'Mafia');
+            game.archiveWebhook = null;
         }
-    } catch (e) {
-        console.error('[MAFIA-AI] Could not setup webhook for bot speech:', e);
     }
+    const archiveWebhook = game.archiveWebhook;
     
     const timers = [];
     

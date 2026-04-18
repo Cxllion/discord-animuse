@@ -40,8 +40,8 @@ module.exports = {
                             { name: '📢 Airing', value: 'airing' },
                             { name: '🎯 Bingo', value: 'bingo' },
                             { name: '🔔 Activity', value: 'activity' },
-                            { name: '🔎 Search', value: 'search' },
-                            { name: '👤 Profile', value: 'profile' }
+                            { name: '👤 Profile', value: 'profile' },
+                            { name: '🕵️ Mafia', value: 'mafia' }
                         ))
                 .addStringOption(option =>
                     option.setName('query')
@@ -427,6 +427,95 @@ module.exports = {
                         content: `✅ **Profile Diagnostic Complete**\nGenerated **Full Tier Matrix** (Standard, Premium, Booster) for ${targetUser}.`,
                         files: attachments 
                     });
+                }
+                
+                // --- MAFIA VISUAL DIAGNOSTIC ---
+                else if (type === 'mafia') {
+                    await interaction.editReply({ content: '🕵️ **Mafia Diagnostic Initiated**: Constructing a high-alert simulation... ♡' });
+
+                    const { generateRoleCard } = require('../../utils/generators/mafia/roleGenerator');
+                    const MafiaUI = require('../../utils/mafia/MafiaUI');
+                    const Lore = require('../../utils/mafia/MafiaLore');
+
+                    // 1. PHASE BANNERS
+                    await interaction.followUp({
+                        content: '🎬 **Scene 01: Temporal Banners**\nUsed during Day/Night phase transitions.',
+                        embeds: [
+                            { title: '☀️ Day Phase', image: { url: Lore.BANNERS.DAY }, color: parseInt(Lore.COLORS.DAY.replace('#', ''), 16) },
+                            { title: '🌑 Night Phase', image: { url: Lore.BANNERS.NIGHT }, color: parseInt(Lore.COLORS.NIGHT.replace('#', ''), 16) }
+                        ]
+                    });
+
+                    // 2. IDENTITY DOSSIERS (Procedural)
+                    await interaction.followUp({ content: '📑 **Scene 02: Identity Dossiers**\nProcedurally generated unique identities for every faction.' });
+                    
+                    const { 
+                        Archivist, TheConservator, TheIndexer, TheGhostwriter, TheScribe, TheHeadCurator,
+                        Revision, TheShredder, TheCensor, ThePlagiarist, TheCorruptor,
+                        TheAnomaly, TheCritic, TheBookburner 
+                    } = require('../../utils/mafia/MafiaRoles');
+
+                    const factions = [
+                        { name: 'ARCHIVISTS', roles: [new Archivist(), new TheConservator(), new TheIndexer(), new TheGhostwriter(), new TheScribe(), new TheHeadCurator()] },
+                        { name: 'REVISIONS', roles: [new Revision(), new TheShredder(), new TheCensor(), new ThePlagiarist(), new TheCorruptor()] },
+                        { name: 'UNBOUND', roles: [new TheAnomaly(), new TheCritic(), new TheBookburner()] }
+                    ];
+
+                    for (const faction of factions) {
+                        const attachments = [];
+                        for (const role of faction.roles) {
+                            const buffer = await generateRoleCard(role, interaction.user.username, interaction.guild.name);
+                            attachments.push(new AttachmentBuilder(buffer, { name: `dossier-${role.name.toLowerCase().replace(/\s+/g, '_')}.png` }));
+                        }
+                        await interaction.followUp({ 
+                            content: `💠 **Faction: ${faction.name}** (${faction.roles.length} Identities)`,
+                            files: attachments 
+                        });
+                    }
+
+                    const sampleRoles = factions[0].roles; // For mock players logic below
+
+                    // 3. UI MOCKUPS
+                    await interaction.followUp({ content: '📊 **Scene 03: Interactive Terminals**\nSystem logic for Lobbies, Reports, and Debriefs.' });
+
+                    // Create Mock Game Object
+                    const mockGame = {
+                        hostId: interaction.user.id,
+                        channelId: interaction.channelId,
+                        state: 'LOBBY',
+                        dayCount: 1,
+                        settings: {
+                            gameMode: 'Classic',
+                            revealRoles: true,
+                            voiceSupport: 'new',
+                            discussionTime: 120,
+                            votingTime: 60,
+                            nightTime: 60,
+                            prologueTime: 15
+                        },
+                        players: new Map([
+                            [interaction.user.id, { id: interaction.user.id, name: interaction.user.username, alive: true, role: sampleRoles[0] }],
+                            ['bot_1', { id: 'bot_1', name: 'Subject_AI_01', alive: true, isBot: true, role: sampleRoles[1] }],
+                            ['bot_2', { id: 'bot_2', name: 'Subject_AI_02', alive: false, isBot: true, role: sampleRoles[2], lastWill: 'The ink is fading...' }]
+                        ]),
+                        getAlivePlayers: () => Array.from(mockGame.players.values()).filter(p => p.alive),
+                        isSecure: true
+                    };
+
+                    // A. Lobby Payload
+                    const lobby = MafiaUI.buildLobbyPayload(mockGame);
+                    await interaction.followUp({ content: '**[Lobby Protocol]**', ...lobby });
+
+                    // B. Morning Report
+                    const deaths = [{ target: mockGame.players.get('bot_2'), isGuilt: false }];
+                    const report = MafiaUI.buildMorningReport(mockGame, deaths);
+                    await interaction.followUp({ content: '**[Morning Report]**', ...report });
+
+                    // C. Game Over
+                    const gameOver = MafiaUI.buildGameOverPayload(mockGame, 'Archivists');
+                    await interaction.followUp({ content: '**[Conclusion Debrief]**', ...gameOver });
+
+                    await interaction.followUp({ content: '🏁 **Mafia Visual Audit Complete.** All systems initialized to standard parameters. ♡' });
                 }
 
                 else if (type === 'search') {

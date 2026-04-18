@@ -1,10 +1,11 @@
 const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
+const Lore = require('./MafiaLore');
 
 function buildLobbyPayload(game) {
     const embed = baseEmbed('📚 The Final Library | Sanctuary Lobby', null, null)
-        .setColor('#8B5CF6') 
+        .setColor(Lore.COLORS.LOBBY) 
         .setDescription(`**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Survivors:** ${game.players.size}/15 (Min: 4)`)
         .setFooter({ text: 'Protocol 1: Trust no one but the archives.' })
         .setTimestamp();
@@ -48,7 +49,7 @@ function buildActionHub(game, user) {
         options.push({ label: 'Disband Sanctuary', value: 'disband', description: 'Permanently close this lobby and delete the record.', emoji: '🗑️' });
     }
 
-    if (isPlayer && game.state !== 'LOBBY') {
+    if (isPlayer && game.state !== 'LOBBY' && game.players.get(user.id)?.alive) {
         options.push({ label: 'Edit Last Will', value: 'last_will', description: 'Update your final message revealed on death.', emoji: '✍️' });
         options.push({ label: 'Roster Status', value: 'status', description: 'View alive/dead counts and survivor list.', emoji: '📊' });
     }
@@ -133,7 +134,7 @@ function buildSurvivalGuide(page = 'intro') {
         embed.setTitle('🩸 The Revisions (Mafia)')
             .setDescription('The corrupted invaders. They have compromised the archives and work together to erase the rest.')
             .addFields(
-                { name: 'The Shredder `(Goon)`', value: 'The primary deletion agent. Authorized to eliminate one Archivist each night.' },
+                { name: 'The Shredder `(Henchman)`', value: 'The primary deletion agent. Authorized to eliminate one Archivist each night.' },
                 { name: 'The Censor `(Roleblocker)`', value: 'Imposes a mandatory quarantine on one survivor, preventing their night action from executing.' },
                 { name: 'The Plagiarist `(Godfather)`', value: 'Appears as a clean Archivist during Indexer diagnostics.' }
             );
@@ -241,21 +242,30 @@ function buildSettingsPayload(game, category = 'discussion') {
         new ButtonBuilder().setCustomId(`mafia_lobby_back_${game.hostId}`).setLabel('⬅️ Back').setStyle(ButtonStyle.Danger)
     );
 
-    return { embeds: [embed], components: [modeRow, categoryRow, durationRow, backRow], flags: 64 };
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`mafia_save_prefs_${game.hostId}`).setLabel('💾 Save as My Default').setStyle(ButtonStyle.Secondary)
+    );
+
+    return { 
+        content: '⚙️ **Sanctuary Configuration Control**\n*Adjust the parameters of the simulation below. Changes are applied instantly.*',
+        embeds: [embed], 
+        components: [modeRow, categoryRow, durationRow, backRow, row2],
+        flags: 64
+    };
 }
 
-function buildStartedLobbyPayload(game) {
+function buildSpectatePayload(game) {
     const MafiaManager = require('./MafiaManager');
-    const channelId = game.thread?.parentId || game.thread?.id;
+    const channelId = game.channelId;
     const queue = MafiaManager.globalQueues.get(channelId) || new Set();
 
     const embed = baseEmbed('📚 The Final Library | Session Active', 
-        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Players:** ${game.players.size}\n\nThe gates are sealed. The survival simulation is underway.`, 
+        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n**Players:** ${game.players.size}/15\n\nThe gates are sealed. The archives are in a state of high-alert.`, 
         null
     )
-        .setColor('#2ecc71')
+        .setColor(Lore.COLORS.DAY)
         .addFields(
-            { name: '🎙️ Audio Status', value: '> **Library Hub:** `Operational`\n> **Uplink:** `Encrypted`' },
+            { name: '🎙️ Audio Status', value: '> **Library Hub:** `Operational` (Restricted)\n> **Uplink:** `Encrypted`' },
             { name: '🛡️ Sanctuary Integrity', value: game.isSecure ? '> **Mode:** `Secure Redaction` (Private)\n> **Protocol:** `Member Exile Active`' : '> **Mode:** `Public Records` (Vulnerable)\n> **Protocol:** `Partial Containment`' }
         )
         .setTimestamp();
@@ -265,16 +275,17 @@ function buildStartedLobbyPayload(game) {
     }
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`mafia_queuenext_${game.hostId}`).setLabel('⏳ Join Next Game').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`mafia_help_general_${game.hostId}`).setLabel('📖 Survival Guide').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`mafia_spectate_${game.hostId}`).setLabel('👁️ Spectate').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mafia_queuenext_${game.hostId}`).setLabel('⏳ Join Queue').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`mafia_help_general_${game.hostId}`).setLabel('❓ Guide').setStyle(ButtonStyle.Secondary)
     );
 
     return { embeds: [embed], components: [row] };
 }
 
 function buildEndedLobbyPayload(game, winner) {
-    const embed = baseEmbed('📚 The Final Library | Session Concluded', 
-        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n\n🏆 **Victor:** **${winner.toUpperCase()}**`, 
+    const embed = baseEmbed('🏆 The Final Library | Session Concluded', 
+        `**Host:** <@${game.hostId}>\n**Mode:** ${game.settings.gameMode}\n\n**Victor:** **${winner.toUpperCase()}**`, 
         null
     )
         .setColor(winner === 'Archivists' ? '#2ecc71' : (winner === 'Revisions' ? '#e74c3c' : '#f1c40f'))
@@ -288,11 +299,10 @@ function buildEndedLobbyPayload(game, winner) {
         { name: `💀 Casualties (${dead.length})`, value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' }
     );
 
-    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(`mafia_reset_${game.hostId}`)
-            .setLabel('♻️ Reset Sanctuary')
+            .setCustomId(`mafia_play_again_${game.hostId}`)
+            .setLabel('♻️ Play Again')
             .setStyle(ButtonStyle.Success)
     );
 
@@ -303,11 +313,13 @@ function buildMorningReport(game, deaths) {
     const reveal = game.settings.revealRoles;
     
     const embed = baseEmbed(`🌅 Morning Report — Night ${game.dayCount}`, null, null)
-        .setColor(deaths.length > 0 ? '#e74c3c' : '#2ecc71')
+        .setColor(deaths.length > 0 ? Lore.COLORS.VOTING : Lore.COLORS.DAY)
+        .setImage(Lore.BANNERS.DAY)
         .setTimestamp();
 
     if (deaths.length === 0) {
-        embed.setDescription('The Sanctuary was unusually quiet last night. No bio-signatures were redacted from the master record.');
+        const lore = Lore.STORY.MORNING_QUIET[Math.floor(Math.random() * Lore.STORY.MORNING_QUIET.length)];
+        embed.setDescription(lore);
     } else {
         embed.setDescription(`The Sanctuary's monitors flicker. **${deaths.length}** signature${deaths.length === 1 ? ' has' : 's have'} been erased from the roster.`);
         
@@ -319,9 +331,10 @@ function buildMorningReport(game, deaths) {
             const variantTitles = ["CRITICAL BREACH", "DATA ERASURE", "SYSTEM PURGE", "SECTOR FAILURE", "BIOMETRIC LOSS"];
             const fieldTitle = d.isGuilt ? '💔 GUILT OVERRIDE' : `💀 ${variantTitles[Math.floor(Math.random() * variantTitles.length)]}`;
             
-            let reportStr = d.isGuilt
-                ? `**${d.target.name}** could not stand the weight of erasing an innocent survivor. Their mind has been rewritten out of guilt.\n**Role:** ${roleStr}`
-                : `**${d.target.name}** has been unceremoniously erased from the library.\n**Role:** ${roleStr}`;
+            let lorePool = d.isGuilt ? Lore.STORY.ERASURE_GUILT : Lore.STORY.ERASURE_KILL;
+            let lore = lorePool[Math.floor(Math.random() * lorePool.length)].replace('{name}', d.target.name);
+            
+            let reportStr = `${lore}\n**Role:** ${roleStr}`;
             
             if (d.target.lastWill) {
                 reportStr += `\n\n📜 **Last Will:**\n> *"${d.target.lastWill}"*`;
@@ -341,31 +354,59 @@ function buildMorningReport(game, deaths) {
         { name: `💀 Redacted (${dead.length})`, value: dead.length > 0 ? dead.map(p => p.isBot ? `🤖 ${p.name}` : `<@${p.id}>`).join(', ') : 'None' }
     );
 
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`mafia_roster_view_${game.hostId}`).setLabel('📖 View Roster').setStyle(ButtonStyle.Secondary)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
+function buildVictoryBanner(game, winner) {
+    const isRevisionsWin = winner === 'Revisions';
+    const embedColor = winner === 'Archivists' ? '#2ecc71' : (isRevisionsWin ? '#e74c3c' : '#f1c40f');
+    
+    const embed = baseEmbed(
+        `🏆 VICTORY: ${winner.toUpperCase()}`,
+        isRevisionsWin 
+            ? '### **THE SANCTUARY HAS FALLEN.**\n*The records have been overwritten. The Viral Rot has claimed the archives.*'
+            : '### **THE CORRUPTION HAS BEEN PURGED.**\n*The archives are secure. The indexers have held the line.*',
+        null
+    ).setColor(embedColor);
+
     return { embeds: [embed] };
 }
 
 function buildGameOverPayload(game, winner, secondaryWinners = []) {
-    const embed = baseEmbed('📚 The Final Library | Sanctuary Debrief', 
-        `**Simulation Terminated.**\n\n**Victor:** ${winner.toUpperCase()}`, 
-        null
-    )
-        .setColor(winner === 'Archivists' ? '#2ecc71' : (winner === 'Revisions' ? '#e74c3c' : '#f1c40f'))
+    const isRevisionsWin = winner === 'Revisions';
+    const embedColor = winner === 'Archivists' ? '#2ecc71' : (isRevisionsWin ? '#e74c3c' : '#f1c40f');
+    
+    const embed = baseEmbed('📦 Archival Record: Session Finalized', null, null)
+        .setColor(embedColor)
         .setTimestamp();
 
     if (secondaryWinners.length > 0) {
         embed.addFields({ name: '🌟 Outstanding Victors', value: secondaryWinners.map(name => `• **${name}**`).join('\n') });
     }
 
-    const playersList = Array.from(game.players.values()).map(p => {
+    const alive = Array.from(game.players.values()).filter(p => p.alive);
+    const dead = Array.from(game.players.values()).filter(p => !p.alive);
+
+    const survivorList = alive.map(p => {
         const roleStr = p.role ? `${p.role.emoji} ${p.role.name}` : 'Unknown';
-        const status = p.alive ? '🟢' : '💀';
-        return `${status} <@${p.id}> — **${roleStr}**`;
-    }).join('\n');
+        return `🟢 <@${p.id}> — **${roleStr}**`;
+    }).join('\n') || '*No survivors listed in this archive.*';
 
-    embed.addFields({ name: '👥 Final Records', value: playersList || 'No records available.' });
+    const casualtyList = dead.map(p => {
+        const roleStr = p.role ? `(${p.role.name})` : '';
+        return `💀 ~~<@${p.id}>~~ **${roleStr}**`;
+    }).join('\n') || '*No casualties recorded last cycle.*';
 
-    const timeline = Array.from(game.players.values())
-        .filter(p => !p.alive)
+    embed.addFields(
+        { name: `🧍 Survivors (${alive.length})`, value: survivorList, inline: false },
+        { name: `💀 Casualties (${dead.length})`, value: casualtyList, inline: false }
+    );
+
+    const timeline = dead
         .sort((a, b) => (a.deathDay || 0) - (b.deathDay || 0))
         .map(p => `Day ${p.deathDay || '?'}: **${p.name}** (${p.role?.name || 'Unknown'})`)
         .join('\n');
@@ -471,11 +512,136 @@ function buildStagnationPayload(game) {
     return { embeds: [embed], components: [row] };
 }
 
+function buildRosterPayload(game) {
+    const alive = Array.from(game.players.values()).filter(p => p.alive);
+    const dead = Array.from(game.players.values()).filter(p => !p.alive);
+
+    const embed = baseEmbed('📊 Sanctuary Roster Status', 
+        `**Session Integrity:** ${game.isSecure ? 'Secure' : 'Public'}\n**Current Phase:** ${game.state}\n**Day:** ${game.dayCount}`, 
+        null
+    ).setColor(Lore.COLORS.TWILIGHT);
+
+    const survivorList = alive.map(p => {
+        const icon = p.isBot ? '🤖' : '👤';
+        const vote = p.voteTarget ? (p.voteTarget === 'skip' ? ' [✓ Skip]' : ' [✓ Cast]') : '';
+        return `${icon} **${p.name}**${vote}`;
+    }).join('\n') || 'No survivors remaining.';
+
+    const redactionList = dead.map(p => {
+        const role = game.settings.revealRoles ? (p.role ? ` (${p.role.name})` : '') : '';
+        return `💀 ~~${p.name}~~${role}`;
+    }).join('\n') || 'No redactions recorded.';
+
+    embed.addFields(
+        { name: `🧍 Survivors (${alive.length})`, value: survivorList, inline: true },
+        { name: `💀 Redacted (${dead.length})`, value: redactionList, inline: true }
+    );
+
+    return { embeds: [embed], flags: 64 };
+}
+
+function buildConflictPayload(game, isRunning, user) {
+    const embed = baseEmbed('⚠️ Identity Conflict Detected', 
+        `You currently have an active session in **${game.guildId === 'unknown' ? 'an unknown sanctuary' : 'another sector'}**.\n\n` +
+        `**State:** \`${game.state}\`\n**Survivors:** ${game.players.size}\n\n` +
+        `Would you like to continue the existing simulation or purge the record and start a new one?`, 
+        null
+    ).setColor('#e67e22');
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`mafia_host_conflict_continue_${game.hostId}`)
+            .setLabel('⏳ Continue Presence')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId(`mafia_host_conflict_new_${game.hostId}`)
+            .setLabel('🚫 New Sanctuary')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    if (isRunning) {
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`mafia_host_conflict_end_${game.hostId}`)
+                .setLabel('🔴 End Record')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    return { embeds: [embed], components: [row], flags: 64 };
+}
+
+function buildNightActionDropdown(player, game) {
+    const options = game.getNightActionOptions(player);
+    if (options.length === 0) return null;
+
+    const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId(`mafia_action_${game.hostId}`)
+            .setPlaceholder('📜 Select Archival Priority...')
+            .addOptions(options.map(opt => ({
+                label: opt.label,
+                value: opt.value,
+                description: opt.description || `Execute protocol on ${opt.label}`
+            })))
+    );
+
+    return row;
+}
+
+function buildNightHUD(player, game) {
+    const endTime = Math.floor(game.phaseEndTime / 1000);
+    const roleName = player.role.name.toUpperCase();
+    
+    let content = `🌑 **Phase: Night ${game.dayCount}** | Ends <t:${endTime}:R>\n`;
+    content += `**Identity:** \`${roleName}\`\n\n`;
+    
+    if (player.nightActionTarget) {
+        const target = game.players.get(player.nightActionTarget);
+        content += `✅ **Action Locked:** Protocol established on \`${target?.name || 'Unknown'}\`.\n`;
+    } else if (player.role.priority !== 99) {
+        content += `⚠️ **Awaiting Input:** Open the dropdown below to select your night priority.\n`;
+    } else {
+        content += `💤 **Status:** No night actions authorized for your clearance level.\n`;
+    }
+
+    const rows = [];
+    const actionDropdown = !player.nightActionTarget ? buildNightActionDropdown(player, game) : null;
+    if (actionDropdown) rows.push(actionDropdown);
+
+    const willLabel = player.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
+    rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`mafia_will_${game.hostId}`)
+            .setLabel(willLabel)
+            .setStyle(ButtonStyle.Secondary)
+    ));
+
+    return { content: `>>> ${content}`, components: rows };
+}
+
+function buildDayHUD(player, game) {
+    const roleName = player.role.name.toUpperCase();
+    let content = `☀️ **Phase: Day ${game.dayCount} (Discussion)**\n`;
+    content += `**Identity:** \`${roleName}\`\n\n`;
+    content += `The archives are open. Use the thread to deliberate with fellow survivors.`;
+
+    const willLabel = player.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`mafia_will_${game.hostId}`)
+            .setLabel(willLabel)
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    return { content: `>>> ${content}`, components: [row] };
+}
+
 module.exports = { 
     baseEmbed,
     buildLobbyPayload, 
     buildSettingsPayload, 
-    buildStartedLobbyPayload, 
+    buildSpectatePayload, 
     buildActionHub, 
     buildSurvivalGuide,
     buildMorningReport,
@@ -483,5 +649,10 @@ module.exports = {
     buildRoleCard,
     buildMafiaProfile,
     buildEndedLobbyPayload,
-    buildStagnationPayload
+    buildStagnationPayload,
+    buildRosterPayload,
+    buildConflictPayload,
+    buildNightHUD,
+    buildDayHUD,
+    buildNightActionDropdown
 };

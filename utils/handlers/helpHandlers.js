@@ -151,4 +151,10 @@ const handleHelpInteraction = async (interaction) => {
     }
 };
 
-module.exports = { handleHelpInteraction };
+module.exports = { 
+    handleHelpInteraction,
+    routerConfig: {
+        prefixes: ['help_'],
+        handle: handleHelpInteraction
+    }
+};

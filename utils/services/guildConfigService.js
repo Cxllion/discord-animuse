@@ -82,6 +82,8 @@ const assignChannel = async (guildId, key, channelId) => {
     if (!supabase) return;
     const updates = { [key]: channelId };
     await supabase.from('guild_configs').update(updates).eq('guild_id', guildId);
+    // Invalidate cache so next fetchConfig() returns fresh data
+    configCache.delete(guildId);
 };
 
 const getArchiveSettings = async (guildId) => {

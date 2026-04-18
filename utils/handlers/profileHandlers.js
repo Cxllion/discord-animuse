@@ -1054,4 +1054,15 @@ const handleProfileModals = async (interaction) => {
     }
 };
 
-module.exports = { showProfileDashboard, handleProfileInteraction, handleProfileModals };
+module.exports = { 
+    showProfileDashboard, 
+    handleProfileInteraction, 
+    handleProfileModals,
+    routerConfig: {
+        prefixes: ['profile_', 'archive_access_'],
+        handle: async (interaction) => {
+            if (interaction.isModalSubmit()) return handleProfileModals(interaction);
+            return handleProfileInteraction(interaction);
+        }
+    }
+};

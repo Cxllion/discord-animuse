@@ -421,4 +421,16 @@ const performCategorySync = async (interaction) => {
     await statusMsg.edit(`✅ **[Zoning Architect]** Category Synchronization Complete.\n**${totalSynced}** Channels Locked to Parent | **${errors}** Errors encountered.`);
 };
 
-module.exports = { displayChannelDashboard, handleChannelDashboardInteraction };
+module.exports = { 
+    displayChannelDashboard, 
+    handleChannelDashboardInteraction,
+    routerConfig: {
+        prefixes: ['channel_dash_', 'assign_', 'zoning_', 'sorting_', 'pin_', 'execute_assign_'],
+        ids: [
+            'sorting_toggle', 'sorting_pin', 'channel_dash_home', 'opt_assignment', 'opt_sorting', 
+            'opt_zoning', 'opt_archive', 'opt_home', 'pin_select_channel', 'assign_select_feature', 
+            'assign_clear_all'
+        ],
+        handle: handleChannelDashboardInteraction
+    }
+};

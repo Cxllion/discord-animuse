@@ -32,11 +32,12 @@ class CooldownManager {
             return true;
         }
 
-        const expiration = this.cooldowns.get(key);
+        const entry = this.cooldowns.get(key);
         const now = Date.now();
 
-        if (now >= expiration) {
+        if (now >= entry.expiry) {
             // Cooldown expired, allow
+            clearTimeout(entry.timer);
             this.cooldowns.delete(key);
             return true;
         }
@@ -55,14 +56,17 @@ class CooldownManager {
         if (cooldownSeconds === 0) return;
 
         const key = `${userId}-${commandName}`;
-        const expiration = Date.now() + (cooldownSeconds * 1000);
+        const expiry = Date.now() + (cooldownSeconds * 1000);
 
-        this.cooldowns.set(key, expiration);
+        // Cancel any existing timer for this key before overwriting
+        const existing = this.cooldowns.get(key);
+        if (existing?.timer) clearTimeout(existing.timer);
 
-        // Auto-cleanup after cooldown expires
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             this.cooldowns.delete(key);
         }, cooldownSeconds * 1000);
+
+        this.cooldowns.set(key, { expiry, timer });
     }
 
     /**
@@ -78,9 +82,9 @@ class CooldownManager {
             return 0;
         }
 
-        const expiration = this.cooldowns.get(key);
+        const entry = this.cooldowns.get(key);
         const now = Date.now();
-        const remaining = Math.ceil((expiration - now) / 1000);
+        const remaining = Math.ceil((entry.expiry - now) / 1000);
 
         return remaining > 0 ? remaining : 0;
     }
@@ -91,7 +95,11 @@ class CooldownManager {
      */
     clearUser(userId) {
         const keys = Array.from(this.cooldowns.keys()).filter(k => k.startsWith(userId));
-        keys.forEach(key => this.cooldowns.delete(key));
+        keys.forEach(key => {
+            const entry = this.cooldowns.get(key);
+            if (entry?.timer) clearTimeout(entry.timer);
+            this.cooldowns.delete(key);
+        });
         logger.info(`Cleared all cooldowns for user ${userId}`, 'CooldownManager');
     }
 
@@ -102,6 +110,8 @@ class CooldownManager {
      */
     clear(userId, commandName) {
         const key = `${userId}-${commandName}`;
+        const entry = this.cooldowns.get(key);
+        if (entry?.timer) clearTimeout(entry.timer);
         this.cooldowns.delete(key);
     }
 

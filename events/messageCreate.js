@@ -4,6 +4,12 @@ const baseEmbed = require('../utils/generators/baseEmbed');
 const logger = require('../utils/core/logger');
 const { getDynamicUserTitle } = require('../utils/core/userMeta');
 const CONFIG = require('../utils/config');
+// Hoisted module references (Node.js caches these; hoisting avoids resolution overhead in hot path)
+const MafiaManager = require('../utils/mafia/MafiaManager');
+const { markAsSpoken } = require('../utils/services/welcomeService');
+const { addXp } = require('../utils/services/leveling');
+const { getLinkedAnilist } = require('../utils/services/userService');
+const { pulseUserActivity } = require('../utils/services/scheduler');
 
 module.exports = {
     name: Events.MessageCreate,
@@ -13,7 +19,6 @@ module.exports = {
 
         // --- Mafia Vigilant Redaction (Silence for the Dead) ---
         if (message.channel.isThread()) {
-            const MafiaManager = require('../utils/mafia/MafiaManager');
             const game = MafiaManager.games.get(message.channel.id);
             if (game && game.state !== 'LOBBY' && game.state !== 'GAME_OVER') {
                 const player = game.players.get(message.author.id);
@@ -32,16 +37,13 @@ module.exports = {
 
         // Fetch config (Note: FetchConfig has its own 5m in-memory cache)
         const config = await fetchConfig(message.guild.id);
-        
-        // --- Activity Pulse (For Hybrid Sorting) ---
-        // Implementation: pulseChannelActivity has a 5m per-channel cooldown
-        await pulseChannelActivity(message.guild.id, message.channel.id);
-        
+
         // --- Anti-Ghosting: Protect Welcome ---
-        if (!message.author.bot) {
-            const { markAsSpoken } = require('../utils/services/welcomeService');
-            await markAsSpoken(message.author.id, message.guild.id);
-        }
+        await markAsSpoken(message.author.id, message.guild.id);
+
+        // --- Activity Pulse (For Hybrid Sorting) ---
+        // NOTE: Runs after config fetch; pulseChannelActivity has a 5m per-channel cooldown
+        await pulseChannelActivity(message.guild.id, message.channel.id);
 
         if (!config) return; // DB error or fresh guild
 
@@ -126,15 +128,11 @@ module.exports = {
 
         // --- Levelling & Rank Hook ---
         if (!isSelfTest) {
-            const { addXp } = require('../utils/services/leveling');
             await addXp(message.author.id, message.guild.id, message.member, message);
         }
 
         // --- AniList Activity Pulse (Instant Tracking) ---
         if (config.activity_channel_id && !message.client.isTestBot) {
-            const { getLinkedAnilist } = require('../utils/services/userService');
-            const { checkAndBroadcastUserActivity } = require('../utils/services/scheduler');
-            
             if (!message.client.activityPulseCache) message.client.activityPulseCache = new Map();
             
             const cooldownKey = `${message.author.id}_${message.guild.id}`;
@@ -152,7 +150,6 @@ module.exports = {
                             user_id: String(message.author.id),
                             anilist_username: anilistUsername
                         };
-                        const { pulseUserActivity } = require('../utils/services/scheduler');
                         await pulseUserActivity(message.client, message.guild.id, userRow, activityChannel);
                         message.client.activityPulseCache.set(cooldownKey, now);
                     }
@@ -161,10 +158,9 @@ module.exports = {
         }
 
         // --- Archive Lobby Bumping ---
-        const gameManager = require('../utils/mafia/MafiaManager');
-        const lobby = gameManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
+        const lobby = MafiaManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
         if (lobby) {
-            lobby.scheduleBump(message.channel);
+            lobby.scheduleRefresh(message.channel);
         }
     },
 };

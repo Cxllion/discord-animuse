@@ -272,4 +272,12 @@ const handleTrackInteraction = async (interaction) => {
     }
 };
 
-module.exports = { renderTrackList, renderGuildTrackView, handleTrackInteraction };
+module.exports = { 
+    renderTrackList, 
+    renderGuildTrackView, 
+    handleTrackInteraction,
+    routerConfig: {
+        prefixes: ['track_'],
+        handle: handleTrackInteraction
+    }
+};

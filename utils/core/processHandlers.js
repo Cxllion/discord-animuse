@@ -17,7 +17,7 @@ const setupProcessHandlers = () => {
 
     process.on('uncaughtException', (error) => {
         logger.error('[Uncaught Exception]', error);
-        // process.exit(1); // Optional
+        process.exit(1); // PM2/ecosystem will auto-restart; continuing in a corrupted state is unsafe
     });
 };
 

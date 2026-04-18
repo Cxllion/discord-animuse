@@ -170,4 +170,11 @@ const handleWelcomeInteraction = async (interaction) => {
     }
 };
 
-module.exports = { displayWelcomeDashboard, handleWelcomeInteraction };
+module.exports = { 
+    displayWelcomeDashboard, 
+    handleWelcomeInteraction,
+    routerConfig: {
+        prefixes: ['welcome_', 'modal_welcome_'],
+        handle: handleWelcomeInteraction
+    }
+};

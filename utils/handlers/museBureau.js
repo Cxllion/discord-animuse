@@ -85,4 +85,11 @@ const handleMuseBureauInteraction = async (interaction) => {
     }
 };
 
-module.exports = { displayMuseBureau, handleMuseBureauInteraction };
+module.exports = { 
+    displayMuseBureau, 
+    handleMuseBureauInteraction,
+    routerConfig: {
+        prefixes: ['muse_'],
+        handle: handleMuseBureauInteraction
+    }
+};

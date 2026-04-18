@@ -48,7 +48,7 @@ const deployCommands = async (client) => {
     }
 
     if (process.env.DEPLOY_ON_START !== 'true' && currentHash === storedHash) {
-        logger.info('The library index is up to date.', 'CommandDeployer');
+        logger.debug('The library index is up to date.', 'CommandDeployer');
         return;
     }
 
