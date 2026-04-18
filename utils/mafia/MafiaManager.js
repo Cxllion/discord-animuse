@@ -332,9 +332,15 @@ class MafiaManager {
     }
 
     async saveState() {
-        // Serialize all saveState calls through a Promise chain to prevent concurrent JSON write corruption
-        this._saveMutex = this._saveMutex.then(() => this._doSave()).catch(() => {});
-        return this._saveMutex;
+        // Debounce the save to prevent write storms during rapid interactions
+        if (this._saveTimeout) clearTimeout(this._saveTimeout);
+        
+        return new Promise((resolve) => {
+            this._saveTimeout = setTimeout(() => {
+                // Serialize all saveState calls through a Promise chain to prevent concurrent JSON write corruption
+                this._saveMutex = this._saveMutex.then(() => this._doSave()).then(resolve).catch(resolve);
+            }, 2000); // 2s debounce
+        });
     }
 
     async _doSave() {

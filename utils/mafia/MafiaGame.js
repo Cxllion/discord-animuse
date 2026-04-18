@@ -448,29 +448,34 @@ class MafiaGame extends EventEmitter {
         if (!this.voiceChannelId || !this.thread) return;
 
         try {
-            const guild = this.thread.guild;
+            const client = require('./MafiaManager').client;
+            const voiceChannel = await client.channels.fetch(this.voiceChannelId).catch(() => null);
+            if (!voiceChannel) return;
+
             const updateTasks = [];
             let taskCounter = 0;
 
-            for (const [id, p] of this.players) {
-                if (p.isBot) continue;
-
-                const member = await guild.members.fetch(id).catch(() => null);
-                if (!member || member.voice.channelId !== this.voiceChannelId) continue;
+            // --- PASSIVE SCANNING ---
+            // We only iterate over members ACTUALLY in the VC. This is massive for performance.
+            for (const [id, member] of voiceChannel.members) {
+                const p = this.players.get(id);
+                if (!p || p.isBot) continue;
 
                 let targetMute = false;
                 let reason = 'Protocol Update';
 
-                if (specialMode === 'GAME_OVER' || this.state === 'GAME_OVER') {
+                const currentState = specialMode || this.state;
+
+                if (currentState === 'GAME_OVER') {
                     targetMute = false;
                     reason = 'Restoration Pulse';
                 } else if (!p.alive) {
                     targetMute = true;
                     reason = 'Redacted Observation';
-                } else if (specialMode === 'TWILIGHT' || this.state === 'TWILIGHT') {
+                } else if (currentState === 'TWILIGHT') {
                     targetMute = id !== (focusId || this.activeFocusId);
                     reason = 'Twilight Focus';
-                } else if (specialMode === 'NIGHT' || this.state === 'NIGHT') {
+                } else if (currentState === 'NIGHT') {
                     targetMute = true;
                     reason = 'Night Silence';
                 } else {
@@ -478,10 +483,8 @@ class MafiaGame extends EventEmitter {
                     reason = 'Day Protocols';
                 }
 
-                // --- MUTE ONLY PROTOCOL ---
-                // We strictly use setMute. We also ensure setDeaf is FALSE as a standard.
                 const needsMuteUpdate = member.voice.mute !== targetMute;
-                const needsDeafCleanup = member.voice.deaf === true; // Ensure they are NEVEr deafened
+                const needsDeafCleanup = member.voice.deaf === true;
 
                 if (needsMuteUpdate || needsDeafCleanup) {
                     const currentTaskIdx = taskCounter++;
@@ -504,13 +507,13 @@ class MafiaGame extends EventEmitter {
     }
 
     startVoiceScan() {
-        this.stopVoiceScan(); // Clear existing
+        this.stopVoiceScan();
         logger.info(`[Mafia] [Voice] Initiating Active Health Scanner for Sanctuary ${this.hostId}`, 'Mafia');
         this.voiceScanner = setInterval(() => {
             if (!this.isDestroyed && this.voiceChannelId) {
                 this.updateVoiceStates().catch(() => null);
             }
-        }, 5000);
+        }, 10000); // 10s pulse for performance
     }
 
     stopVoiceScan() {
@@ -535,37 +538,43 @@ class MafiaGame extends EventEmitter {
     async refreshControlPanel(player, payload, components, forceRefresh = false) {
         if (player.isBot || !player.user) return;
 
-        const sendOptions = typeof payload === 'string' ? { content: payload } : { ...payload };
+        const content = typeof payload === 'string' ? payload : (payload.content || '');
+        const embeds = (payload.embeds || []);
         
+        // --- DIRTY CHECK: Avoid redundant API spam ---
+        const stateHash = JSON.stringify({ content, embeds, compCount: components?.length });
+        if (!forceRefresh && player.lastControlState === stateHash) return;
+
+        const sendOptions = { content, embeds };
         if (components) sendOptions.components = components;
 
-        // 1. ATTEMPT SMOOTH EDIT (Reduce DM Spam)
-        if (player.controlPanelMessageId && !forceRefresh) {
-            try {
-                const dmChannel = await player.user.createDM();
-                const prevPanel = await dmChannel.messages.fetch(player.controlPanelMessageId).catch(() => null);
-                if (prevPanel) {
-                    await prevPanel.edit(sendOptions);
-                    return; // Edit successful
-                }
-            } catch (e) {
-                logger.debug(`[Mafia Edit Fail] Falling back to send for ${player.name}`, 'Mafia');
-            }
-        }
-
-        // 2. FALLBACK: DELETE OLD & SEND NEW
-        if (player.controlPanelMessageId) {
-            try {
-                const dmChannel = await player.user.createDM();
-                const prevPanel = await dmChannel.messages.fetch(player.controlPanelMessageId).catch(() => null);
-                if (prevPanel && prevPanel.deletable) await prevPanel.delete().catch(() => null);
-            } catch (e) {}
-        }
-
         try {
-            const newMsg = await player.user.send(sendOptions);
-            player.controlPanelMessageId = newMsg.id;
-            this.emit('saveState');
+            // --- DM CHANNEL CACHING ---
+            if (!player.dmChannel) {
+                player.dmChannel = await player.user.createDM().catch(() => null);
+            }
+
+            // 1. ATTEMPT SMOOTH EDIT (Reduce DM Spam)
+            if (player.controlPanelMessageId && player.dmChannel) {
+                try {
+                    const prevPanel = await player.dmChannel.messages.fetch(player.controlPanelMessageId).catch(() => null);
+                    if (prevPanel) {
+                        await prevPanel.edit(sendOptions);
+                        player.lastControlState = stateHash;
+                        return;
+                    }
+                } catch (e) {
+                    logger.debug(`[Mafia Edit Fail] Falling back to send for ${player.name}`, 'Mafia');
+                }
+            }
+
+            // 2. FALLBACK: SEND NEW
+            if (player.dmChannel) {
+                const newMsg = await player.dmChannel.send(sendOptions);
+                player.controlPanelMessageId = newMsg.id;
+                player.lastControlState = stateHash;
+                this.emit('saveState');
+            }
         } catch (e) {
             if (e.code === 50007) {
                 logger.warn(`[Mafia Refresh] Cannot send DM to ${player.name} (DMs closed).`, 'Mafia');
@@ -758,9 +767,15 @@ class MafiaGame extends EventEmitter {
 
         await thread.send(`📜 The Final Library is sealed... The last record of humanity begins!\n🎙️ **Audio Uplink Active:** Connect to the **Library Hub** VC for coordinate biometrics.\nCheck your DMs for your Role Cards. ${roleEx}\n\n*Wait quietly... Night falls over the ruined world.*`);
         
-        const alivePlayers = Array.from(this.players.values());
-        for (const p of alivePlayers) {
-            // Send Role Cards to Human Players
+        // --- PARALLEL ROLE DISTRIBUTION ---
+        const distributionTasks = Array.from(this.players.values()).map(async (p) => {
+            if (p.role && p.role.name === 'The Critic') {
+                const possibleTargets = Array.from(this.players.values()).filter(t => t.id !== p.id && (!t.role || t.role.faction !== 'Revisions'));
+                if (possibleTargets.length > 0) {
+                    p.criticTarget = possibleTargets[Math.floor(Math.random() * possibleTargets.length)].id;
+                }
+            }
+
             if (!p.isBot) {
                 try {
                     const canvasBuffer = await generateRoleCard(p.role, p.name, this.thread?.guild?.name || 'The Final Library');
@@ -770,7 +785,6 @@ class MafiaGame extends EventEmitter {
                         content: `📜 **Biometrics Scanned.** Your identity in the sanctuary has been established.`,
                         ...attachment
                     }).catch(async () => {
-                        // Fallback to thread if DMs are blocked
                         if (this.thread) {
                             await this.thread.send({ 
                                 content: `⚠️ <@${p.id}>, your archival connection is restricted (DMs closed). Your role is **${p.role.name}** (${p.role.faction}).\n> ${p.role.description}`,
@@ -782,56 +796,50 @@ class MafiaGame extends EventEmitter {
                     logger.error(`Failed to generate or send role card to ${p.name}`, e, 'Mafia');
                 }
             }
+        });
 
-            if (p.role && p.role.name === 'The Critic') {
-                // Priority: Non-Revision Archivists -> Any Non-Revision (Unbound/Other) -> Anyone but self
-                let possibleTargets = alivePlayers.filter(target => target.id !== p.id && target.role && target.role.faction === 'Archivists');
-                
-                if (possibleTargets.length === 0) {
-                    possibleTargets = alivePlayers.filter(target => target.id !== p.id && (!target.role || target.role.faction !== 'Revisions'));
-                }
-
-                if (possibleTargets.length === 0) {
-                    possibleTargets = alivePlayers.filter(target => target.id !== p.id);
-                }
-
-                if (possibleTargets.length > 0) {
-                    p.criticTarget = possibleTargets[Math.floor(Math.random() * possibleTargets.length)].id;
-                }
-            }
-        }
+        await Promise.all(distributionTasks);
         
         this.activeTimer = setTimeout(async () => {
             if (this.state === 'GAME_OVER') return;
             
-            try {
-                const graveyardThread = await interaction.channel.threads.create({
-                    name: `💀 Deleted Records`,
-                    autoArchiveDuration: 60,
-                    type: 12, 
-                    reason: 'Mafia graveyard channel',
-                });
-                this.graveyardThreadId = graveyardThread.id;
-                await graveyardThread.send(`💀 **The Sanctuary Graveyard.**\nOnly the dead can read and speak here. The living cannot hear you.`);
-            } catch (e) { logger.error('Failed to create graveyard thread', e, 'Mafia'); }
+            const threadTasks = [];
 
-            const revisions = Array.from(this.players.values()).filter(p => p.role?.faction === 'Revisions' && !p.isBot);
-            if (revisions.length > 1 || this.settings.gameMode === 'Ink Rot') {
+            // 1. Create Graveyard
+            threadTasks.push((async () => {
                 try {
-                    const archiveThread = await thread.parent.threads.create({
-                        name: `🌑 Viral Rot Secret Hub`,
+                    const graveyardThread = await interaction.channel.threads.create({
+                        name: `💀 Deleted Records`,
                         autoArchiveDuration: 60,
                         type: 12, 
-                        reason: 'Mafia secret channel',
+                        reason: 'Mafia graveyard channel',
                     });
-                    this.archiveThreadId = archiveThread.id;
-                    for (const p of revisions) {
-                        await archiveThread.members.add(p.id).catch(() => null);
-                    }
-                    await archiveThread.send(`🌑 **Revisions, coordinate your strategy here.**\nCurrently active: ${revisions.map(p => `<@${p.id}>`).join(', ')}`);
-                } catch (e) { logger.error('Failed to create mafia secret thread', e, 'Mafia'); }
+                    this.graveyardThreadId = graveyardThread.id;
+                    await graveyardThread.send(`💀 **The Sanctuary Graveyard.**\nOnly the dead can read and speak here. The living cannot hear you.`);
+                } catch (e) { logger.error('Failed to create graveyard thread', e, 'Mafia'); }
+            })());
+
+            // 2. Create Secret Hub
+            const revisions = Array.from(this.players.values()).filter(p => p.role?.faction === 'Revisions' && !p.isBot);
+            if (revisions.length > 1 || this.settings.gameMode === 'Ink Rot') {
+                threadTasks.push((async () => {
+                    try {
+                        const archiveThread = await thread.parent.threads.create({
+                            name: `🌑 Viral Rot Secret Hub`,
+                            autoArchiveDuration: 60,
+                            type: 12, 
+                            reason: 'Mafia secret channel',
+                        });
+                        this.archiveThreadId = archiveThread.id;
+                        for (const p of revisions) {
+                            await archiveThread.members.add(p.id).catch(() => null);
+                        }
+                        await archiveThread.send(`🌑 **Revisions, coordinate your strategy here.**\nCurrently active: ${revisions.map(p => `<@${p.id}>`).join(', ')}`);
+                    } catch (e) { logger.error('Failed to create mafia secret thread', e, 'Mafia'); }
+                })());
             }
-            
+
+            await Promise.all(threadTasks);
             this.startNight();
         }, this.settings.prologueTime * 1000);
         
@@ -1026,8 +1034,9 @@ class MafiaGame extends EventEmitter {
         
         const alivePlayers = this.getAlivePlayers();
         const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        for (const p of alivePlayers) {
-            if (p.isBot) continue;
+        // --- PARALLEL DM UPDATES ---
+        const nightUpdates = alivePlayers.map(async (p) => {
+            if (p.isBot) return;
 
             const components = [];
             
@@ -1058,16 +1067,18 @@ class MafiaGame extends EventEmitter {
 
             try {
                 const nightDuration = this.settings.nightTime || 60;
-                const endTime = Math.floor(Date.now() / 1000) + nightDuration;
+                const endTimeUnix = Math.floor(Date.now() / 1000) + nightDuration;
                 const willStatus = p.lastWill ? `📜 Current will: *"${p.lastWill}"*` : `📜 You haven't written a last will yet.`;
                 const roleInfo = p.role && p.role.priority !== 99 ? `**Your Role:** ${p.role.emoji} ${p.role.name}` : '';
-                const content = `🌑 **Night ${this.dayCount}** · Ends <t:${endTime}:R>\n${roleInfo}\n${willStatus}`;
+                const content = `🌑 **Night ${this.dayCount}** · Ends <t:${endTimeUnix}:R>\n${roleInfo}\n${willStatus}`;
                 
                 await this.refreshControlPanel(p, content, components);
             } catch (e) {
                 logger.error(`Failed to DM player ${p.name}:`, e, 'Mafia');
             }
-        }
+        });
+
+        await Promise.all(nightUpdates);
         
         this.activeTimer = setTimeout(() => {
             if (this.state !== 'GAME_OVER') this.endNight();
