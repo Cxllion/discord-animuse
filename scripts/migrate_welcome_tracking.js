@@ -29,6 +29,9 @@ const migrateWelcomeTracking = async () => {
                 joined_at timestamp with time zone DEFAULT now(),
                 PRIMARY KEY (user_id, guild_id)
             );
+            ALTER TABLE public.welcome_tracking ENABLE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS "Enable all access for service role on welcome_tracking" ON public.welcome_tracking;
+            CREATE POLICY "Enable all access for service role on welcome_tracking" ON public.welcome_tracking FOR ALL TO service_role USING (true) WITH CHECK (true);
         `);
 
         console.log('Welcome Tracking migration complete.');

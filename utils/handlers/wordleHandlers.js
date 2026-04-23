@@ -26,7 +26,7 @@ const handleWordleInteraction = async (interaction) => {
     // Security Check: Only the game owner can interact
     if (user.id !== targetUserId) {
         return interaction.reply({ 
-            content: '🔒 **Terminal Locked.** This archive session is synchronized to another patron.', 
+            content: '🔒 **Terminal Locked.** This session is synchronized to another patron.', 
             flags: MessageFlags.Ephemeral 
         });
     }
@@ -34,11 +34,11 @@ const handleWordleInteraction = async (interaction) => {
     if (action === 'guess') {
         const modal = new ModalBuilder()
             .setCustomId(`wordle_modal_guess_${user.id}`)
-            .setTitle('Decode Archive');
+            .setTitle('Wordle: Submit Guess');
 
         const input = new TextInputBuilder()
             .setCustomId('guess_input')
-            .setLabel('5-Letter Sequence')
+            .setLabel('5-Letter Word')
             .setStyle(TextInputStyle.Short)
             .setMinLength(5)
             .setMaxLength(5)
@@ -57,7 +57,7 @@ const handleWordleInteraction = async (interaction) => {
             const buffer = await wordleGenerator.generateBoard(gameState);
             const attachment = new AttachmentBuilder(buffer, { name: 'wordle.png' });
 
-            const embed = baseEmbed('Wordle Archives', 'A new 5-letter sequence has been materialized. Begin decoding protocol.')
+            const embed = baseEmbed('Daily Wordle', 'A new 5-letter word has been materialized. Begin the decoding protocol.')
                 .setImage('attachment://wordle.png');
 
             const row = new ActionRowBuilder().addComponents(
@@ -92,40 +92,53 @@ const handleWordleModals = async (interaction) => {
     // 2. Validate Word (External API)
     const isValid = await wordleService.isValidWord(guess);
     if (!isValid) {
-        return interaction.followUp({ content: `❌ **"${guess}"** is not recognized in the standard English archives.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `❌ **"${guess}"** is not a recognized word in our archives.`, flags: MessageFlags.Ephemeral });
     }
 
     // 3. Process Guess
-    const gameState = wordleService.submitGuess(user.id, guess);
+    const gameState = await wordleService.submitGuess(user.id, guess);
     if (!gameState) return;
 
     // 4. Render Updates
     const buffer = await wordleGenerator.generateBoard(gameState);
     const attachment = new AttachmentBuilder(buffer, { name: 'wordle.png' });
 
-    const embed = baseEmbed('Wordle Archives')
+    const embed = baseEmbed('Daily Wordle')
         .setImage('attachment://wordle.png');
 
     const row = new ActionRowBuilder();
     
     if (gameState.status === 'PLAYING') {
-        embed.setDescription(`Sequence **${gameState.guesses.length}/6** recorded. Continue the search.`);
+        embed.setDescription(`Guess **${gameState.guesses.length}/6** recorded. Keep going.`);
         row.addComponents(
             new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️')
         );
     } else {
         const isWin = gameState.status === 'WON';
-        const title = isWin ? '🏆 Archive Decoded' : '💀 Archive Lost';
-        const desc = isWin 
-            ? `Success! You identified the sequence **${gameState.targetWord}** in **${gameState.guesses.length}** attempts.`
-            : `Protocol failed. The sequence was **${gameState.targetWord}**. The archive has been redacted.`;
+        const reward = gameState.reward || { points: 0, firstBlood: false };
+        
+        let title = isWin ? '🏆 Wordle Decoded' : '💀 Archive Lost';
+        let desc = isWin 
+            ? `Success! You identified the word **${gameState.targetWord}** in **${gameState.guesses.length}** attempts.`
+            : `Protocol failed. The word was **${gameState.targetWord}**. The record has been redacted.`;
+
+        if (isWin) {
+            desc += `\n\n✨ **Points Earned:** +${reward.points} PTS`;
+            if (reward.firstBlood) {
+                desc += `\n🩸 **FIRST BLOOD!** Bonus awarded for being the first solver today.`;
+                title = '🩸 First Blood: Archive Decoded';
+            }
+        } else {
+            desc += `\n\nNo points were awarded for this solar cycle.`;
+        }
         
         embed.setTitle(title).setDescription(desc).setColor(isWin ? '#22C55E' : '#EF4444');
         
         row.addComponents(
-            new ButtonBuilder().setCustomId(`wordle_new_${user.id}`).setLabel('Try Again').setStyle(ButtonStyle.Success).setEmoji('🔄')
+            new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
         );
-        wordleService.endGame(user.id);
+        
+        // Note: wordleService.endGame is handled internally by submitGuess for daily logic
     }
 
     await interaction.editReply({ embeds: [embed], components: [row], files: [attachment] });

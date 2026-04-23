@@ -4,33 +4,32 @@ const wordleGenerator = require('../../utils/generators/wordleGenerator');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 
 /**
- * Wordle Command: Entry point for starting a Wordle game session.
+ * Wordle Command: Entry point for the Daily Wordle challenge.
  */
 module.exports = {
-    category: 'fun',
+    category: 'minigames',
     dbRequired: true,
-    cooldown: 15, // 15 seconds cooldown to prevent API spam
+    cooldown: 15, 
     data: new SlashCommandBuilder()
         .setName('wordle')
-        .setDescription('Initialize a Wordle decoding protocol.'),
+        .setDescription('Initialize the Daily Wordle decoding protocol.'),
     
     async execute(interaction) {
-        // Initial defer to allow API call to resolve
         await interaction.deferReply();
         
         try {
             const userId = interaction.user.id;
             
-            // 1. Initialize Game State via Service (Calls Random Word API)
+            // 1. Initialize Game State (Daily Word)
             const gameState = await wordleService.startNewGame(userId);
             
-            // 2. Generate Initial Board (Canvas)
+            // 2. Generate Initial Board
             const buffer = await wordleGenerator.generateBoard(gameState);
             const attachment = new AttachmentBuilder(buffer, { name: 'wordle.png' });
             
-            // 3. Construct Thematic Response
-            const embed = baseEmbed('Wordle Archives')
-                .setDescription('A fresh 5-letter sequence has been materialized. Synchronize your biometrics and begin the decoding protocol.')
+            // 3. Construct Response
+            const embed = baseEmbed('Daily Wordle')
+                .setDescription('A fresh 5-letter word has been materialized. Synchronize your biometrics and begin the decoding protocol.\n\n🕒 **Reset:** 00:00 GMT')
                 .setImage('attachment://wordle.png');
             
             const row = new ActionRowBuilder().addComponents(

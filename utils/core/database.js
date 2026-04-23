@@ -36,6 +36,8 @@ const {
     createLayer, getLayers, addRoleToLayer 
 } = require('../services/roleService');
 
+const minigameService = require('../services/minigameService');
+
 const db = require('./db');
 const logger = require('./logger');
 
@@ -128,5 +130,8 @@ module.exports = {
     removeLevelRole,
     createLayer,
     getLayers,
-    addRoleToLayer
+    addRoleToLayer,
+
+    // Minigames
+    minigameService
 };

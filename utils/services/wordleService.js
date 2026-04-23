@@ -1,35 +1,36 @@
 const axios = require('axios');
 const logger = require('../core/logger');
+const minigameService = require('./minigameService');
 
 /**
- * Wordle Service: Handles the logic and state for the Wordle minigame.
+ * Wordle Service: Handles the logic and state for the Daily Wordle minigame.
  */
 class WordleService {
     constructor() {
-        // In-memory storage for active games
-        // Key: userId, Value: { targetWord, guesses, status, startedAt }
+        // In-memory storage for active sessions (current day only)
+        // Key: userId, Value: { guesses, status, startedAt }
         this.activeGames = new Map();
         
         // API Endpoints
-        this.WORD_API = 'https://random-word-api.herokuapp.com/word?length=5';
         this.DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
     }
 
     /**
-     * Starts a new Wordle session for a user.
+     * Starts a new Wordle session for a user using the Daily Word.
      */
     async startNewGame(userId) {
         try {
-            const response = await axios.get(this.WORD_API);
-            const word = response.data[0].toUpperCase();
-            
-            // Log target word for debugging (only in dev/test)
-            if (process.env.TEST_MODE === 'true') {
-                logger.debug(`[Wordle] New game for ${userId}. Target: ${word}`);
+            // 1. Check if already played today
+            const hasPlayed = await minigameService.hasPlayedToday(userId);
+            if (hasPlayed) {
+                throw new Error('You have already completed the decoding protocol for this solar cycle. Return after the next GMT reset.');
             }
 
+            // 2. Fetch the Daily Word
+            const targetWord = await minigameService.getDailyWord();
+
             const gameState = {
-                targetWord: word,
+                targetWord: targetWord,
                 guesses: [], // Array of { word, result }
                 status: 'PLAYING',
                 startedAt: Date.now()
@@ -38,7 +39,8 @@ class WordleService {
             this.activeGames.set(userId, gameState);
             return gameState;
         } catch (error) {
-            logger.error(`[Wordle] Failed to fetch word for ${userId}:`, error);
+            if (error.message.includes('solar cycle')) throw error;
+            logger.error(`[Wordle] Failed to start game for ${userId}:`, error);
             throw new Error('The Wordle Archives are currently unreachable. Please try again later.');
         }
     }
@@ -59,7 +61,7 @@ class WordleService {
     /**
      * Processes a guess and updates the game state.
      */
-    submitGuess(userId, guess) {
+    async submitGuess(userId, guess) {
         const game = this.activeGames.get(userId);
         if (!game || game.status !== 'PLAYING') return null;
 
@@ -72,6 +74,13 @@ class WordleService {
             game.status = 'WON';
         } else if (game.guesses.length >= 6) {
             game.status = 'LOST';
+        }
+
+        // If game ended, record result and award points
+        if (game.status !== 'PLAYING') {
+            const solveData = await minigameService.recordWordleResult(userId, game.guesses.length, game.status === 'WON');
+            game.reward = solveData; // { points, firstBlood }
+            this.activeGames.delete(userId); // Clear active session
         }
 
         return game;
@@ -116,10 +125,6 @@ class WordleService {
 
     getGame(userId) {
         return this.activeGames.get(userId);
-    }
-
-    endGame(userId) {
-        this.activeGames.delete(userId);
     }
 }
 

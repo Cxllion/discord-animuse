@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION add_xp_to_user(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     v_old_xp INT := 0;

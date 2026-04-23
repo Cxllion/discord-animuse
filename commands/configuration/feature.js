@@ -41,7 +41,8 @@ module.exports = {
                             { name: '🎯 Bingo', value: 'bingo' },
                             { name: '🔔 Activity', value: 'activity' },
                             { name: '👤 Profile', value: 'profile' },
-                            { name: '🕵️ Mafia', value: 'mafia' }
+                            { name: '🕵️ Mafia', value: 'mafia' },
+                            { name: '📊 Leaderboard', value: 'leaderboard' }
                         ))
                 .addStringOption(option =>
                     option.setName('query')
@@ -551,6 +552,56 @@ module.exports = {
                     } catch (err) {
                         logger.error('Search Test Failed:', err, 'FeatureCommand');
                         await interaction.followUp({ content: `❌ **Failed to generate search card**: ${err.message}` });
+                    }
+                }
+
+                // --- LEADERBOARD TEST ---
+                else if (type === 'leaderboard') {
+                    await interaction.editReply({ content: '📊 **Leaderboard Diagnostic**: Materializing both Experience and Minigame archives... ♡' });
+
+                    const { generateLeaderboard } = require('../../utils/generators/leaderboardGenerator');
+                    const { generateMinigameLeaderboard } = require('../../utils/generators/minigameLeaderboardGenerator');
+                    const leveling = require('../../utils/services/leveling');
+                    const { minigameService } = require('../../utils/core/database');
+
+                    try {
+                        const guildId = interaction.guild.id;
+                        const themeColor = await getUserColor(interaction.user.id, guildId) || CONFIG.COLORS.PRIMARY;
+
+                        // 1. XP Leaderboard Diagnostic
+                        const topRaw = await leveling.getTopUsers(guildId);
+                        const topUsers = topRaw.map((u, i) => ({
+                            ...u,
+                            username: `Archivist ${i + 1}`,
+                            avatarUrl: interaction.user.displayAvatarURL()
+                        }));
+                        const rankData = await leveling.getUserRank(interaction.user.id, guildId);
+                        const progress = leveling.getLevelProgress(rankData?.xp || 0, rankData?.level || 0);
+
+                        const bufferExp = await generateLeaderboard(
+                            interaction.user,
+                            { rank: rankData?.rank || '?', level: rankData?.level || 0, xp: rankData?.xp || 0, percent: progress.percent },
+                            topUsers,
+                            null, themeColor, interaction.user.username, interaction.user.displayAvatarURL()
+                        );
+                        const attachmentExp = new AttachmentBuilder(bufferExp, { name: 'test-leaderboard-exp.webp' });
+
+                        // 2. Minigame Leaderboard Diagnostic
+                        const topMinigameRaw = await minigameService.getTopPlayers(10);
+                        const topMinigame = topMinigameRaw.length > 0 ? topMinigameRaw : Array.from({ length: 5 }, (_, i) => ({ user_id: '1', total_points: 1000 - (i * 100), username: `Player ${i+1}` }));
+                        const miniStats = await minigameService.getUserStats(interaction.user.id);
+
+                        const bufferMini = await generateMinigameLeaderboard(interaction.user, miniStats, topMinigame, themeColor);
+                        const attachmentMini = new AttachmentBuilder(bufferMini, { name: 'test-leaderboard-mini.webp' });
+
+                        await interaction.editReply({ 
+                            content: `✅ **Leaderboard Diagnostic Complete**\nGenerated **Experience** and **Minigame** variants.`,
+                            files: [attachmentExp, attachmentMini] 
+                        });
+
+                    } catch (err) {
+                        logger.error('Leaderboard Test Failed:', err, 'FeatureCommand');
+                        await interaction.followUp({ content: `❌ **Failed to generate leaderboards**: ${err.message}` });
                     }
                 }
 

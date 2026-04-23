@@ -29,10 +29,10 @@ alter table public.users enable row level security;
 
 -- Policies for Service Role (Bot)
 create policy "Enable all access for service role on configs"
-on public.guild_configs for all using (true) with check (true);
+on public.guild_configs for all to service_role using (true) with check (true);
 
 create policy "Enable all access for service role on users"
-on public.users for all using (true) with check (true);
+on public.users for all to service_role using (true) with check (true);
 
 -- 3. Archive Stats (Mafia)
 create table if not exists public.archive_stats (
@@ -46,4 +46,4 @@ create table if not exists public.archive_stats (
 alter table public.archive_stats enable row level security;
 
 create policy "Enable all access for service role on archive_stats"
-on public.archive_stats for all using (true) with check (true);
+on public.archive_stats for all to service_role using (true) with check (true);

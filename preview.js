@@ -190,10 +190,12 @@ const generators = {
         ];
         return await generateAiringCard(media, episode, trackers, '#00E676');
     },
-    leaderboard: async () => {
+    leaderboard: async (userId = null, isBatch = false) => {
         const { generateLeaderboard } = require('./utils/generators/leaderboardGenerator');
+        const { generateMinigameLeaderboard } = require('./utils/generators/minigameLeaderboardGenerator');
+        
         const challenger = { 
-            username: 'You', 
+            username: 'Tester', 
             displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' 
         };
         const challengerData = { rank: 4, level: 25, xp: 8400, percent: 0.7 };
@@ -202,7 +204,20 @@ const generators = {
             level: 50 - i,
             avatarUrl: `https://cdn.discordapp.com/embed/avatars/${i % 5}.png`
         }));
-        return await generateLeaderboard(challenger, challengerData, topUsers, null, '#8B5CF6');
+
+        const bufferExp = await generateLeaderboard(challenger, challengerData, topUsers, null, '#8B5CF6');
+
+        const miniStats = { rank: 12, total_points: 4500 };
+        const topMini = Array.from({ length: 10 }, (_, i) => ({
+            username: `Pro ${i+1}`,
+            total_points: 10000 - (i * 500)
+        }));
+        const bufferMini = await generateMinigameLeaderboard(challenger, miniStats, topMini, '#3B82F6');
+
+        return [
+            { name: 'exp', buffer: bufferExp },
+            { name: 'minigames', buffer: bufferMini }
+        ];
     },
     search: async () => {
         const { generateSearchCard } = require('./utils/generators/searchGenerator');
