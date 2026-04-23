@@ -1,13 +1,13 @@
 const { ShardingManager } = require('discord.js');
 const logger = require('./utils/core/logger');
-require('dotenv').config();
+const CONFIG = require('./utils/config');
 
 // ==========================================
 // ANIMUSE SHARDING MANAGER (Master Process)
 // ==========================================
 
-const token = process.env.DISCORD_TOKEN;
-const enableSharding = process.env.ENABLE_SHARDING === 'true';
+const token = CONFIG.DISCORD_TOKEN;
+const enableSharding = CONFIG.ENABLE_SHARDING;
 
 if (!enableSharding) {
     logger.info('[Sharding] Sharding is DISABLED. Launching monolithic instance via index.js...', 'Manager');

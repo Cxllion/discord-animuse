@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { checkAiringAnime, checkUserActivity, syncAllUserTrackers } = require('../utils/services/scheduler');
 const { deployCommands } = require('../utils/core/commandDeployer');
 const logger = require('../utils/core/logger');
+const CONFIG = require('../utils/config');
 
 module.exports = {
     name: Events.ClientReady,
@@ -24,9 +25,9 @@ module.exports = {
         console.log('└──────────────────────────────────────────┘\n');
         
         // Initialize Interval Tracker
-        client.intervals = [];
+        client.intervals = client.intervals || [];
 
-        // Clear Caches to ensure V3 visuals are immediate
+        // Clear Caches
         const { flushAniListCache } = require('../utils/services/anilistService');
         const { clearConfigCache } = require('../utils/services/guildConfigService');
         flushAniListCache();
@@ -34,10 +35,10 @@ module.exports = {
 
         // ── Dynamic Presence Rotation ─────────────────────────────────────────
         const activities = [
-            { name: 'over the Library Archives... 📚', type: 3 }, // WATCHING
+            { name: 'over the Library Archives... 📚', type: 3 },
             { name: 'the AniList Airing Ticker... 📡', type: 3 },
-            { name: 'the rustle of digital pages... 📖', type: 2 }, // LISTENING
-            { name: 'Categorizing new memories... ✨', type: 0 }, // PLAYING
+            { name: 'the rustle of digital pages... 📖', type: 2 },
+            { name: 'Categorizing new memories... ✨', type: 0 },
             { name: 'vibrant HUD statistics... 📊', type: 3 },
             { name: 'for new Readers to arrive... ♡', type: 3 }
         ];
@@ -52,25 +53,19 @@ module.exports = {
                     status: 'online'
                 });
                 activityIndex = (activityIndex + 1) % activities.length;
-            } catch (e) {
-                // Ignore shard errors during transition
-            }
+            } catch (e) {}
         };
 
-        updatePresence(); // Set initial
-        client.intervals.push(setInterval(updatePresence, 60 * 1000)); // Rotate every minute
+        updatePresence();
+        client.intervals.push(setInterval(updatePresence, 60 * 1000));
 
-
-        // Deploy Commands (Conditional)
-        const shouldDeploy = process.env.DEPLOY_ON_START === 'true';
-        if (shouldDeploy) {
+        // Deploy Commands
+        if (CONFIG.DEPLOY_ON_START) {
             try {
                 await deployCommands(client);
             } catch (e) {
                 logger.error('Command deployment failure:', e, 'Deployer');
             }
-        } else {
-            logger.debug('Command deployment skipped (DEPLOY_ON_START=false)', 'Deployer');
         }
 
         client.isSystemsGo = true;
@@ -87,7 +82,6 @@ module.exports = {
         try {
             const supabase = require('../utils/core/supabaseClient');
             
-            // Safety: Wrap the probe in a 15s timeout so the Ready event finishes even if DB is slow
             const probeDatabase = () => {
                 return new Promise(async (resolve) => {
                     const timer = setTimeout(() => resolve({ timeout: true }), 15000);
@@ -115,48 +109,28 @@ module.exports = {
             logger.warn('⚠️ [Activity Dedup] Could not reach Supabase for migration probe (Internal Error).', 'System');
         }
 
-        if (process.env.DISABLE_INTERNAL_SCHEDULER !== 'true') {
+        if (!CONFIG.DISABLE_INTERNAL_SCHEDULER) {
             setTimeout(async () => {
-                logger.debug('Initializing scheduler polling (5m cycles)...', 'System');
+                logger.debug('Initializing scheduler activities...', 'System');
                 
-                if (!client.isTestBot) {
-                    // 1. Initial Pulses
-                    checkAiringAnime(client).catch(e => logger.error('[Scheduler] Initial Airing crash:', e));
-                    checkUserActivity(client).catch(e => logger.error('[Scheduler] Initial Activity crash:', e));
-                    
-                    // 2. Main Cycles (5m)
-                    client.intervals.push(setInterval(async () => {
-                        try {
-                            await checkAiringAnime(client);
-                            await checkUserActivity(client);
-                        } catch (error) {
-                            logger.error('Notification loop failure:', error, 'Scheduler');
-                        }
-                    }, 5 * 60 * 1000));
+                // 1. Airing Notifications (5m)
+                client.scheduler.addTask('Airing Detection', checkAiringAnime, 5 * 60 * 1000, { immediate: true });
+                
+                // 2. User Activity Feeds (5m)
+                client.scheduler.addTask('Activity Feed', checkUserActivity, 5 * 60 * 1000, { immediate: true });
 
-                    // 3. Sync Tasks (6h)
-                    setTimeout(async () => {
-                        syncAllUserTrackers(client).catch(e => logger.error('[Sync] Startup sync failed:', e));
-                    }, 60000);
+                // 3. Sync User Trackers (6h)
+                client.scheduler.addTask('Tracker Sync', syncAllUserTrackers, 6 * 60 * 60 * 1000);
 
-                    client.intervals.push(setInterval(async () => {
-                        syncAllUserTrackers(client).catch(e => logger.error('[Sync] Loop sync failed:', e));
-                    }, 6 * 60 * 60 * 1000));
-
-                } else {
-                    logger.debug('Test bot detected. ALL background schedulers (Airing, Activity, Sync) are DISABLED to prevent production buttheading. ♡', 'System');
-                }
-
-                // --- 2. Housekeeping & Cache Maintenance (1h) ---
-                client.intervals.push(setInterval(() => {
+                // 4. Global Housekeeping (1h)
+                client.scheduler.addTask('Housekeeping', () => {
                     flushAniListCache();
                     clearConfigCache();
-                }, 60 * 60 * 1000));
-            }, 10000);
-        }
- else {
-            logger.info('Internal Scheduler disabled. Assuming external cron via worker.js', 'System');
-        }
+                }, 3600 * 1000, { testModeSafe: true });
 
+            }, 10000);
+        } else {
+            logger.info('Internal Scheduler disabled. Assuming external worker.', 'System');
+        }
     },
 };

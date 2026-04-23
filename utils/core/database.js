@@ -36,9 +36,18 @@ const {
     createLayer, getLayers, addRoleToLayer 
 } = require('../services/roleService');
 
+const db = require('./db');
+const logger = require('./logger');
+
 const initializeDatabase = async () => { 
-    // Handled by individual services or startup migrations
-    return true; 
+    try {
+        await db.query('SELECT 1');
+        logger.info('Database handshake successful. Archives are reachable. ♡', 'Database');
+        return true;
+    } catch (err) {
+        logger.error('Critical: Database handshake failed.', err, 'Database');
+        throw err;
+    }
 };
 
 module.exports = {

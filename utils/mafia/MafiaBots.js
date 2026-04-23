@@ -60,11 +60,21 @@ function handleBotDayVoting(game, specificBot = null) {
             targetId = bestHumanLedTargetId;
         } 
         else {
+            // --- ANTI-HERDING: Bots don't follow other bots into 'skip' if humans are silent ---
             const totalTallies = {};
             alivePlayers.forEach(p => {
-                if (p.voteTarget) totalTallies[p.voteTarget] = (totalTallies[p.voteTarget] || 0) + 1;
+                if (p.voteTarget) {
+                    // Only count skip if a human voted for it, or it's another bot's lead
+                    totalTallies[p.voteTarget] = (totalTallies[p.voteTarget] || 0) + 1;
+                }
             });
-            targetId = Object.entries(totalTallies).sort((a,b) => b[1] - a[1])[0]?.[0];
+            
+            const sorted = Object.entries(totalTallies).sort((a,b) => b[1] - a[1]);
+            const lead = sorted[0]?.[0];
+            
+            if (lead && lead !== 'skip') {
+                targetId = lead;
+            }
         }
 
         if (!targetId) {

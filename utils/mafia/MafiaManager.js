@@ -26,6 +26,18 @@ class MafiaManager {
     startPulse(client) {
         if (this.pulseInterval) clearInterval(this.pulseInterval);
         this.client = client;
+        
+        // --- REAL-TIME VOICE SYNCHRONIZATION ---
+        client.on('voiceStateUpdate', async (oldState, newState) => {
+            if (!newState.guild || oldState.channelId === newState.channelId) return;
+
+            // Only sync if they joined or moved to a Mafia VC
+            const game = this.getGameByGuild(newState.guild.id);
+            if (game && game.voiceChannelId === newState.channelId) {
+                await game.syncMemberVoice(newState.member).catch(() => null);
+            }
+        });
+
         this.pulseInterval = setInterval(() => this.pulse(client), 60000); // Pulse every 1 minute
     }
 

@@ -5,25 +5,29 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js",
+    "dev": "nodemon index.js",
     "migrate": "node scripts/migrate.js",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "test:manual": "node test-bot.js",
     "prod": "npx pm2 start ecosystem.config.js",
     "pm2:logs": "npx pm2 logs animuse-bot",
     "pm2:status": "npx pm2 status",
     "preview": "nodemon preview.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.87",
     "@supabase/supabase-js": "^2.47.10",
     "axios": "^1.7.9",
+    "crypto-js": "^4.2.0",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.7",
-    "moment": "^2.30.1",
     "node-cache": "^5.1.2",
     "pg": "^8.16.3",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "zod": "^4.3.6"
   },
   "engines": {

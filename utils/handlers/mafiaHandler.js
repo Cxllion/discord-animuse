@@ -250,6 +250,19 @@ const handleMafiaInteraction = async (interaction) => {
 
         // Last Will button (from Night DM)
         if (interaction.customId.startsWith('mafia_will_')) {
+            const parts = interaction.customId.split('_');
+            
+            // Validate phase/day if available (skip if parts too short meaning it's an old msg)
+            if (parts.length >= 5) {
+                const hostId = parts[2];
+                const state = parts[3];
+                const day = parseInt(parts[4]);
+                
+                if (state !== game.state || day !== game.dayCount) {
+                    return interaction.reply({ content: '❌ **Terminal Desynchronized.** This link belongs to a previous phase. Please use the controls in your latest message.', flags: MessageFlags.Ephemeral });
+                }
+            }
+
             const p = game.players.get(interaction.user.id);
             if (!p) return interaction.reply({ content: 'You must join the game first.', flags: MessageFlags.Ephemeral });
             if (!p.alive) return interaction.reply({ content: '❌ **Status: Redacted.** Your biometric records are locked. Dead players cannot update their records.', flags: MessageFlags.Ephemeral });
@@ -271,7 +284,21 @@ const handleMafiaInteraction = async (interaction) => {
         // Voting buttons
         if (interaction.customId.startsWith('mafia_vote_')) {
             const voteParts = interaction.customId.split('_');
-            const targetPlayerId = voteParts.slice(3).join('_'); // Robustly join remaining parts in case targetId has underscores
+            
+            // NEW FORMAT: mafia_vote_HOST_STATE_DAY_TARGET
+            // OLD FORMAT: mafia_vote_HOST_TARGET
+            let targetPlayerId;
+            if (voteParts.length >= 6) {
+                const state = voteParts[3];
+                const day = parseInt(voteParts[4]);
+                targetPlayerId = voteParts.slice(5).join('_');
+                
+                if (state !== game.state || day !== game.dayCount) {
+                    return interaction.reply({ content: '❌ **Ballot Expired.** This voting board belongs to a previous phase. Please use the buttons in the most recent system update.', flags: MessageFlags.Ephemeral });
+                }
+            } else {
+                targetPlayerId = voteParts.slice(3).join('_');
+            }
             
             if (game.state !== 'VOTING') return interaction.reply({ content: 'Voting is currently closed.', flags: MessageFlags.Ephemeral });
             
@@ -413,6 +440,15 @@ const handleMafiaInteraction = async (interaction) => {
         
         // Night ability target selector (DM - Terminal Revamp)
         if (interaction.customId.startsWith('mafia_night_target_') || interaction.customId.startsWith('mafia_action_')) {
+            const parts = interaction.customId.split('_');
+            if (parts.length >= 5) {
+                const state = parts[3];
+                const day = parseInt(parts[4]);
+                if (state !== game.state || day !== game.dayCount) {
+                    return interaction.update({ content: '>>> 🔄 **Terminal Error:** This console has been desynchronized by a phase transition. Please use the most recent uplink.', components: [] });
+                }
+            }
+
             if (game.state !== 'NIGHT') return interaction.update({ content: '>>> 🔄 **Terminal Error:** Night protocols have concluded.', components: [] });
             
             if (game.isLocked()) {

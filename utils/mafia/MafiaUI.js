@@ -309,41 +309,35 @@ function buildEndedLobbyPayload(game, winner) {
     return { embeds: [embed], components: [row] };
 }
 
-function buildMorningReport(game, deaths) {
+async function buildMorningReport(game, allDeaths) {
     const reveal = game.settings.revealRoles;
-    
     const embed = baseEmbed(`🌅 Morning Report — Night ${game.dayCount}`, null, null)
-        .setColor(deaths.length > 0 ? Lore.COLORS.VOTING : Lore.COLORS.DAY)
+        .setColor(allDeaths.length > 0 ? Lore.COLORS.VOTING : Lore.COLORS.DAY)
         .setImage(Lore.BANNERS.DAY)
         .setTimestamp();
 
-    if (deaths.length === 0) {
+    if (allDeaths.length === 0) {
         const lore = Lore.STORY.MORNING_QUIET[Math.floor(Math.random() * Lore.STORY.MORNING_QUIET.length)];
         embed.setDescription(`### **ALL RECORDS SECURE**\n${lore}`);
     } else {
-        embed.setDescription(`### **${deaths.length} SIGNATURE${deaths.length === 1 ? '' : 'S'} ERASED**\nThe Sanctuary's monitors flicker. Fatal biometric redactions were detected during the night cycle.`);
+        embed.setDescription(`### **${allDeaths.length} SIGNATURE${allDeaths.length === 1 ? '' : 'S'} ERASED**\nThe Sanctuary's monitors flicker. Fatal biometric redactions were detected during the night cycle.`);
         
-        for (const d of deaths) {
+        for (const d of allDeaths) {
             const roleStr = reveal
                 ? (d.target.role ? `${d.target.role.emoji} **${d.target.role.name}** (${d.target.role.faction})` : '`Unknown`')
                 : '🔒 **REDACTED**';
             
-            // --- FORENSIC CATEGORIZATION ---
             let statusHeader = "💀 ARCHIVAL ERASURE";
-            let statusColor = "REDACTION";
             let codDescription = "Their signal was unceremoniously redacted.";
 
             if (d.isGuilt) {
                 statusHeader = "💔 BIOMETRIC FLATLINE";
-                statusColor = "GUILT";
                 codDescription = "Redacted due to internal safeguard overload (Remorse).";
             } else if (d.source?.role?.faction === 'Revisions') {
                 statusHeader = "🛑 VIRAL OVERWRITE";
-                statusColor = "ROT";
                 codDescription = "Their biometric record was corrupted by the Viral Rot.";
             } else if (d.source?.role?.name === 'The Bookburner') {
                 statusHeader = "🔥 THERMAL PURGE";
-                statusColor = "BOOKBURNING";
                 codDescription = "Incinerated during a localized core-venting event.";
             } else if (d.source?.role?.name === 'The Ghostwriter') {
                 statusHeader = "💀 LITERARY REDACTION";
@@ -374,7 +368,6 @@ function buildMorningReport(game, deaths) {
     const alive = Array.from(game.players.values()).filter(p => p.alive);
     const dead = Array.from(game.players.values()).filter(p => !p.alive);
     
-    // Compacted Roster
     embed.addFields(
         { 
             name: `🧍 Survivors (${alive.length})`, 
@@ -611,7 +604,7 @@ function buildNightActionDropdown(player, game) {
 
     const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-            .setCustomId(`mafia_action_${game.hostId}`)
+            .setCustomId(`mafia_action_${game.hostId}_${game.state}_${game.dayCount}`)
             .setPlaceholder('📜 Select Archival Priority...')
             .addOptions(options.map(opt => ({
                 label: opt.label,
@@ -630,6 +623,10 @@ function buildNightHUD(player, game) {
     let content = `🌑 **Phase: Night ${game.dayCount}** | Ends <t:${endTime}:R>\n`;
     content += `**Identity:** \`${roleName}\`\n\n`;
     
+    if (player.intelligenceLog && player.intelligenceLog.length > 0) {
+        content += `📂 **ARCHIVAL INTELLIGENCE:**\n${player.intelligenceLog.map(log => `> ${log}`).join('\n')}\n\n`;
+    }
+    
     if (player.nightActionTarget) {
         const target = game.players.get(player.nightActionTarget);
         content += `✅ **Action Locked:** Protocol established on \`${target?.name || 'Unknown'}\`.\n`;
@@ -646,7 +643,7 @@ function buildNightHUD(player, game) {
     const willLabel = player.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
     rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(`mafia_will_${game.hostId}`)
+            .setCustomId(`mafia_will_${game.hostId}_${game.state}_${game.dayCount}`)
             .setLabel(willLabel)
             .setStyle(ButtonStyle.Secondary)
     ));
@@ -659,8 +656,8 @@ function buildDayHUD(player, game) {
     let content = `☀️ **Phase: Day ${game.dayCount} (Discussion)**\n`;
     content += `**Identity:** \`${roleName}\`\n\n`;
 
-    if (player.lastNightResult) {
-        content += `📊 **LATEST INTELLIGENCE:**\n> ${player.lastNightResult}\n\n`;
+    if (player.intelligenceLog && player.intelligenceLog.length > 0) {
+        content += `📂 **ARCHIVAL INTELLIGENCE:**\n${player.intelligenceLog.map(log => `> ${log}`).join('\n')}\n\n`;
     }
 
     content += `The archives are open. Use the thread to deliberate with fellow survivors.`;

@@ -1,19 +1,13 @@
 const supabase = require('../core/supabaseClient');
 const logger = require('../core/logger');
+const cacheManager = require('../core/CacheManager');
 
-// Simple in-memory cache for guild configs
-const configCache = new Map();
-const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Namespaced Cache via CacheManager
+const configCache = cacheManager.getNamespace('guild_configs', { stdTTL: 300 }); // 5 minutes
 
 const fetchConfig = async (guildId) => {
-    if (configCache.has(guildId)) {
-        const { data, timestamp } = configCache.get(guildId);
-        if (Date.now() - timestamp < CONFIG_CACHE_TTL) {
-            return data;
-        } else {
-            configCache.delete(guildId);
-        }
-    }
+    const cached = configCache.get(guildId);
+    if (cached) return cached;
 
     if (!supabase) return null;
 
@@ -56,7 +50,7 @@ const fetchConfig = async (guildId) => {
         };
     }
 
-    configCache.set(guildId, { data: configData, timestamp: Date.now() });
+    configCache.set(guildId, configData);
     return configData;
 };
 
@@ -74,7 +68,7 @@ const upsertConfig = async (guildId, updates) => {
         return { error };
     }
 
-    configCache.set(guildId, { data, timestamp: Date.now() });
+    configCache.set(guildId, data);
     return { data };
 };
 
@@ -83,7 +77,7 @@ const assignChannel = async (guildId, key, channelId) => {
     const updates = { [key]: channelId };
     await supabase.from('guild_configs').update(updates).eq('guild_id', guildId);
     // Invalidate cache so next fetchConfig() returns fresh data
-    configCache.delete(guildId);
+    configCache.del(guildId);
 };
 
 const getArchiveSettings = async (guildId) => {
@@ -176,7 +170,7 @@ const getGuildChannelData = async (guildId) => {
  * Manually flushes the entire configuration cache.
  */
 const clearConfigCache = () => {
-    configCache.clear();
+    configCache.flushAll();
     logger.info('Library Config Cache has been cleared and synchronized. ♡', 'Database');
 };
 

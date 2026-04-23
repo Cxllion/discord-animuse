@@ -37,15 +37,17 @@ module.exports = {
 
         // Fetch config (Note: FetchConfig has its own 5m in-memory cache)
         const config = await fetchConfig(message.guild.id);
+        if (!config) return;
+
+        // --- Maintenance Mode Guard ---
+        if (config.maintenance_mode && !isSelfTest) return;
 
         // --- Anti-Ghosting: Protect Welcome ---
         await markAsSpoken(message.author.id, message.guild.id);
 
         // --- Activity Pulse (For Hybrid Sorting) ---
-        // NOTE: Runs after config fetch; pulseChannelActivity has a 5m per-channel cooldown
+        // NOTE: pulseChannelActivity has a 5m per-channel cooldown
         await pulseChannelActivity(message.guild.id, message.channel.id);
-
-        if (!config) return; // DB error or fresh guild
 
         // --- Archive Bureau (Pin Mirroring) ---
         if (!isSelfTest && message.type === 6 && config.archive_mirror_channel_id) {

@@ -1,77 +1,139 @@
+const winston = require('winston');
+require('winston-daily-rotate-file');
 const { EmbedBuilder, WebhookClient } = require('discord.js');
+const CONFIG = require('../config');
+const path = require('path');
 
 /**
- * Standardized Logger for AniMuse
- * Levels: INFO, WARN, ERROR, DEBUG
+ * Modernized Logger for AniMuse V2
+ * Built on Winston for structured logging, rotation, and scalability.
  */
 
-// Initialize Global Developer Webhook
+// Custom Log Levels for Library Theme
+const levels = {
+    error: 0,
+    warn: 1,
+    info: 2,
+    http: 3,
+    debug: 4,
+};
+
+const colors = {
+    error: 'red',
+    warn: 'yellow',
+    info: 'blue',
+    http: 'magenta',
+    debug: 'white',
+};
+
+winston.addColors(colors);
+
+// Console Formatting (Readable)
+const consoleFormat = winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.colorize({ all: true }),
+    winston.format.printf(
+        (info) => `[${info.timestamp}] [${info.level}] ${info.context ? `[${info.context}] ` : ''}${info.message}${info.stack ? `\n${info.stack}` : ''}`
+    )
+);
+
+// File Formatting (Structured JSON)
+const fileFormat = winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+);
+
+const transports = [
+    // 1. Console Transport
+    new winston.transports.Console({
+        format: consoleFormat,
+        level: CONFIG.DEBUG ? 'debug' : 'info',
+    }),
+
+    // 2. Daily Rotate File (Combined logs)
+    new winston.transports.DailyRotateFile({
+        filename: path.join(__dirname, '../../logs/combined-%DATE%.log'),
+        datePattern: 'YYYY-MM-DD',
+        maxFiles: '14d',
+        format: fileFormat,
+        level: 'info',
+    }),
+
+    // 3. Daily Rotate File (Error only)
+    new winston.transports.DailyRotateFile({
+        filename: path.join(__dirname, '../../logs/error-%DATE%.log'),
+        datePattern: 'YYYY-MM-DD',
+        maxFiles: '30d',
+        format: fileFormat,
+        level: 'error',
+    }),
+];
+
+const loggerInstance = winston.createLogger({
+    level: CONFIG.DEBUG ? 'debug' : 'info',
+    levels,
+    transports,
+});
+
+// --- DISCORD WEBHOOK INTEGRATION ---
 let globalWebhook = null;
-if (process.env.LOGS_WEBHOOK_URL) {
+if (CONFIG.LOGS_WEBHOOK_URL) {
     try {
-        globalWebhook = new WebhookClient({ url: process.env.LOGS_WEBHOOK_URL });
+        globalWebhook = new WebhookClient({ url: CONFIG.LOGS_WEBHOOK_URL });
     } catch (e) {
         console.error('[Logger] Failed to initialize Global Webhook:', e.message);
     }
 }
 
-const formatTime = () => new Date().toISOString().replace('T', ' ').split('.')[0];
-
-const info = (message, context = '') => {
-    console.log(`[${formatTime()}] [INFO] ${context ? `[${context}] ` : ''}${message}`);
-};
-
-const warn = (message, context = '') => {
-    console.warn(`[${formatTime()}] [WARN] ${context ? `[${context}] ` : ''}${message}`);
-};
-
-const error = (message, err = null, context = '') => {
-    const logPrefix = `[${formatTime()}] [ERROR] ${context ? `[${context}] ` : ''}`;
-    console.error(`${logPrefix}${message}`);
-    
-    if (err) {
-        if (err.stack) console.error(err.stack);
-        else console.error(err);
-    }
-
-    // Report to Global Webhook (Developer Alert)
-    if (globalWebhook) {
-        const embed = new EmbedBuilder()
-            .setTitle('🚨 Critical System Alert')
-            .setDescription(`**${message}**\n\n\`\`\`js\n${err?.message || 'No additional error info'}\n\`\`\``)
-            .addFields(
-                { name: 'Context', value: context || 'None', inline: true },
-                { name: 'Timestamp', value: formatTime(), inline: true }
-            )
-            .setColor(0xFF0000) // Red
-            .setTimestamp();
-
-        globalWebhook.send({ embeds: [embed] }).catch(() => {});
-    }
-};
-
 /**
- * Log a server-specific report directly to a Discord channel.
- * @param {Guild} guild - Discord Guild object
- * @param {string} channelId - The logs_channel_id from config
- * @param {EmbedBuilder} embed - The report embed
+ * Wrap Winston methods for backward compatibility and enhanced features
  */
-const reportToGuild = async (guild, channelId, embed) => {
-    if (!channelId) return;
-    try {
-        const channel = await guild.channels.fetch(channelId).catch(() => null);
-        if (channel && channel.isTextBased()) {
-            await channel.send({ embeds: [embed] });
+const log = {
+    info: (message, context = '') => loggerInstance.info(message, { context }),
+    warn: (message, context = '') => loggerInstance.warn(message, { context }),
+    debug: (message, context = '') => loggerInstance.debug(message, { context }),
+    
+    error: (message, err = null, context = '') => {
+        const metadata = { context };
+        if (err instanceof Error) {
+            metadata.stack = err.stack;
+            metadata.errorMsg = err.message;
+        } else if (err) {
+            metadata.errorInfo = err;
         }
-    } catch (e) {
-        // Silently fail to avoid recursion if logging itself errors
+
+        loggerInstance.error(message, metadata);
+
+        // Report to Global Webhook (Developer Alert)
+        if (globalWebhook && !CONFIG.TEST_MODE) {
+            const embed = new EmbedBuilder()
+                .setTitle('🚨 Critical System Alert')
+                .setDescription(`**${message}**\n\n\`\`\`js\n${err?.message || err || 'No additional error info'}\n\`\`\``)
+                .addFields(
+                    { name: 'Context', value: context || 'None', inline: true },
+                    { name: 'Level', value: 'ERROR', inline: true }
+                )
+                .setColor(0xEF4444) // Error Red
+                .setTimestamp();
+
+            globalWebhook.send({ embeds: [embed] }).catch(() => {});
+        }
+    },
+
+    /**
+     * Log a server-specific report directly to a Discord channel.
+     */
+    reportToGuild: async (guild, channelId, embed) => {
+        if (!channelId || !guild) return;
+        try {
+            const channel = await guild.channels.fetch(channelId).catch(() => null);
+            if (channel && channel.isTextBased()) {
+                await channel.send({ embeds: [embed] });
+            }
+        } catch (e) {
+            loggerInstance.error('Failed to report to guild channel', { context: 'Logger', error: e.message });
+        }
     }
 };
 
-const debug = (message, context = '') => {
-    if (process.env.DEBUG === 'true') {
-        console.log(`[${formatTime()}] [DEBUG] ${context ? `[${context}] ` : ''}${message}`);
-    }
-};
-
-module.exports = { info, warn, error, debug, reportToGuild };
+module.exports = log;

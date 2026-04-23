@@ -3,7 +3,6 @@ const CONFIG = require('../../utils/config');
 const { handleCommandError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
 const { getModerationLogs } = require('../../utils/core/database');
-const moment = require('moment');
 
 module.exports = {
     category: 'moderation',
@@ -41,10 +40,10 @@ module.exports = {
 
             const fields = await Promise.all(recentLogs.map(async (log) => {
                 const modUser = await interaction.client.users.fetch(log.moderator_id).catch(() => ({ tag: 'Unknown' }));
-                const date = moment(log.created_at).format('MMM Do, h:mma');
+                const ts = Math.floor(new Date(log.created_at).getTime() / 1000);
                 return {
-                    name: `${log.action} | ${date}`,
-                    value: `**Mod:** ${modUser.tag}\n**Reason:** ${log.reason}`,
+                    name: `${log.action}`,
+                    value: `**Date:** <t:${ts}:f>\n**Mod:** ${modUser.tag}\n**Reason:** ${log.reason}`,
                     inline: false
                 };
             }));

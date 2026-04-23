@@ -2,6 +2,12 @@ const logger = require('../core/logger');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const Lore = require('./MafiaLore');
 
+// Hoisted for performance and to avoid SyntaxError (double declaration)
+const MafiaVoice = require('./MafiaVoice');
+const MafiaUI = require('./MafiaUI');
+const MafiaBots = require('./MafiaBots');
+const MafiaStack = require('./MafiaStack');
+
 const DAY_EPITHETS = [
     "Echoes of the Past", "Terminal Sunlight", "Broken Dawn", 
     "Data Convergence", "The Scribe's Awakening", "Digital Morning"
@@ -14,8 +20,10 @@ class MafiaPhases {
     static async startDay(game) {
         if (game.isDestroyed || game.state === 'GAME_OVER') return;
         
+        game.clearAllTimers();
         await game.cleanupPhaseMessage();
         game.state = 'DAY';
+        game.lastActivityAt = Date.now();
         game.dayCount++;
         game.emit('stateChanged', 'DAY');
 
@@ -26,8 +34,7 @@ class MafiaPhases {
             const endTime = Math.floor(game.phaseEndTime / 1000);
             
             const epithet = DAY_EPITHETS[Math.floor(Math.random() * DAY_EPITHETS.length)];
-            const { baseEmbed } = require('./MafiaUI');
-            const embed = baseEmbed(`🌅 ${epithet} (Day ${game.dayCount})`, 
+            const embed = MafiaUI.baseEmbed(`🌅 ${epithet} (Day ${game.dayCount})`, 
                 `*The sanctuary is restless. The world outside is dead, but the library must survive.*\n\n**Survivors Remaining:** ${game.getAlivePlayers().length}/${game.players.size}\n\n**Discussion Period:** Talk amongst yourselves. Humanity's last hope rests on your decisions.`, 
                 null
             ).setColor(Lore.COLORS.DAY).setImage(Lore.BANNERS.DAY);
@@ -41,18 +48,16 @@ class MafiaPhases {
             });
             game.activePhaseMessageId = dayMsg.id;
             
-            const { handleBotDaySpeech } = require('./MafiaBots');
-            const timers = await handleBotDaySpeech(game);
+            const timers = await MafiaBots.handleBotDaySpeech(game);
             if (timers && Array.isArray(timers)) {
                 game.botTimers.push(...timers);
             }
 
             // DM Refresh (Terminal Sync)
-            const { buildDayHUD } = require('./MafiaUI');
             for (const p of game.getAlivePlayers()) {
                 if (p.isBot) continue;
-                const hud = buildDayHUD(p, game);
-                await game.refreshControlPanel(p, hud.content, hud.components);
+                const hud = MafiaUI.buildDayHUD(p, game);
+                await game.refreshControlPanel(p, hud.content, hud.components, true);
             }
         }
         
@@ -64,7 +69,9 @@ class MafiaPhases {
     }
 
     static async startVoting(game) {
-        if (game.isDestroyed || game.state === 'GAME_OVER') return;
+        if (game.isDestroyed || game.state !== 'DAY') return;
+        
+        game.clearAllTimers();
         await game.cleanupPhaseMessage();
         game.state = 'VOTING';
         game.emit('stateChanged', 'VOTING');
@@ -80,15 +87,15 @@ class MafiaPhases {
                     currentRow = new ActionRowBuilder();
                 }
                 currentRow.addComponents(
-                    new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary)
+                    new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_${game.state}_${game.dayCount}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary)
                 );
             }
             if (currentRow.components.length < 5) {
-                currentRow.addComponents(new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger));
+                currentRow.addComponents(new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_${game.state}_${game.dayCount}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger));
                 rows.push(currentRow);
             } else {
                 rows.push(currentRow);
-                rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger)));
+                rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`mafia_vote_${game.hostId}_${game.state}_${game.dayCount}_skip`).setLabel('⏭️ Skip Vote').setStyle(ButtonStyle.Danger)));
             }
             
             const duration = game.settings.votingTime || 60;
@@ -110,13 +117,12 @@ class MafiaPhases {
         }
 
         // --- BOT VOTING ---
-        const { handleBotDayVoting } = require('./MafiaBots');
         const aliveBots = game.getAlivePlayers().filter(p => p.isBot);
         for (const bot of aliveBots) {
             const delay = Math.random() * (game.settings.votingTime - 5) * 1000;
             const timer = setTimeout(async () => {
                 if (game.state === 'VOTING' && bot.alive && !game.isDestroyed) {
-                    handleBotDayVoting(game, bot);
+                    MafiaBots.handleBotDayVoting(game, bot);
                     await game.updateVotingBoard().catch(() => null);
                 }
             }, delay);
@@ -133,8 +139,8 @@ class MafiaPhases {
     static async endDay(game) {
         if (game.isDestroyed || game.state !== 'VOTING') return;
 
-        const { handleBotDayVoting } = require('./MafiaBots');
-        handleBotDayVoting(game);
+        game.clearAllTimers();
+        MafiaBots.handleBotDayVoting(game);
         
         game.state = 'TWILIGHT';
         game.emit('stateChanged', 'TWILIGHT');
@@ -153,12 +159,11 @@ class MafiaPhases {
                         p.deathDay = game.dayCount;
                         afkErased.push(p);
                         game.moveToGraveyard(p.id);
-                        const MafiaVoice = require('./MafiaVoice');
                         await MafiaVoice.updateStates(game);
                         
                         if (game.checkWin()) return;
 
-                    await game.cleanupControlPanel(exiled);
+                    await game.cleanupControlPanel(p);
                     } else {
                         afkWarned.push(p);
                     }
@@ -207,7 +212,12 @@ class MafiaPhases {
                 await game.thread.send(`⚖️ **Consensus Reached.** The sanctuary has decided to execute **${exiled.name}**. You have 5 seconds for final words.`);
                 await new Promise(r => setTimeout(r, 5000));
             } else if (tied.length === 1 && tied[0] === 'skip') {
-                await game.thread.send(`⚖️ **Consensus Reached.** The sanctuary decided to skip the execution today. Gathering final thoughts...`);
+                const humanSkipVotes = Array.from(game.players.values()).filter(p => !p.isBot && p.voteTarget === 'skip').length;
+                if (humanSkipVotes > 0) {
+                    await game.thread.send(`⚖️ **Consensus Reached.** The sanctuary decided to skip the execution today. Gathering final thoughts...`);
+                } else {
+                    await game.thread.send(`⚖️ **No Consensus.** With no clear suspect identified by the council, the execution has been skipped. Gathering final thoughts...`);
+                }
                 await new Promise(r => setTimeout(r, 5000));
             } else {
                 const reason = tied.length === 0 ? 'The town was completely silent.' : 'The town could not reach a consensus.';
@@ -219,7 +229,9 @@ class MafiaPhases {
             
             if (!hasExile) {
                 // Was skip or tie
-                const msg = (tied.length === 1 && tied[0] === 'skip') ? 'The sanctuary skipped the execution. No one is exiled today.' : 'No consensus was reached. No one is exiled today.';
+                const humanSkipVotes = Array.from(game.players.values()).filter(p => !p.isBot && p.voteTarget === 'skip').length;
+                const wasExplicitSkip = tied.length === 1 && tied[0] === 'skip' && humanSkipVotes > 0;
+                const msg = wasExplicitSkip ? 'The sanctuary skipped the execution. No one is exiled today.' : 'No consensus was reached. No one is exiled today.';
                 await game.thread.send(`> ${msg}\n\nThe simulation continues... Night protocol initiating...`);
                 game.activeTimer = setTimeout(() => {
                     if (game.state !== 'GAME_OVER') game.startNight();
@@ -227,7 +239,6 @@ class MafiaPhases {
             } else {
                 // Process Exile
                 if (exiled) {
-                    const MafiaVoice = require('./MafiaVoice');
                     await MafiaVoice.updateStates(game, 'TWILIGHT', exiled.id);
 
                     const roleStr = game.settings.revealRoles && exiled.role ? exiled.role.name : "REDACTED";
@@ -258,17 +269,33 @@ class MafiaPhases {
     static async startNight(game) {
         if (game.isDestroyed || game.state === 'GAME_OVER') return;
         
+        game.clearAllTimers();
         await game.cleanupPhaseMessage();
         game.state = 'NIGHT';
+        game.dayCount++;
         game.emit('stateChanged', 'NIGHT');
 
-        // Clear all targets
+        // Clear all timers
+        for (const timer of game.botTimers) clearTimeout(timer);
+        game.botTimers = [];
+
+        // Clear all targets and modifiers
         for (const p of game.players.values()) {
+            p.resetForNight();
             p.voteTarget = null;
-            p.nightActionTarget = null;
         }
 
-        const MafiaVoice = require('./MafiaVoice');
+        // Process Guilt flatlines for this phase
+        game.guiltDeaths = [];
+        for (const p of game.getAlivePlayers()) {
+            if (p.guilt) {
+                p.die();
+                p.deathDay = game.dayCount;
+                game.guiltDeaths.push(p);
+                game.moveToGraveyard(p.id);
+            }
+        }
+
         await MafiaVoice.updateStates(game, 'NIGHT');
 
         if (game.thread) {
@@ -276,7 +303,7 @@ class MafiaPhases {
             const duration = game.settings.nightTime || 60;
             game.phaseEndTime = Date.now() + (duration * 1000);
             
-            const nightEmbed = baseEmbed(`🌑 The Long Night (Cycle ${game.dayCount})`, 
+            const nightEmbed = MafiaUI.baseEmbed(`🌑 The Long Night (Cycle ${game.dayCount})`, 
                 `*Static hisses through the vents. The Infection moves in the shadows while the Archivists dream of sunlight.*\n\n**Protocol:** Night-active roles, check your private terminals for instructions.`, 
                 null
             ).setColor(Lore.COLORS.NIGHT).setImage(Lore.BANNERS.NIGHT);
@@ -292,11 +319,10 @@ class MafiaPhases {
         }
 
         // Notify Night roles (Terminal Sync)
-        const { buildNightHUD } = require('./MafiaUI');
         for (const p of game.getAlivePlayers()) {
             if (p.isBot) continue;
-            const hud = buildNightHUD(p, game);
-            await game.refreshControlPanel(p, hud.content, hud.components);
+            const hud = MafiaUI.buildNightHUD(p, game);
+            await game.refreshControlPanel(p, hud.content, hud.components, true);
         }
 
         game.activeTimer = setTimeout(() => {
@@ -309,8 +335,7 @@ class MafiaPhases {
         if (game.isDestroyed || game.state === 'GAME_OVER') return;
         await game.cleanupPhaseMessage();
         
-        const { resolveNightStack } = require('./MafiaStack');
-        const { deaths, readings, diagnosticLog } = await resolveNightStack(game);
+        const { deaths, readings, diagnosticLog } = await MafiaStack.resolveNightStack(game);
 
         if (game.graveyardThreadId && diagnosticLog.length > 0) {
             try {
@@ -321,41 +346,41 @@ class MafiaPhases {
             } catch (e) {}
         }
         
+        // Process Guilt deaths (Ghostwriters who killed Archivists)
         const guiltDeaths = (game.guiltDeaths || []).map(p => ({ target: p, source: null, isGuilt: true }));
+        game.guiltDeaths = []; // Clear ledger after processing
+        
         const allDeaths = [...guiltDeaths, ...deaths];
         
+        // Final move to graveyard (Permission locking happens inside)
         for (const d of allDeaths) {
-            game.moveToGraveyard(d.target.id);
+            await game.moveToGraveyard(d.target.id);
             await game.cleanupControlPanel(d.target);
         }
         
         game.emit('nightEnded', { deaths, readings });
-        const MafiaVoice = require('./MafiaVoice');
         await MafiaVoice.updateStates(game);
 
         if (game.thread) {
-            const { buildMorningReport } = require('./MafiaUI');
-            const report = buildMorningReport(game, allDeaths);
+            const report = await MafiaUI.buildMorningReport(game, allDeaths);
             await game.thread.send(report);
             
             for (const r of readings) {
                 const viewer = game.players.get(r.viewerId);
                 if (viewer && !viewer.isBot) {
-                    // --- INVESTIGATION MEMORY ---
-                    viewer.lastNightResult = r.message;
-                    
-                    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-                    const willRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`mafia_will_${game.hostId}`).setLabel('✍️ Update Last Will').setStyle(ButtonStyle.Secondary)
-                    );
-                    await game.refreshControlPanel(viewer, r.message, [willRow], true);
+                    // --- ARCHIVAL INTELLIGENCE PERSISTENCE ---
+                    if (!viewer.intelligenceLog.includes(r.message)) {
+                        viewer.intelligenceLog.push(r.message);
+                    }
                 }
             }
         }
         
         if (game.checkWin()) return;
+        
+        // Final sync and start the day
         await MafiaVoice.updateStates(game);
-        game.startDay();
+        return game.startDay();
     }
 
     static checkWin(game) {

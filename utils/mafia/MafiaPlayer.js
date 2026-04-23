@@ -28,7 +28,7 @@ class MafiaPlayer {
         this.controlPanelMessageId = null; // Track persistent DM panel
         this.initialVoiceChannelId = null; // Original VC to return to
         this.lastControlState = null; // Track UI hash for dirty-checking
-        this.lastNightResult = null; // Persistent investigation findings
+        this.intelligenceLog = []; // Persistent archival findings 
         this.roleCardUrl = null; // Cached Discord CDN URL for role image
     }
 
@@ -48,7 +48,6 @@ class MafiaPlayer {
         this.isRoleblocked = false;
         this.isProtected = false;
         this.inkBoundTarget = null;
-        this.lastNightResult = null; // Clear old findings when new night starts
     }
 
     resetForDay() {
@@ -76,8 +75,11 @@ class MafiaPlayer {
             controlPanelMessageId: this.controlPanelMessageId,
             initialVoiceChannelId: this.initialVoiceChannelId,
             lastControlState: this.lastControlState,
-            lastNightResult: this.lastNightResult,
-            roleCardUrl: this.roleCardUrl
+            intelligenceLog: this.intelligenceLog,
+            roleCardUrl: this.roleCardUrl,
+            voteTarget: this.voteTarget,
+            nightActionTarget: this.nightActionTarget,
+            inkBoundTarget: this.inkBoundTarget
         };
     }
 
@@ -119,10 +121,13 @@ class MafiaPlayer {
         this.isConfirmed = data.isConfirmed || false;
         this.deathDay = data.deathDay;
         this.missedVotes = data.missedVotes || 0;
+        this.voteTarget = data.voteTarget || null;
+        this.nightActionTarget = data.nightActionTarget || null;
+        this.inkBoundTarget = data.inkBoundTarget || null;
         this.controlPanelMessageId = data.controlPanelMessageId || null;
         this.initialVoiceChannelId = data.initialVoiceChannelId || null;
         this.lastControlState = data.lastControlState || null;
-        this.lastNightResult = data.lastNightResult || null;
+        this.intelligenceLog = data.intelligenceLog || [];
         this.roleCardUrl = data.roleCardUrl || null;
     }
 }

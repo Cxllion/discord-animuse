@@ -237,28 +237,41 @@ const fs = require('fs');
 const path = require('path');
 const CACHE_PATH = path.join(__dirname, '../../.activity_posted_cache.json');
 
-const loadFileCache = () => {
+let fileCache = null;
+
+const getFileCache = async () => {
+    if (fileCache) return fileCache;
     try {
-        if (fs.existsSync(CACHE_PATH)) return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
-    } catch (e) {}
-    return {};
+        if (fs.existsSync(CACHE_PATH)) {
+            const data = await fs.promises.readFile(CACHE_PATH, 'utf-8');
+            fileCache = JSON.parse(data);
+        } else {
+            fileCache = {};
+        }
+    } catch (e) {
+        fileCache = {};
+    }
+    return fileCache;
 };
 
-const saveFileCache = (cache) => {
+const saveFileCache = async () => {
+    if (!fileCache) return;
     try {
         const cutoff = Math.floor(Date.now() / 1000) - 72 * 60 * 60;
         const pruned = {};
-        for (const [id, ts] of Object.entries(cache)) {
+        for (const [id, ts] of Object.entries(fileCache)) {
             if (ts > cutoff) pruned[id] = ts;
         }
-        fs.writeFileSync(CACHE_PATH, JSON.stringify(pruned), 'utf-8');
+        fileCache = pruned;
+        await fs.promises.writeFile(CACHE_PATH, JSON.stringify(pruned), 'utf-8');
     } catch (e) {}
 };
 
 const wasPosted = async (activityId) => {
     const inDB = await wasPostedInDB(activityId);
     if (inDB) return true;
-    return !!loadFileCache()[String(activityId)];
+    const cache = await getFileCache();
+    return !!cache[String(activityId)];
 };
 
 const markPosted = async (activityIds, meta = null) => {
@@ -274,10 +287,10 @@ const markPosted = async (activityIds, meta = null) => {
 
     const savedToDB = await markPostedInDB(dbPayload);
     if (!savedToDB) {
-        const cache = loadFileCache();
+        const cache = await getFileCache();
         const now = Math.floor(Date.now() / 1000);
         activityIds.forEach(id => { cache[String(id)] = now; });
-        saveFileCache(cache);
+        await saveFileCache();
     }
 };
 
@@ -460,10 +473,20 @@ const checkUserActivity = async (client) => {
                 if (!channel) continue;
 
                 const guildWorkload = [];
-                for (const userRow of linkedUsers) {
-                    await new Promise(r => setTimeout(r, 700)); 
-                    const groups = await fetchAndGroupUserActivities(userRow);
-                    groups.forEach(g => guildWorkload.push({ group: g, userRow }));
+                // Process users in batches of 3 to speed up polling without overwhelming AniList
+                for (let i = 0; i < linkedUsers.length; i += 3) {
+                    const batch = linkedUsers.slice(i, i + 3);
+                    const batchResults = await Promise.allSettled(batch.map(user => fetchAndGroupUserActivities(user)));
+                    
+                    batchResults.forEach((res, idx) => {
+                        if (res.status === 'fulfilled') {
+                            res.value.forEach(g => guildWorkload.push({ group: g, userRow: batch[idx] }));
+                        }
+                    });
+
+                    if (i + 3 < linkedUsers.length) {
+                        await new Promise(r => setTimeout(r, 1000)); // Delay between batches
+                    }
                 }
 
                 if (guildWorkload.length === 0) continue;

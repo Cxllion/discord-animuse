@@ -1,5 +1,8 @@
 const axios = require('axios');
 const logger = require('../core/logger');
+const cacheManager = require('../core/CacheManager');
+const RateLimiter = require('../core/RateLimiter');
+const CONFIG = require('../config');
 
 const anilistClient = axios.create({
     baseURL: 'https://graphql.anilist.co',
@@ -7,18 +10,17 @@ const anilistClient = axios.create({
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     },
-    timeout: parseInt(process.env.ANILIST_TIMEOUT) || 15000, 
+    timeout: CONFIG.ANILIST_TIMEOUT || 15000, 
 });
 
-const NodeCache = require('node-cache');
+// Shared Rate Limiter (AniList: 90/min per IP/Account)
+const rateLimiter = new RateLimiter(90, 10);
 
-// Cache for AniList requests
-// stdTTL: 1 hour, checkperiod: 120 seconds
-const mediaCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
-const searchCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
-const autoCompleteCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
-// Long-term cache for User IDs (24 hours) since IDs never change
-const userIdCache = new NodeCache({ stdTTL: 86400, checkperiod: 600 });
+// Namespaced Caches via CacheManager
+const mediaCache = cacheManager.getNamespace('anilist_media', { stdTTL: 3600 });
+const searchCache = cacheManager.getNamespace('anilist_search', { stdTTL: 3600 });
+const autoCompleteCache = cacheManager.getNamespace('anilist_autocomplete', { stdTTL: 300 });
+const userIdCache = cacheManager.getNamespace('anilist_user_ids', { stdTTL: 86400 });
 
 let isAniListMaintenance = false;
 let lastMaintenanceLog = 0;
@@ -51,6 +53,9 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
 
     let attempt = 0;
     while (attempt <= retries) {
+        // Enforce Rate Limit Ticker
+        await rateLimiter.acquire();
+
         try {
             const response = await anilistClient.post('/', {
                 query,
@@ -726,9 +731,22 @@ const formatMediaTitle = (title) => {
     return title.english || title.romaji || title.native || 'Unknown Title';
 };
 
+/**
+ * Get internal telemetry for AniList service
+ */
+const getAniListStatus = () => {
+    return {
+        isMaintenance: isAniListMaintenance,
+        consecutiveFailures,
+        lastCircuitTrip,
+        isCircuitBroken: consecutiveFailures >= 5 && (Date.now() - lastCircuitTrip < 5 * 60 * 1000)
+    };
+};
+
 module.exports = {
     anilistClient,
     queryAnilist,
+    getAniListStatus,
     searchMedia,
     getMediaById,
     getAnilistUser,

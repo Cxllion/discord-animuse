@@ -6,17 +6,17 @@
  * and disables background conflicting tasks (Airing alerts, etc).
  */
 
-require('dotenv').config();
-const logger = require('./utils/core/logger');
-
 // ==========================================
 // 🧪 TEST ENVIRONMENT CONFIGURATION
 // ==========================================
 
-// 1. Set global flags
+// 1. Load raw .env first
+require('dotenv').config();
+
+// 2. Set global flags BEFORE requiring any bot modules
 process.env.TEST_MODE = 'true';
 
-// 2. Override Discord credentials with Test variants
+// 3. Override Discord credentials with Test variants
 if (process.env.TEST_DISCORD_TOKEN) {
     process.env.DISCORD_TOKEN = process.env.TEST_DISCORD_TOKEN;
 }
@@ -24,8 +24,9 @@ if (process.env.TEST_CLIENT_ID) {
     process.env.CLIENT_ID = process.env.TEST_CLIENT_ID;
 }
 
+// Now we can safely load bot resources
+const logger = require('./utils/core/logger');
 logger.info('🧪 [SYSTEM] ANIMUSE TEST ARCHIVES STARTING... ♡', 'System');
 
-// 3. Delegate execution to the main optimized bot logic
-// The bot will now inherit all sharding, performance, and stability fixes.
+// 4. Delegate execution to the main optimized bot logic
 require('./index.js');

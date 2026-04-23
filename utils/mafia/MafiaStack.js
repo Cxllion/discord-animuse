@@ -40,6 +40,12 @@ async function resolveNightStack(game) {
     // 1: Redaction, 2: Binding, 3: Erasure, 4: Rewrite, 5: Reading
     actions.sort((a, b) => a.priority - b.priority);
 
+    // Process Priority 1 (Redactions) SIMULTANEOUSLY
+    // This ensure two Censors blocking each other both succeed.
+    for (const act of actions.filter(a => a.priority === 1)) {
+        act.target.isRoleblocked = true;
+    }
+
     const deaths = [];
     const readings = [];
 
@@ -52,15 +58,12 @@ async function resolveNightStack(game) {
             game.visitHistory.push({ night: game.dayCount, sourceId: source.id, targetId: target.id });
         }
         
-        // Skip if source was roleblocked earlier in the stack
-        if (source.isRoleblocked) continue;
-        // [SIMULTANEOUS RESOLUTION] We no longer check if source.alive here.
-        // Actions theoretically happen at the same time, though ordered for side-effects.
-        // This ensures dying players still get their results.
+        // Skip if source was roleblocked (Standard check for priorities > 1)
+        if (priority > 1 && source.isRoleblocked) continue;
 
         switch (priority) {
             case 1: // Redactions (Censor)
-                target.isRoleblocked = true;
+                // Already processed in simultaneous pass above
                 break;
                 
             case 2: // Bindings (Conservator)
@@ -72,7 +75,9 @@ async function resolveNightStack(game) {
                     if (target.id === 'ignite') {
                         for (const op of alivePlayersList) {
                             if (op.isDoused && op.id !== source.id) {
-                                if (!deaths.some(d => d.target.id === op.id)) deaths.push({ target: op, source: source });
+                                if (!deaths.some(d => d.target.id === op.id)) {
+                                    deaths.push({ target: op, source: source, cause: 'incineration' });
+                                }
                             }
                         }
                     } else {
@@ -81,10 +86,14 @@ async function resolveNightStack(game) {
                 } else {
                     if (!target.isProtected) {
                         if (!deaths.some(d => d.target.id === target.id)) {
-                            deaths.push({ target: target, source: source });
+                            const cause = role.name === 'The Shredder' ? 'erasure' : 'silencing';
+                            deaths.push({ target: target, source: source, cause: cause });
                         }
                         if (role.name === 'The Ghostwriter' && target.role?.faction === 'Archivists') {
-                            source.guilt = true;
+                            game.guiltDeaths = game.guiltDeaths || [];
+                            if (!game.guiltDeaths.some(p => p.id === source.id)) {
+                                game.guiltDeaths.push(source);
+                            }
                         }
                     }
                 }

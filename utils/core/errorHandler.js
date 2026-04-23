@@ -305,6 +305,7 @@ const isUnknownInteraction = (error) => {
 };
 
 module.exports = {
+    getCuteLibrarianTip,
     createErrorEmbed,
     createCooldownEmbed,
     createBotPermissionEmbed,

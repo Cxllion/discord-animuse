@@ -2,7 +2,6 @@ const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
-const moment = require('moment');
 
 module.exports = {
     category: 'general',
@@ -32,8 +31,7 @@ module.exports = {
             const stickers = guild.stickers.cache.size;
 
             // Dates
-            const createdDate = moment(guild.createdAt).format('MMMM Do YYYY, h:mm a');
-            const createdAgo = moment(guild.createdAt).fromNow();
+            const timestamp = Math.floor(guild.createdTimestamp / 1000);
 
             const embed = baseEmbed(`${guild.name} Archive Data`, `**Guild ID:** \`${guild.id}\``, interaction.client.user.displayAvatarURL())
                 .setThumbnail(guild.iconURL({ dynamic: true, size: 512 }))
@@ -41,7 +39,7 @@ module.exports = {
                 .addFields(
                     {
                         name: '📜 General',
-                        value: `**Owner:** ${owner.user.tag}\n**Created:** ${createdDate}\n(${createdAgo})`,
+                        value: `**Owner:** ${owner.user.tag}\n**Created:** <t:${timestamp}:F>\n(<t:${timestamp}:R>)`,
                         inline: false
                     },
                     {

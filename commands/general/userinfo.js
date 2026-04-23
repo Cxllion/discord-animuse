@@ -2,7 +2,6 @@ const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const CONFIG = require('../../utils/config');
 const { handleInteractionError } = require('../../utils/core/errorHandler');
 const baseEmbed = require('../../utils/generators/baseEmbed');
-const moment = require('moment');
 
 module.exports = {
     category: 'general',
@@ -25,10 +24,8 @@ module.exports = {
             }
 
             // Dates
-            const joinedAt = moment(member.joinedAt).format('MMMM Do YYYY, h:mm a');
-            const joinedAgo = moment(member.joinedAt).fromNow();
-            const createdAt = moment(targetUser.createdAt).format('MMMM Do YYYY, h:mm a');
-            const createdAgo = moment(targetUser.createdAt).fromNow();
+            const joinedTs = Math.floor(member.joinedTimestamp / 1000);
+            const createdTs = Math.floor(targetUser.createdTimestamp / 1000);
 
             // Roles (Exclude @everyone)
             const roles = member.roles.cache
@@ -58,7 +55,7 @@ module.exports = {
                     },
                     {
                         name: '📆 Dates',
-                        value: `**Joined Server:** ${joinedAt}\n(${joinedAgo})\n\n**Registered:** ${createdAt}\n(${createdAgo})`,
+                        value: `**Joined Server:** <t:${joinedTs}:F> (<t:${joinedTs}:R>)\n**Registered:** <t:${createdTs}:F> (<t:${createdTs}:R>)`,
                         inline: false
                     },
                     {

@@ -1,6 +1,7 @@
 const { Events, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { routeInteraction } = require('../utils/handlers/router');
 const logger = require('../utils/core/logger');
+const CONFIG = require('../utils/config');
 const cooldownManager = require('../utils/core/cooldownManager');
 const statusManager = require('../utils/core/statusManager');
 const { checkBotPermissions, checkUserPermissions } = require('../utils/core/permissionChecker');
@@ -12,35 +13,38 @@ const {
     handleInteractionError,
     isUnknownInteraction
 } = require('../utils/core/errorHandler');
+const crypto = require('crypto');
 
 module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction) {
-        // 0. Maintenance Mode & Startup Gate
+        // --- 1. Interaction Metadata (V2 Tracing) ---
+        const requestId = crypto.randomUUID();
+        interaction.requestId = requestId;
+
+        // --- 2. Maintenance Mode & Startup Gate ---
         const appOwner = interaction.client.application?.owner;
         const isOwner = appOwner?.members 
             ? appOwner.members.has(interaction.user.id) 
             : appOwner?.id === interaction.user.id;
         const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator) || false;
         
-        // If maintenance is on and user is NOT owner/admin, block interaction with themed message
+        // Maintenance Block
         if (statusManager.isMaintenance() && !isOwner && !isAdmin) {
             try {
-                if (interaction.isRepliable()) {
-                    if (!interaction.replied && !interaction.deferred) {
-                        return await interaction.reply({
-                            embeds: [statusManager.createMaintenanceEmbed()],
-                            flags: MessageFlags.Ephemeral
-                        });
-                    }
+                if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                    return await interaction.reply({
+                        embeds: [statusManager.createMaintenanceEmbed()],
+                        flags: MessageFlags.Ephemeral
+                    });
                 }
             } catch (e) {
-                logger.error('Error replying for maintenance mode:', e, 'Interaction');
+                logger.error('Maintenance reply failed', e, 'Interaction');
             }
             return;
         }
 
-        // 0.1 Startup Gate (Client not fully ready)
+        // Startup Gate
         if (!interaction.client.isSystemsGo) {
             try {
                 if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
@@ -55,15 +59,14 @@ module.exports = {
             return;
         }
 
-        // 0.2 Test Bot Access Control (Restrict usage to admins/testers)
+        // Test Bot Access Control
         if (interaction.client.isTestBot) {
             let isTester = false;
             
             if (interaction.inGuild()) {
-                const testerRoleId = process.env.TESTER_ROLE_ID;
+                const testerRoleId = CONFIG.TESTER_ROLE_ID;
                 isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
             } else if (interaction.customId?.startsWith('archive_') || interaction.customId?.startsWith('mafia_')) {
-                // Always allow Archive game DM interactions
                 isTester = true;
             }
 
@@ -79,31 +82,33 @@ module.exports = {
                         });
                     }
                 } catch (e) { 
-                    logger.debug(`Test bot restriction reply failed: ${e.message}`, 'Interaction');
+                    logger.debug(`Test bot restriction failed: ${e.message}`, 'Interaction');
                 }
                 return;
             }
         }
 
-        // 1. Slash Commands
+        // --- 3. Interaction Routing ---
+        
+        // A. Slash Commands
         if (interaction.isChatInputCommand()) {
             const command = interaction.client.commands.get(interaction.commandName);
             if (!command) return;
 
             try {
-                // Check Offline Mode for DB-reliant commands
+                // DB Check for Offline Mode
                 if (interaction.client.isOfflineMode && command.dbRequired !== false) {
                     return await interaction.reply({
                         embeds: [statusManager.createMaintenanceEmbed()
                             .setTitle('🗄️ [DATABASE OFFLINE] Archives Sealed')
-                            .setDescription('**The library database is currently unreachable.**\n\nCommands requiring access to server records (like Leveling, Config, or Profiles) cannot be used at this time. Please try again later. ♡')
+                            .setDescription('**The library database is currently unreachable.**\n\nCommands requiring access to server records cannot be used at this time. ♡')
                         ],
                         flags: MessageFlags.Ephemeral
                     });
                 }
 
-                // 1a. Check cooldowns
-                const cooldown = command.cooldown || 3; // Default 3 seconds
+                // Cooldowns
+                const cooldown = command.cooldown || 3;
                 if (!cooldownManager.check(interaction.user.id, interaction.commandName, cooldown, isOwner)) {
                     const remaining = cooldownManager.getRemainingTime(interaction.user.id, interaction.commandName);
                     return await interaction.reply({
@@ -112,8 +117,8 @@ module.exports = {
                     });
                 }
 
-                // 1b. Check bot permissions
-                if (command.botPermissions && command.botPermissions.length > 0) {
+                // Bot Permissions
+                if (command.botPermissions?.length > 0) {
                     const permCheck = await checkBotPermissions(interaction, command.botPermissions);
                     if (!permCheck.success) {
                         return await interaction.reply({
@@ -123,8 +128,8 @@ module.exports = {
                     }
                 }
 
-                // 1c. Check user permissions
-                if (command.userPermissions && command.userPermissions.length > 0) {
+                // User Permissions
+                if (command.userPermissions?.length > 0) {
                     const permCheck = await checkUserPermissions(interaction, command.userPermissions);
                     if (!permCheck.success) {
                         return await interaction.reply({
@@ -134,36 +139,49 @@ module.exports = {
                     }
                 }
 
-                // 1d. Set cooldown (after all checks pass)
                 cooldownManager.set(interaction.user.id, interaction.commandName, cooldown);
+                
+                // --- Auto-Defer Pipeline ---
+                let isHandled = false;
+                const deferTimer = setTimeout(async () => {
+                    if (!isHandled && !interaction.replied && !interaction.deferred) {
+                        try {
+                            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                        } catch (e) {}
+                    }
+                }, 2500);
 
-                // 1e. Execute command
-                await command.execute(interaction);
+                // Execute
+                try {
+                    await command.execute(interaction);
+                } finally {
+                    isHandled = true;
+                    clearTimeout(deferTimer);
+                }
 
             } catch (error) {
                 if (isUnknownInteraction(error)) return;
-
-                // Use themed error handler
                 await handleCommandError(interaction, error, interaction.commandName);
             }
         }
-        // 2. Autocomplete
+        
+        // B. Autocomplete
         else if (interaction.isAutocomplete()) {
             const command = interaction.client.commands.get(interaction.commandName);
             if (!command) return;
             try {
                 await command.autocomplete(interaction);
             } catch (err) {
-                logger.error(`Autocomplete error in ${interaction.commandName}:`, err, 'Interaction');
+                logger.error(`Autocomplete error: ${interaction.commandName}`, err, 'Interaction');
             }
         }
-        // 3. Components (Routed)
+        
+        // C. Components & Modals
         else if (interaction.isMessageComponent() || interaction.isModalSubmit()) {
             try {
                 const handled = await routeInteraction(interaction);
                 if (!handled) {
-                    logger.warn(`Unrouted interaction: ${interaction.customId} (Type: ${interaction.type}, Global: ${interaction.isChatInputCommand()})`, 'Interaction');
-                    // Reply ephemerally so the user doesn't see an infinite loading state
+                    logger.warn(`Unrouted: ${interaction.customId}`, 'Interaction');
                     if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
                         await interaction.reply({
                             content: '⏳ This interaction has expired or is no longer available.',

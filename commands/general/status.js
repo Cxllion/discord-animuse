@@ -1,28 +1,18 @@
-const { SlashCommandBuilder, version, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const os = require('os');
 const baseEmbed = require('../../utils/generators/baseEmbed');
-const supabase = require('../../utils/core/supabaseClient');
+const db = require('../../utils/core/db');
+const cacheManager = require('../../utils/core/CacheManager');
+const { getAniListStatus } = require('../../utils/services/anilistService');
 const { getGlobalTrackCount } = require('../../utils/services/animeTrackerService');
-const { getGlobalBingoCount } = require('../../utils/services/bingoService');
 const { getCuteLibrarianTip } = require('../../utils/core/errorHandler');
 
-/**
- * Formats seconds into a human-readable string (Days, Hours, Minutes, Seconds)
- * @param {number} seconds 
- * @returns {string}
- */
 const formatUptime = (seconds) => {
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor(((seconds % 86400) % 3600) / 60);
-    const s = Math.floor(((seconds % 86400) % 3600) % 60);
-
-    const parts = [];
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    parts.push(`${s}s`);
-    return parts.join(' ');
+    const s = Math.floor(seconds % 60);
+    return `${days}d ${hours}h ${minutes}m ${s}s`;
 };
 
 module.exports = {
@@ -35,47 +25,52 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        // 1. Connection Latency
+        // 1. Core Latency
         const ping = interaction.client.ws.ping;
         const pingIcon = ping < 150 ? '🟢' : ping < 300 ? '🟡' : '🔴';
 
         // 2. Resource Usage
         const memory = process.memoryUsage();
-        const heapUsed = (memory.heapUsed / 1024 / 1024).toFixed(2);
-        const rss = (memory.rss / 1024 / 1024).toFixed(2);
+        const heapUsed = (memory.heapUsed / 1024 / 1024).toFixed(1);
+        const rss = (memory.rss / 1024 / 1024).toFixed(1);
 
-        // 3. Database Health Check
-        let dbStatus = '🟢 Operational';
-        let dbLatency = 0;
+        // 3. Database & Cache
+        let dbLatency = 'N/A';
         try {
             const start = Date.now();
-            const { error } = await supabase.from('guild_configs').select('guild_id').limit(1);
-            dbLatency = Date.now() - start;
-            if (error) throw error;
-        } catch (e) {
-            dbStatus = '🔴 Unstable';
-        }
+            await db.query('SELECT 1');
+            dbLatency = `${Date.now() - start}ms`;
+        } catch (e) {}
 
-        // 4. Shard Info
-        const shardId = interaction.guild.shardId;
-        const totalShards = interaction.client.options.shardCount || 1;
+        const cacheStats = cacheManager.getStats();
+        const totalKeys = Object.values(cacheStats).reduce((acc, s) => acc + s.keys, 0);
 
-        // 5. Library Volume
-        const trackedCount = await getGlobalTrackCount();
-        const bingoCount = await getGlobalBingoCount();
+        // 4. AniList Health
+        const alStatus = getAniListStatus();
+        const alLabel = alStatus.isCircuitBroken ? '🔴 BROKEN' : (alStatus.isMaintenance ? '🟡 MAINT' : '🟢 OK');
 
-        const embed = baseEmbed()
-            .setTitle('📖 System Diagnostic Complete')
-            .setDescription('The archives are responsive and the dust has been cleared. ♡')
+        // 5. Task Scheduler
+        const tasks = interaction.client.scheduler.getTelemetry();
+        const activeTasks = tasks.filter(t => t.status === 'RUNNING').length;
+
+        // 6. Volume
+        const trackedCount = await getGlobalTrackCount().catch(() => 0);
+
+        const embed = baseEmbed('📖 System Diagnostic Complete', 'The archives are responsive and the dust has been cleared. ♡')
             .addFields(
                 { name: 'Connection', value: `${pingIcon} ${ping}ms`, inline: true },
-                { name: 'Database', value: `${dbStatus} (${dbLatency}ms)`, inline: true },
-                { name: 'Memory Usage', value: `Heap: ${heapUsed}MB / RSS: ${rss}MB`, inline: false },
-                { name: 'Library Volume', value: `Tracked: ${trackedCount} | Bingo: ${bingoCount}`, inline: false },
+                { name: 'Database', value: `🟢 ${dbLatency}`, inline: true },
+                { name: 'AniList API', value: alLabel, inline: true },
+                
+                { name: 'Memory Pulse', value: `Heap: ${heapUsed}MB / RSS: ${rss}MB`, inline: false },
+                
+                { name: 'Cache & Storage', value: `Keys: ${totalKeys} | Tracked: ${trackedCount}`, inline: true },
+                { name: 'Scheduler', value: `Active: ${activeTasks}/${tasks.length}`, inline: true },
+                
                 { name: 'System Uptime', value: formatUptime(process.uptime()), inline: true },
-                { name: 'Shard Status', value: `Shard ${shardId}/${totalShards}`, inline: true }
+                { name: 'Shard Status', value: `Shard ${interaction.guild.shardId + 1}/${interaction.client.shardCount || 1}`, inline: true }
             )
-            .setColor(dbStatus === '🟢 Operational' ? '#FFACD1' : '#E57373')
+            .setColor(alStatus.isCircuitBroken ? '#E57373' : '#FFACD1')
             .setFooter({ text: `Archival Note: ${getCuteLibrarianTip()} ♡` });
 
         await interaction.editReply({ embeds: [embed] });

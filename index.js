@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
-require('dotenv').config();
+const CONFIG = require('./utils/config');
 
 const { setupProcessHandlers, setupClientHandlers } = require('./utils/core/processHandlers');
 const { loadCoreResources, initializeDatabase } = require('./utils/core/init');
@@ -23,6 +23,8 @@ setupProcessHandlers();
 const { loadCustomFonts } = require('./utils/core/fonts');
 loadCustomFonts();
 
+const TaskScheduler = require('./utils/core/TaskScheduler');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -43,8 +45,9 @@ logger.debug(`[System] Initializing Shard #${client.shardId}/${client.shardCount
 
 client.commands = new Collection();
 client.intervals = []; 
+client.scheduler = new TaskScheduler(client);
 client.isSystemsGo = false;
-client.isTestBot = process.env.TEST_MODE === 'true';
+client.isTestBot = CONFIG.TEST_MODE;
 
 if (client.isTestBot) {
     logger.debug('[System] Test Mode Detected. Background schedulers will be DISABLED. ♡', 'System');
@@ -54,7 +57,7 @@ if (client.isTestBot) {
 setupClientHandlers(client);
 
 // --- Optional Health-Check Server (For Oracle Monitoring) ---
-const PORT = process.env.PORT || null;
+const PORT = CONFIG.PORT;
 if (PORT) {
     const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -76,7 +79,7 @@ if (PORT) {
         await initializeDatabase(client);
         
         logger.debug('Initiating Handshake with Discord Gateway...', 'System');
-        await client.login(process.env.DISCORD_TOKEN);
+        await client.login(CONFIG.DISCORD_TOKEN);
 
         // --- Graceful Shutdown Sequence ---
         const handleShutdown = async (signal) => {

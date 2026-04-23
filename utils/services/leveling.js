@@ -3,6 +3,11 @@ const { Collection } = require('discord.js');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
 
+// Hoisted references for hot-path performance
+const { fetchConfig, getLevelRoles } = require('../core/database');
+const { getDynamicUserTitle } = require('../core/userMeta');
+const baseEmbed = require('../generators/baseEmbed');
+
 const cooldowns = new Collection();
 
 /**
@@ -52,8 +57,6 @@ const getLevelProgress = (xp, level) => {
  */
 const addXp = async (userId, guildId, member = null, message = null) => {
     if (!supabase) return;
-
-    const { fetchConfig } = require('../core/database');
     const config = await fetchConfig(guildId);
     
     // --- 1. Filter Check (Whitelist/Blacklist) ---
@@ -100,8 +103,7 @@ const addXp = async (userId, guildId, member = null, message = null) => {
         const { old_level: oldLevel, new_level: newLevel, new_xp: newXp } = result;
 
         if (newLevel > oldLevel) {
-            const { getLevelRoles } = require('../core/database');
-            const levelRoles = await getLevelRoles(guildId);
+            const roles = await getLevelRoles(guildId);
 
             // --- Standard Level Up: Reaction ---
             if (message && config?.xp_level_up_emoji) {
@@ -119,8 +121,6 @@ const addXp = async (userId, guildId, member = null, message = null) => {
 
                 // --- Milestone Announcement (Themed Embed) ---
                 if (newTierEarned && message) {
-                    const baseEmbed = require('../generators/baseEmbed');
-                    const { getDynamicUserTitle } = require('../core/userMeta');
                     const title = await getDynamicUserTitle(member);
                     const tierName = newTierEarned.name.replace(/^\d+\s*\|\s*/, '');
 
@@ -180,24 +180,18 @@ const getUserRank = async (userId, guildId) => {
         .select('xp, level')
         .eq('user_id', userId)
         .eq('guild_id', guildId)
-        .single();
+        .maybeSingle();
 
-    if (error) {
-        if (error.code !== 'PGRST116') logger.error('XP Error getUserRank: ' + error.message, null, 'Leveling');
-        return { xp: 0, level: 0, rank: 0 };
-    }
-    if (!data) return { xp: 0, level: 0, rank: 0 };
+    if (error || !data) return { xp: 0, level: 0, rank: 0 };
 
-    // Calculate Rank (Count users with more XP)
-    const { count, error: rankError } = await supabase
+    // Rank is count of users with more XP + 1
+    const { count } = await supabase
         .from('users')
         .select('*', { count: 'exact', head: true })
         .eq('guild_id', guildId)
         .gt('xp', data.xp);
 
-    const rank = (rankError) ? '?' : (count + 1);
-
-    return { ...data, rank };
+    return { ...data, rank: (count || 0) + 1 };
 };
 
 /**
@@ -224,7 +218,6 @@ const getTopUsers = async (guildId) => {
  * @returns {import('discord.js').Role|null} The role for the specified level, if it exists and was processed.
  */
 const syncLevelRoles = async (member, level) => {
-    const { getLevelRoles } = require('../core/database');
     const levelRoles = await getLevelRoles(member.guild.id);
     const botMember = member.guild.members.me;
     let targetLevelRole = null;

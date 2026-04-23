@@ -1,6 +1,10 @@
 const { EMOJIS } = require('./config/emojiConfig');
+const env = require('./core/envSchema');
 
 const CONFIG = {
+    // --- Environment Variables (Validated) ---
+    ...env,
+
     // Brand Identity
     COLORS: {
         PRIMARY: '#FFACD1', // Soft Pink - Main Brand Color

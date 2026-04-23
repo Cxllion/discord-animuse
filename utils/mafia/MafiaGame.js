@@ -10,6 +10,9 @@ const MafiaVoice = require('./MafiaVoice');
 const MafiaPhases = require('./MafiaPhases');
 const MafiaThreads = require('./MafiaThreads');
 const MafiaSerialization = require('./MafiaSerialization');
+const MafiaManager = require('./MafiaManager');
+const MafiaUI = require('./MafiaUI');
+const MafiaModes = require('./MafiaModes');
 const { generateRoleCard } = require('../generators/mafia/roleGenerator');
 
 const EXILE_LORE = [
@@ -109,6 +112,8 @@ class MafiaGame extends EventEmitter {
         this.phaseEndTime = null; // Absolute timestamp for persistence
         this.isSecure = true; // Sanctuary Security Status
         this.voiceScanner = null; // Interval for active health scans
+        this.visitHistory = []; // Track visits for forensic roles
+        this.guiltDeaths = []; // Ledger for self-redaction (guilt)
     }
 
     /**
@@ -117,21 +122,57 @@ class MafiaGame extends EventEmitter {
      */
     isLocked() {
         if (!this.phaseEndTime || this.state === 'LOBBY' || this.state === 'GAME_OVER') return false;
-        return (this.phaseEndTime - Date.now()) < 2000;
+        // Lock 2s before timeout or 2s after state change
+        const now = Date.now();
+        const isNearEnd = (this.phaseEndTime - now) < 2000;
+        const isJustStarted = (now - this.lastActivityAt) < 2000;
+        return isNearEnd || isJustStarted;
+    }
+
+    async resumePhase() {
+        if (this.isDestroyed || this.state === 'LOBBY' || this.state === 'GAME_OVER') return;
+        
+        const { startDay, startVoting, startNight } = MafiaPhases;
+        
+        // Calculate remaining time from stored timestamp or use default
+        let remainingSeconds = 60;
+        if (this.phaseEndTime) {
+            remainingSeconds = Math.max(5, Math.ceil((this.phaseEndTime - Date.now()) / 1000));
+        }
+
+        switch (this.state) {
+            case 'DAY':
+                this.activeTimer = setTimeout(() => {
+                    if (this.state !== 'GAME_OVER') startVoting(this);
+                }, remainingSeconds * 1000);
+                break;
+            case 'VOTING':
+                const voting = MafiaPhases.endDay;
+                this.activeTimer = setTimeout(() => {
+                    if (this.state !== 'GAME_OVER') voting(this);
+                }, remainingSeconds * 1000);
+                break;
+            case 'NIGHT':
+                const night = MafiaPhases.endNight;
+                this.activeTimer = setTimeout(() => {
+                    if (this.state !== 'GAME_OVER') night(this);
+                }, remainingSeconds * 1000);
+                break;
+        }
+
+        this.startVoiceScan();
+        logger.info(`[Mafia] Session Resumed: ${this.hostId} in ${this.state} (${remainingSeconds}s remaining).`, 'Mafia');
     }
 
     async destroy() {
         this.isDestroyed = true;
-        if (this.activeTimer) clearTimeout(this.activeTimer);
-        for (const timer of this.botTimers) clearTimeout(timer);
-        this.botTimers = [];
+        this.clearAllTimers();
 
         // --- VOICE PROTOCOL: REDACT HUB ---
         try {
             // STOP THE SCANNER FIRST
             this.stopVoiceScan();
 
-            const MafiaManager = require('./MafiaManager');
             const client = MafiaManager.client;
             
             // Fallback: If thread is missing, fetch target guild directly via ID
@@ -186,6 +227,18 @@ class MafiaGame extends EventEmitter {
         this.removeAllListeners();
     }
 
+    clearAllTimers() {
+        if (this.activeTimer) {
+            clearTimeout(this.activeTimer);
+            this.activeTimer = null;
+        }
+        for (const timer of this.botTimers) {
+            clearTimeout(timer);
+        }
+        this.botTimers = [];
+        logger.debug(`[Mafia] [Clock] Global purge complete for sanctuary ${this.hostId}.`);
+    }
+
     addPlayer(user, isBot = false) {
         if (!this.players.has(user.id)) {
             const player = new Player(user, isBot);
@@ -229,8 +282,7 @@ class MafiaGame extends EventEmitter {
         this.isProcessingLobby = true;
 
         try {
-            const { buildLobbyPayload, buildSpectatePayload, buildEndedLobbyPayload } = require('./MafiaUI');
-            const MafiaManager = require('./MafiaManager');
+            const { buildLobbyPayload, buildSpectatePayload, buildEndedLobbyPayload } = MafiaUI;
 
             // 1. Resolve correct payload based on state
             let payload;
@@ -336,7 +388,6 @@ class MafiaGame extends EventEmitter {
 
             // 2. VC Access (Muted)
             if (this.voiceChannelId) {
-                const MafiaManager = require('./MafiaManager');
                 const client = MafiaManager.client;
                 const vc = await client.channels.fetch(this.voiceChannelId).catch(() => null);
                 if (vc) {
@@ -367,8 +418,7 @@ class MafiaGame extends EventEmitter {
             try {
                 const host = await client.users.fetch(this.hostId);
                 if (host) {
-                    const { buildStagnationPayload } = require('./MafiaUI');
-                    await host.send(buildStagnationPayload(this));
+                    await host.send(MafiaUI.buildStagnationPayload(this));
                     logger.info(`[Mafia] Stagnation notice sent to host ${this.hostId}. Expiry at ${new Date(this.stagnationExpiresAt).toLocaleTimeString()}`, 'Mafia');
                 }
             } catch (e) {
@@ -448,7 +498,7 @@ class MafiaGame extends EventEmitter {
         if (!this.voiceChannelId || !this.thread) return;
 
         try {
-            const client = require('./MafiaManager').client;
+            const client = MafiaManager.client;
             if (!client) return;
 
             // --- CACHE-FIRST LOGIC ---
@@ -517,7 +567,7 @@ class MafiaGame extends EventEmitter {
             if (!this.isDestroyed && this.voiceChannelId) {
                 this.updateVoiceStates().catch(() => null);
             }
-        }, 60000); // 60s pulse for performance (Long Interval Optimization)
+        }, 300000); // 5m pulse for performance (Safety Backup)
     }
 
     stopVoiceScan() {
@@ -546,7 +596,10 @@ class MafiaGame extends EventEmitter {
         const embeds = (payload.embeds || []);
         
         // --- DIRTY CHECK: Avoid redundant API spam ---
-        const stateHash = JSON.stringify({ content, embeds, compCount: components?.length });
+        // DEEP HASH: Checks content, embeds, and raw component JSON to detect dropdown/button changes
+        const compHash = components ? JSON.stringify(components.map(c => c.toJSON())) : 'none';
+        const stateHash = JSON.stringify({ content, embeds, comps: compHash });
+        
         if (!forceRefresh && player.lastControlState === stateHash) return;
 
         const sendOptions = { content, embeds };
@@ -717,8 +770,7 @@ class MafiaGame extends EventEmitter {
         await thread.setLocked(true, 'Setup phase');
         
         // Generate roles FIRST so the composition display is accurate
-        const { generateRolesForMode } = require('./MafiaModes');
-        const availableRoles = generateRolesForMode(this.settings.gameMode, this.players.size);
+        const availableRoles = MafiaModes.generateRolesForMode(this.settings.gameMode, this.players.size);
         
         // --- HUMAN-FIRST ASSIGNMENT PROTOCOL ---
         // 1. Identify "Power" roles (Action roles or Unique Passives)
@@ -965,8 +1017,7 @@ class MafiaGame extends EventEmitter {
 
         // --- UI TRANSITION: SPECTATE -> RESULTS ---
         try {
-            const { buildEndedLobbyPayload } = require('./MafiaUI');
-            const MafiaManager = require('./MafiaManager');
+            const { buildEndedLobbyPayload } = MafiaUI;
             const client = MafiaManager.client;
             const channel = await client.channels.fetch(this.channelId).catch(() => null);
             if (channel) {
@@ -977,8 +1028,7 @@ class MafiaGame extends EventEmitter {
                 setTimeout(async () => {
                     const freshMsg = await channel.messages.fetch(this.lobbyMessageId).catch(() => null);
                     if (freshMsg) {
-                        const { buildEndedLobbyPayload } = require('./MafiaUI');
-                        const payload = buildEndedLobbyPayload(this, winner);
+                        const payload = MafiaUI.buildEndedLobbyPayload(this, winner);
                         // Remove components
                         await freshMsg.edit({ ...payload, components: [] }).catch(() => null);
                     }
@@ -1024,106 +1074,20 @@ class MafiaGame extends EventEmitter {
     }
 
     async startNight() {
-        if (this.isDestroyed || this.state === 'GAME_OVER') return;
-        this.state = 'NIGHT';
-        this.dayCount++;
-        this.emit('stateChanged', 'NIGHT');
-        
-        for (const timer of this.botTimers) clearTimeout(timer);
-        this.botTimers = [];
-        
-        for (const p of this.players.values()) { p.resetForNight(); }
-
-        this.guiltDeaths = [];
-        for (const p of this.getAlivePlayers()) {
-            if (p.guilt) {
-                p.die();
-                p.deathDay = this.dayCount;
-                this.guiltDeaths.push(p);
-                this.moveToGraveyard(p.id);
-            }
-        }
-
-        if (this.thread) {
-            await this.thread.setLocked(true, 'Night phase');
-            const nightDuration = this.settings.nightTime || 60;
-            this.phaseEndTime = Date.now() + (nightDuration * 1000);
-            const endTime = Math.floor(this.phaseEndTime / 1000);
-            
-            const whisper = NIGHT_WHISPERS[Math.floor(Math.random() * NIGHT_WHISPERS.length)];
-            const { baseEmbed } = require('./MafiaUI');
-            const embed = baseEmbed(`🌑 Night ${this.dayCount}`, 
-                `*${whisper}*\n\n📝 **Check your DMs to perform your night actions.**`, 
-                null
-            )
-                .setColor('#2c3e50');
-
-            const nightMsg = await this.thread.send({ 
-                content: `🌑 **Phase: Night ${this.dayCount}** | Ends <t:${endTime}:R>`,
-                embeds: [embed] 
-            });
-            this.activePhaseMessageId = nightMsg.id;
-        }
-        
-        const alivePlayers = this.getAlivePlayers();
-        const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-        // --- STAGGERED DM UPDATES (Burst Protection) ---
-        const nightUpdates = alivePlayers.map(async (p, index) => {
-            if (p.isBot) return;
-
-            // Small stagger to prevent DM rate limits in large games
-            await new Promise(r => setTimeout(r, index * 150));
-
-            const components = [];
-            
-            if (p.role && p.role.priority !== 99) {
-                const optionsData = this.getNightActionOptions(p);
-
-                if (optionsData.length === 0 && p.role.name === 'The Scribe') {
-                    optionsData.push({ label: 'No bodies to scan yet', value: 'none', description: 'Wait for a casualty.' });
-                }
-
-                if (optionsData.length > 0) {
-                    const dropdown = new StringSelectMenuBuilder()
-                        .setCustomId(`mafia_night_target_${this.hostId}`)
-                        .setPlaceholder(`${p.role.emoji} Select a target for: ${p.role.name}`)
-                        .addOptions(optionsData.slice(0, 25));
-                    components.push(new ActionRowBuilder().addComponents(dropdown));
-                }
-            }
-
-            const willLabel = p.lastWill ? '✍️ Update Last Will' : '✍️ Write Last Will';
-            const willRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`mafia_will_${this.hostId}`)
-                    .setLabel(willLabel)
-                    .setStyle(ButtonStyle.Secondary)
-            );
-            components.push(willRow);
-
-            try {
-                const nightDuration = this.settings.nightTime || 60;
-                const endTimeUnix = Math.floor(Date.now() / 1000) + nightDuration;
-                const willStatus = p.lastWill ? `📜 Current will: *"${p.lastWill}"*` : `📜 You haven't written a last will yet.`;
-                const roleInfo = p.role && p.role.priority !== 99 ? `**Your Role:** ${p.role.emoji} ${p.role.name}` : '';
-                const content = `🌑 **Night ${this.dayCount}** · Ends <t:${endTimeUnix}:R>\n${roleInfo}\n${willStatus}`;
-                
-                await this.refreshControlPanel(p, content, components);
-            } catch (e) {
-                logger.error(`Failed to DM player ${p.name}:`, e, 'Mafia');
-            }
-        });
-
-        await Promise.all(nightUpdates);
-        
-        this.activeTimer = setTimeout(() => {
-            if (this.state !== 'GAME_OVER') this.endNight();
-        }, this.settings.nightTime * 1000);
+        return MafiaPhases.startNight(this);
     }
 
     // --- VOICE PROTOCOL: NIGHT SILENCE ---
-    async updateVoiceStates(phase = 'GAME', speakerId = null) {
-        return MafiaVoice.updateStates(this, phase, speakerId);
+    async updateVoiceStates() {
+        return MafiaVoice.updateStates(this);
+    }
+
+    /**
+     * Surgically updates voice state for a single member (Real-time sync)
+     */
+    async syncMemberVoice(member) {
+        if (this.isDestroyed || !this.voiceChannelId) return;
+        return MafiaVoice.updateMemberState(this, member);
     }
 
     async cleanupPhaseMessage() {
@@ -1210,29 +1174,39 @@ class MafiaGame extends EventEmitter {
     async moveToGraveyard(userId) {
         if (this.isDestroyed || !this.thread) return;
         const player = this.players.get(userId);
+        if (!player) return;
 
         try {
-            // 1. Move to Graveyard Thread
-            if (this.graveyardThreadId && !player?.isBot) {
+            // 1. Thread Perms Redaction
+            if (this.isSecure) {
+                await this.thread.members.remove(userId, 'Redacted from active manifest').catch(() => null);
+            } else {
+                await this.thread.permissionOverwrites.create(userId, {
+                    [PermissionFlagsBits.SendMessages]: false
+                }).catch(() => null);
+            }
+
+            // 2. Graveyard Entry
+            if (this.graveyardThreadId && !player.isBot) {
                 const grave = await this.thread.parent.threads.fetch(this.graveyardThreadId).catch(() => null);
                 if (grave) {
                     await grave.members.add(userId).catch(() => null);
-                    await grave.send(`🕯️ **Survivor Entry:** <@${userId}> has been redacted from the living records and entered the spectator archives.`);
+                    await grave.send(`🕯️ **Survivor Entry:** <@${userId}> has been redacted from the living records.`);
                 }
             }
 
-            // 2. Redact from Secret Biolink (Infected Chat)
+            // 3. Secret Biolink Removal
             if (this.archiveThreadId) {
                 const secretHub = await this.thread.parent.threads.fetch(this.archiveThreadId).catch(() => null);
                 if (secretHub) await secretHub.members.remove(userId).catch(() => null);
             }
 
-            // 3. Update Voice (Final hardening for this player)
-            await this.updateVoiceStates();
+            // 4. Voice Locking
+            await this.updateVoiceStates().catch(() => null);
 
-            // 4. DM Notification
-            if (player && player.user && !player.isBot) {
-                await player.user.send(`💀 **Connection Locked.** You have been redacted from the living records. You can still spectate the sanctuary in real-time, but your biometrics have been locked from sending new records to the chat.\n\n*(You can still speak in the <#${this.graveyardThreadId}> archives!)*`).catch(() => null);
+            // 5. Final Notification
+            if (player.user && !player.isBot) {
+                await player.user.send(`💀 **Connection Locked.** You have been redacted. Use <#${this.graveyardThreadId}> for afterlife discussion.`).catch(() => null);
             }
         } catch (e) {
             logger.error('[Mafia] Graveyard transition failed:', e, 'Mafia');
