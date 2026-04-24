@@ -193,6 +193,27 @@ class MinigameService {
         const { data } = await supabase.from('wordle_history').select('user_id').eq('user_id', userId).eq('date', today).maybeSingle();
         return !!data;
     }
+
+    /**
+     * Resets the Daily Word and clears today's play history.
+     * RESTRICTED: Should only be called by authorized administrative triggers.
+     */
+    async resetDailyWord() {
+        if (!supabase) return;
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Clear Local Cache
+        this.cache.delete(today);
+
+        // 2. Remove from DB (Wordle Daily Table)
+        await supabase.from('wordle_daily').delete().eq('date', today);
+
+        // 3. Remove from History (Allow everyone to play the new word)
+        await supabase.from('wordle_history').delete().eq('date', today);
+
+        logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. All history wiped.`);
+        return true;
+    }
 }
 
 module.exports = new MinigameService();

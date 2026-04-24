@@ -126,6 +126,19 @@ class WordleService {
     getGame(userId) {
         return this.activeGames.get(userId);
     }
+
+    /**
+     * Forcefully resets the Daily Wordle session.
+     */
+    async forceReset() {
+        // 1. Reset the underlying service data
+        await minigameService.resetDailyWord();
+
+        // 2. Clear all active in-memory games
+        this.activeGames.clear();
+
+        return true;
+    }
 }
 
 // Singleton instance

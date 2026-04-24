@@ -12,12 +12,43 @@ module.exports = {
     cooldown: 15, 
     data: new SlashCommandBuilder()
         .setName('wordle')
-        .setDescription('Initialize the Daily Wordle decoding protocol.'),
+        .setDescription('Daily Wordle challenge protocols.')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('decode')
+                .setDescription('Initialize the Daily Wordle decoding protocol.')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('reset')
+                .setDescription('ADMIN: Forcefully reset the daily word and history.')
+        ),
     
     async execute(interaction) {
+        const subcommand = interaction.options.getSubcommand();
         await interaction.deferReply();
         
         try {
+            // --- RESET SUBCOMMAND ---
+            if (subcommand === 'reset') {
+                // Fetch application info to verify owner
+                if (!interaction.client.application.owner) await interaction.client.application.fetch();
+                
+                const ownerId = interaction.client.application.owner.id || interaction.client.application.owner.ownerId; // Support teams
+                if (interaction.user.id !== ownerId) {
+                    return interaction.editReply({ 
+                        content: '🔒 **Access Denied.** This protocol is restricted to the Archive Overseer.', 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+
+                await wordleService.forceReset();
+                return interaction.editReply({ 
+                    content: '♻️ **Archive Reset Complete.** The daily cipher has been purged and a new one will be materialized on next access.' 
+                });
+            }
+
+            // --- DECODE SUBCOMMAND ---
             const userId = interaction.user.id;
             
             // 1. Initialize Game State (Daily Word)
