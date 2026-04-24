@@ -3,91 +3,92 @@ const logger = require('../core/logger');
 const axios = require('axios');
 
 /**
- * Minigame Service: Centralized management for minigame points and global daily wordle.
+ * Minigame Service V2: The "Arcade Protocol" Archivist.
+ * Centralized management for all minigame points, per-game stats, and global standings.
  */
 class MinigameService {
     constructor() {
         this.WORD_API = 'https://random-word-api.herokuapp.com/word?length=5';
-        this.cache = new Map(); // In-memory cache for daily word to reduce DB hits
+        this.cache = new Map(); 
     }
 
     /**
-     * Fetch the global word of the day.
-     * Resets at 00:00 GMT.
+     * awardPoints: The primary entry point for all minigames.
+     * Updates global points AND specific game stats in one atomic-like operation.
+     * 
+     * @param {string} userId - Discord User ID
+     * @param {number} amount - Points to award
+     * @param {object} options - { gameId, metadata, score }
      */
-    async getDailyWord() {
-        if (!supabase) throw new Error('Archives are currently disconnected (No DB).');
-
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        
-        // Check local cache first
-        if (this.cache.has(today)) {
-            return this.cache.get(today);
-        }
+    async awardPoints(userId, amount, options = {}) {
+        if (!supabase) return;
+        const { gameId = 'generic', metadata = {}, score = amount } = options;
 
         try {
-            // Check Database
-            const { data, error } = await supabase
-                .from('wordle_daily')
-                .select('word')
-                .eq('date', today)
-                .single();
+            // 1. Update Specific Game Stats (High Score, Total Plays)
+            // We use upsert with a unique constraint on (user_id, game_id)
+            const { data: existingStats } = await supabase
+                .from('minigame_stats')
+                .select('high_score, total_plays')
+                .eq('user_id', userId)
+                .eq('game_id', gameId)
+                .maybeSingle();
 
-            if (data) {
-                this.cache.set(today, data.word);
-                return data.word;
-            }
+            const newHighScore = Math.max(existingStats?.high_score || 0, score);
+            const newTotalPlays = (existingStats?.total_plays || 0) + 1;
 
-            // Not found in DB, fetch from API
-            const response = await axios.get(this.WORD_API);
-            const word = response.data[0].toUpperCase();
+            await supabase
+                .from('minigame_stats')
+                .upsert({
+                    user_id: userId,
+                    game_id: gameId,
+                    high_score: newHighScore,
+                    total_plays: newTotalPlays,
+                    metadata: metadata,
+                    last_played: new Date().toISOString()
+                });
 
-            // Store in DB for everyone else
-            const { error: insertError } = await supabase
-                .from('wordle_daily')
-                .upsert({ date: today, word: word });
+            // 2. Update Global Standing (total_points, games_played)
+            const { data: globalStats } = await supabase
+                .from('minigame_scores')
+                .select('total_points, games_played')
+                .eq('user_id', userId)
+                .maybeSingle();
 
-            if (insertError) {
-                logger.error(`[MinigameService] Failed to save daily word:`, insertError);
-            }
+            const newTotalPoints = (globalStats?.total_points || 0) + amount;
+            const newGamesPlayed = (globalStats?.games_played || 0) + 1;
 
-            this.cache.set(today, word);
-            return word;
+            await supabase
+                .from('minigame_scores')
+                .upsert({
+                    user_id: userId,
+                    total_points: newTotalPoints,
+                    games_played: newGamesPlayed,
+                    last_updated: new Date().toISOString()
+                });
+
+            logger.info(`[ArcadeProtocol] Awarded ${amount} pts to ${userId} for [${gameId}]. Global: ${newTotalPoints}`);
+            
+            return {
+                totalPoints: newTotalPoints,
+                isNewHighScore: newHighScore > (existingStats?.high_score || 0)
+            };
 
         } catch (error) {
-            logger.error(`[MinigameService] Error fetching daily word:`, error);
-            // Fallback to a hardcoded word list if API/DB fails? 
-            // For now, let it throw so the user knows there's a protocol failure.
-            throw new Error('The Daily Archive is currently unreachable.');
+            logger.error(`[ArcadeProtocol] Failed to award points for ${userId}:`, error);
+            throw error;
         }
     }
 
     /**
-     * Check if a user has already played today.
-     */
-    async hasPlayedToday(userId) {
-        if (!supabase) return false;
-        const today = new Date().toISOString().split('T')[0];
-
-        const { data, error } = await supabase
-            .from('wordle_history')
-            .select('user_id')
-            .eq('user_id', userId)
-            .eq('date', today)
-            .maybeSingle();
-
-        return !!data;
-    }
-
-    /**
-     * Record a Wordle result and award points.
+     * Record a Wordle result using the new Arcade Protocol.
      */
     async recordWordleResult(userId, guesses, solved) {
         if (!supabase) return;
         const today = new Date().toISOString().split('T')[0];
 
-        // 1. Save History
-        const { error: histError } = await supabase
+        // 1. Save Raw History (Wordle Specific)
+        await supabase
             .from('wordle_history')
             .upsert({
                 user_id: userId,
@@ -97,10 +98,6 @@ class MinigameService {
                 solved_at: new Date().toISOString()
             });
 
-        if (histError) {
-            logger.error(`[MinigameService] Failed to record history for ${userId}:`, histError);
-        }
-
         if (!solved) return { points: 0, firstBlood: false };
 
         // 2. Calculate Points
@@ -108,89 +105,58 @@ class MinigameService {
         const efficiencyBonus = (7 - guesses) * 20;
         points += efficiencyBonus;
 
-        // 3. Check for First Blood
-        const { count, error: countError } = await supabase
+        // Check for First Blood
+        const { count } = await supabase
             .from('wordle_history')
             .select('*', { count: 'exact', head: true })
             .eq('date', today)
             .eq('solved', true);
 
-        const isFirstBlood = !countError && count === 1; // Ours is the only solve recorded (since we just inserted)
+        const isFirstBlood = count === 1;
         if (isFirstBlood) points += 50;
 
-        // 4. Update Total Points
-        await this.addPoints(userId, points);
+        // 3. Award via Arcade Protocol
+        const result = await this.awardPoints(userId, points, {
+            gameId: 'wordle',
+            score: 1000 / guesses, // Arbitrary Wordle "Score" for stats
+            metadata: { guesses, firstBlood: isFirstBlood }
+        });
 
-        return { points, firstBlood: isFirstBlood };
+        return { 
+            points, 
+            firstBlood: isFirstBlood,
+            totalPoints: result.totalPoints
+        };
     }
 
     /**
-     * Generic point addition.
-     */
-    async addPoints(userId, amount) {
-        if (!supabase) return;
-
-        // Use RPC or Upsert logic for incrementing
-        // Since Supabase doesn't have a simple increment in upsert without RPC, 
-        // we'll fetch then update, or use a custom query if available.
-        // Best practice is RPC, but we'll try a single-row fetch/update for now as a fallback.
-        
-        const { data: current } = await supabase
-            .from('minigame_scores')
-            .select('total_points')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        const total = (current?.total_points || 0) + amount;
-
-        await supabase
-            .from('minigame_scores')
-            .upsert({ 
-                user_id: userId, 
-                total_points: total, 
-                last_updated: new Date().toISOString() 
-            });
-    }
-
-    /**
-     * Fetch the top players for the leaderboard.
+     * Fetch the top players for the leaderboard (Arcade Standings).
      */
     async getTopPlayers(limit = 10) {
         if (!supabase) return [];
-
         const { data, error } = await supabase
             .from('minigame_scores')
             .select('*')
             .order('total_points', { ascending: false })
             .limit(limit);
 
-        if (error) {
-            // Handle missing table gracefully - it likely means no one has played yet or migration hasn't run
-            if (error.code === '42P01') {
-                logger.warn('[MinigameService] Leaderboard table (minigame_scores) not found. Run the migration script! ♡');
-            } else {
-                logger.error(`[MinigameService] Failed to fetch leaderboard: ${error.message || JSON.stringify(error)}`);
-            }
-            return [];
-        }
+        if (error) return [];
         return data;
     }
 
     /**
-     * Get a user's current rank and points.
+     * Get a user's current rank and global stats.
      */
     async getUserStats(userId) {
         if (!supabase) return null;
-
         const { data: userStats } = await supabase
             .from('minigame_scores')
             .select('*')
             .eq('user_id', userId)
             .maybeSingle();
 
-        if (!userStats) return { total_points: 0, rank: '?' };
+        if (!userStats) return { total_points: 0, rank: '?', games_played: 0 };
 
-        // Count users with more points for rank
         const { count } = await supabase
             .from('minigame_scores')
             .select('*', { count: 'exact', head: true })
@@ -200,6 +166,32 @@ class MinigameService {
             ...userStats,
             rank: (count || 0) + 1
         };
+    }
+
+    /**
+     * Wordle Daily Management (Legacy support)
+     */
+    async getDailyWord() {
+        const today = new Date().toISOString().split('T')[0];
+        if (this.cache.has(today)) return this.cache.get(today);
+
+        const { data } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
+        if (data) {
+            this.cache.set(today, data.word);
+            return data.word;
+        }
+
+        const response = await axios.get(this.WORD_API);
+        const word = response.data[0].toUpperCase();
+        await supabase.from('wordle_daily').upsert({ date: today, word: word });
+        this.cache.set(today, word);
+        return word;
+    }
+
+    async hasPlayedToday(userId) {
+        const today = new Date().toISOString().split('T')[0];
+        const { data } = await supabase.from('wordle_history').select('user_id').eq('user_id', userId).eq('date', today).maybeSingle();
+        return !!data;
     }
 }
 

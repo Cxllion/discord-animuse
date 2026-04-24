@@ -23,14 +23,17 @@ module.exports = {
             // 1. Initialize Game State (Daily Word)
             const gameState = await wordleService.startNewGame(userId);
             
-            // 2. Generate Initial Board
-            const buffer = await wordleGenerator.generateBoard(gameState);
-            const attachment = new AttachmentBuilder(buffer, { name: 'wordle.png' });
+            const nextReset = new Date();
+            nextReset.setUTCHours(24, 0, 0, 0);
+            const resetTs = Math.floor(nextReset.getTime() / 1000);
+
+            // 2. Generate Anonymized Board (Public)
+            const bufferAnon = await wordleGenerator.generateBoard(gameState, { anonymize: true });
+            const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' });
             
-            // 3. Construct Response
-            const embed = baseEmbed('Daily Wordle')
-                .setDescription('A fresh 5-letter word has been materialized. Synchronize your biometrics and begin the decoding protocol.\n\n🕒 **Reset:** 00:00 GMT')
-                .setImage('attachment://wordle.png');
+            // 3. Construct Public Response
+            const embedAnon = baseEmbed('Daily Archive Decoding', `The current 5-letter cipher has been materialized. The archive will synchronize <t:${resetTs}:R>.`)
+                .setImage('attachment://wordle-anon.png');
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -41,9 +44,23 @@ module.exports = {
             );
             
             await interaction.editReply({ 
-                embeds: [embed], 
+                embeds: [embedAnon], 
                 components: [row], 
-                files: [attachment] 
+                files: [attachmentAnon] 
+            });
+
+            // 4. Generate Personalized Board (Private Ephemeral)
+            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false });
+            const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' });
+
+            const embedPersonal = baseEmbed('Daily Wordle (Personal Console)')
+                .setDescription('Your private decoding terminal is active. Submit your guesses via the public button.')
+                .setImage('attachment://wordle-personal.png');
+
+            await interaction.followUp({
+                embeds: [embedPersonal],
+                files: [attachmentPersonal],
+                flags: MessageFlags.Ephemeral
             });
 
         } catch (error) {

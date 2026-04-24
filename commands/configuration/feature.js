@@ -42,7 +42,8 @@ module.exports = {
                             { name: '🔔 Activity', value: 'activity' },
                             { name: '👤 Profile', value: 'profile' },
                             { name: '🕵️ Mafia', value: 'mafia' },
-                            { name: '📊 Leaderboard', value: 'leaderboard' }
+                            { name: '📊 Leaderboard', value: 'leaderboard' },
+                            { name: '🕹️ Arcade', value: 'arcade' }
                         ))
                 .addStringOption(option =>
                     option.setName('query')
@@ -60,6 +61,57 @@ module.exports = {
             const query = interaction.options.getString('query');
 
             try {
+                // --- ARCADE TEST ---
+                if (type === 'arcade') {
+                    await interaction.editReply({ content: '🕹️ **Arcade Diagnostic**: Materializing minigame-specific graphics... ♡' });
+
+                    const wordleGenerator = require('../../utils/generators/wordleGenerator');
+                    const themeColor = await getUserColor(interaction.user.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
+
+                    try {
+                        // 1. Wordle Matrix (Won, Lost, Mid-game)
+                        const wordleTasks = [
+                            { 
+                                label: 'Wordle (WON)', 
+                                state: { targetWord: 'MUSES', status: 'WON', guesses: [{ word: 'MUSES', result: [2, 2, 2, 2, 2] }] },
+                                name: 'won'
+                            },
+                            { 
+                                label: 'Wordle (LOST)', 
+                                state: { 
+                                    targetWord: 'BOOKS', status: 'LOST', 
+                                    guesses: Array(6).fill({ word: 'WRONG', result: [0, 0, 0, 0, 0] }) 
+                                },
+                                name: 'lost'
+                            },
+                            { 
+                                label: 'Wordle (MID)', 
+                                state: { 
+                                    targetWord: 'ENIGMA', status: 'PLAYING', 
+                                    guesses: [{ word: 'GHOST', result: [0, 0, 0, 1, 0] }] 
+                                },
+                                name: 'mid'
+                            }
+                        ];
+
+                        const wordleAttachments = [];
+                        for (const task of wordleTasks) {
+                            const buffer = await wordleGenerator.generateBoard(task.state);
+                            wordleAttachments.push(new AttachmentBuilder(buffer, { name: `wordle-${task.name}.webp` }));
+                        }
+
+                        await interaction.editReply({ 
+                            content: `✅ **Arcade Diagnostic Complete**\nGenerated **Wordle Board Matrix**.`,
+                            files: wordleAttachments 
+                        });
+
+                    } catch (err) {
+                        logger.error('Arcade Test Failed:', err, 'FeatureCommand');
+                        await interaction.followUp({ content: `❌ **Failed to generate arcade graphics**: ${err.message}` });
+                    }
+                    return;
+                }
+
                 // --- WELCOME TEST ---
                 if (type === 'welcome') {
                     // 1. Resolve Member

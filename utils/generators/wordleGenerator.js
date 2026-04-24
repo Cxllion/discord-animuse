@@ -25,17 +25,21 @@ class WordleGenerator {
         };
     }
 
-    async generateBoard(gameState) {
+    async generateBoard(gameState, options = {}) {
         const SCALE = 3;
+        const { anonymize = false } = options;
         const canvas = createCanvas(this.CARD_WIDTH * SCALE, this.CARD_HEIGHT * SCALE);
         const ctx = canvas.getContext('2d');
         ctx.scale(SCALE, SCALE);
+
+        // 0. Initial Clear for Transparency
+        ctx.clearRect(0, 0, this.CARD_WIDTH, this.CARD_HEIGHT);
 
         // Premium Rendering Settings
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // 1. Background System
+        // 1. Background System (includes clipping)
         this.drawBackground(ctx);
         
         // 2. Scanlines (Signature Animuse texture)
@@ -57,21 +61,29 @@ class WordleGenerator {
                     state = guessData.result[col];
                 }
 
-                this.drawTile(ctx, x, y, char, state);
+                this.drawTile(ctx, x, y, char, state, anonymize);
             }
         }
 
         // 4. Header/Stats (Optional Footer)
-        this.drawFooter(ctx, gameState);
+        this.drawFooter(ctx, gameState, anonymize);
 
         return await canvas.encode('png');
     }
 
     drawBackground(ctx) {
-        ctx.fillStyle = this.COLORS.BG;
+        ctx.save();
+        
+        // Create the Squircle Path
         ctx.beginPath();
         ctx.roundRect(0, 0, this.CARD_WIDTH, this.CARD_HEIGHT, 40);
+        
+        // Fill Base
+        ctx.fillStyle = this.COLORS.BG;
         ctx.fill();
+
+        // Clip everything else to this squircle
+        ctx.clip();
 
         // Subtle gradient glow from bottom-right (Animuse Theme)
         const grad = ctx.createRadialGradient(
@@ -83,13 +95,15 @@ class WordleGenerator {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, this.CARD_WIDTH, this.CARD_HEIGHT);
 
-        // Border
+        // Inner Border
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(0, 0, this.CARD_WIDTH, this.CARD_HEIGHT);
+        
+        ctx.restore();
     }
 
-    drawTile(ctx, x, y, char, state) {
+    drawTile(ctx, x, y, char, state, anonymize = false) {
         ctx.save();
 
         let fillColor = this.COLORS.EMPTY;
@@ -130,8 +144,8 @@ class WordleGenerator {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Draw Character
-        if (char) {
+        // Draw Character (Skip if anonymized)
+        if (char && !anonymize) {
             ctx.fillStyle = '#FFFFFF';
             // Use premium Neo font for letters
             ctx.font = `900 32px 'monalqo', 'exomoon', sans-serif`;
@@ -152,6 +166,12 @@ class WordleGenerator {
 
     drawScanlines(ctx) {
         ctx.save();
+        
+        // Clip to the same squircle to avoid spilling onto transparent corners
+        ctx.beginPath();
+        ctx.roundRect(0, 0, this.CARD_WIDTH, this.CARD_HEIGHT, 40);
+        ctx.clip();
+
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 0.5;
         for (let y = 0; y < this.CARD_HEIGHT; y += 4) {
@@ -163,7 +183,9 @@ class WordleGenerator {
         ctx.restore();
     }
 
-    drawFooter(ctx, gameState) {
+    drawFooter(ctx, gameState, anonymize = false) {
+        if (anonymize) return; // Skip footer for anonymized boards
+        
         ctx.save();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.font = `700 10px 'monalqo', sans-serif`;

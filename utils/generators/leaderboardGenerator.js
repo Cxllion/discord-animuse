@@ -2,8 +2,8 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const { lightenColor } = require('../config/colorConfig');
 
-const CARD_WIDTH = 930;
-const CARD_HEIGHT = 550;
+const CARD_WIDTH = 800;
+const CARD_HEIGHT = 480;
 
 const drawRoundedRect = (ctx, x, y, width, height, radius) => {
     ctx.beginPath();
@@ -64,10 +64,10 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.beginPath(); ctx.arc(sX, sY, sR, 0, Math.PI * 2); ctx.fill();
     }
 
-    // --- 2. ISLAND LAYOUT (V3.5: Prismatic) ---
+    // --- 2. ISLAND LAYOUT (V5: Compact Archive) ---
     const islands = [
-        { x: 30, y: 30, w: 260, h: 490, title: 'USER ARCHIVE' },
-        { x: 310, y: 30, w: 590, h: 490, title: 'GRAND ARCHIVE RANKINGS' }
+        { x: 20, y: 20, w: 230, h: 440, title: 'USER ARCHIVE' },
+        { x: 265, y: 20, w: 515, h: 440, title: 'GRAND ARCHIVE RANKINGS' }
     ];
 
     const GOLD_LEAF = ctx.createLinearGradient(0, 0, 100, 100);
@@ -199,53 +199,49 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const cX = i1.x + i1.w / 2;
 
     // Avatar
-    const avY = i1.y + 70;
-    const avR = 65;
+    const avRadius = 65;
+    const avX = cX;
+    const avY = i1.y + 110;
+
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cX, avY + avR, avR, 0, Math.PI * 2);
+    ctx.arc(avX, avY, avRadius, 0, Math.PI * 2);
     ctx.clip();
     try {
-        const url = challengerAvatarUrl || challenger.displayAvatarURL({ extension: 'png', size: 512 });
-        const img = await loadImage(url);
-        ctx.drawImage(img, cX - avR, avY, avR * 2, avR * 2);
+        const avatarImg = await loadImage(challengerAvatarUrl || challenger.displayAvatarURL({ extension: 'png', size: 256 }));
+        ctx.drawImage(avatarImg, avX - avRadius, avY - avRadius, avRadius * 2, avRadius * 2);
     } catch (e) {
-        ctx.fillStyle = '#18181B'; ctx.fill();
+        ctx.fillStyle = '#111116';
+        ctx.fill();
     }
     ctx.restore();
 
-    // Avatar Glow Ring
-    ctx.strokeStyle = THEME_COLOR;
-    ctx.lineWidth = 4;
+    // Rank Badge
+    const badgeY = i1.y + 175;
+    ctx.save();
+    ctx.fillStyle = THEME_COLOR;
     ctx.shadowColor = THEME_COLOR;
     ctx.shadowBlur = 15;
-    ctx.beginPath(); ctx.arc(cX, avY + avR, avR + 5, 0, Math.PI * 2); ctx.stroke();
+    drawRoundedRect(ctx, avX - 35, badgeY + 15, 70, 30, 15);
+    ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Rank Badge
-    ctx.save();
-    const rankTxt = `#${challengerData.rank}`;
-    ctx.font = '900 22px monalqo, sans-serif';
-    const rW = ctx.measureText(rankTxt).width + 30;
-    ctx.fillStyle = THEME_COLOR;
-    drawRoundedRect(ctx, cX - rW / 2, avY + avR * 2 - 15, rW, 40, 20);
-    ctx.fill();
     ctx.fillStyle = '#000';
+    ctx.font = '900 16px monalqo, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(rankTxt, cX, avY + avR * 2 + 6);
+    ctx.fillText(`#${challengerData.rank}`, avX, badgeY + 36);
     ctx.restore();
 
     // Name
     ctx.fillStyle = TEXT_COLOR;
     const nameStr = (challengerName || challenger.username).toUpperCase();
-    const nameSize = fitText(ctx, nameStr, i1.w - 40, 24);
+    const nameSize = fitText(ctx, nameStr, i1.w - 40, 22);
     ctx.font = `900 ${nameSize}px monalqo, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(nameStr, cX, i1.y + 310);
+    ctx.fillText(nameStr, cX, i1.y + 280);
 
-    // --- V3.4.3: REFINED VERTICAL RHYTHM ---
-    const statsY = i1.y + 345;
+    // --- V5: REFINED VERTICAL RHYTHM ---
+    const statsY = i1.y + 315;
     
     // Level Hero Capsule (Centered)
     ctx.save();
@@ -273,9 +269,9 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.restore();
 
     // Progress Section
-    const barW = i1.w - 70;
-    const barX = i1.x + 35;
-    const barY = i1.y + i1.h - 45;
+    const barW = i1.w - 60;
+    const barX = i1.x + 30;
+    const barY = i1.y + i1.h - 40;
     const barH = 10;
 
     // Labels (Top Left: EXP, Top Right: X/X)
@@ -388,35 +384,34 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         }
     };
 
-    const pBaseline = i2.y + 165; 
-    const pStep = i2.w / 4;
+    const pBaseline = i2.y + 160; 
+    const pStep = i2.w / 4.2;
 
     // V3.8: Crown Glow behind #1
     ctx.save();
     const crownGlow = ctx.createRadialGradient(
-        i2.x + i2.w / 2, pBaseline - 70, 0,
-        i2.x + i2.w / 2, pBaseline - 70, 90
+        i2.x + i2.w / 2, pBaseline - 60, 0,
+        i2.x + i2.w / 2, pBaseline - 60, 80
     );
-    crownGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.12)`);
-    crownGlow.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.04)`);
+    crownGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.1)`);
     crownGlow.addColorStop(1, 'transparent');
     ctx.fillStyle = crownGlow;
-    ctx.fillRect(i2.x + i2.w / 2 - 100, pBaseline - 160, 200, 200);
+    ctx.fillRect(i2.x + i2.w / 2 - 100, pBaseline - 140, 200, 200);
     ctx.restore();
 
-    await drawPodium(topUsers[1], 2, i2.x + pStep, pBaseline, 40); // Left
-    await drawPodium(topUsers[2], 3, i2.x + i2.w - pStep, pBaseline, 40); // Right
-    await drawPodium(topUsers[0], 1, i2.x + i2.w / 2, pBaseline, 50); // Center (Top)
+    await drawPodium(topUsers[1], 2, i2.x + pStep, pBaseline, 30); // Left
+    await drawPodium(topUsers[2], 3, i2.x + i2.w - pStep, pBaseline, 30); // Right
+    await drawPodium(topUsers[0], 1, i2.x + i2.w / 2, pBaseline, 40); // Center (Top)
 
     // --- LIST SECTION (Ranks 4-10) ---
-    const listStartY = i2.y + 250;
-    const rowH = 32;
+    const listStartY = i2.y + 225;
+    const rowH = 28;
 
     for (let i = 3; i < 10; i++) {
         const user = topUsers[i];
         const y = listStartY + (i - 3) * (rowH + 2);
-        const rowX = i2.x + 40;
-        const rowW = i2.w - 80;
+        const rowX = i2.x + 30;
+        const rowW = i2.w - 60;
 
         // V3.8: Enhanced Row Backdrop
         ctx.fillStyle = i % 2 === 0 ? `rgba(${r}, ${g}, ${b}, 0.04)` : 'rgba(255,255,255,0.015)';
@@ -442,12 +437,12 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         // Avatar
         ctx.save();
         ctx.beginPath();
-        ctx.arc(rowX + 40, y, 10, 0, Math.PI * 2);
+        ctx.arc(rowX + 35, y, 8, 0, Math.PI * 2);
         ctx.clip();
         try {
             if (user && user.avatarUrl) {
                 const img = await loadImage(user.avatarUrl);
-                ctx.drawImage(img, rowX + 30, y - 10, 20, 20);
+                ctx.drawImage(img, rowX + 27, y - 8, 16, 16);
             } else {
                 ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
             }
@@ -457,7 +452,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         // Name
         ctx.fillStyle = user ? TEXT_COLOR : 'rgba(255,255,255,0.1)';
         ctx.font = '900 13px monalqo, sans-serif';
-        ctx.fillText(user ? (user.username || 'Archivist').toUpperCase() : 'VACANT SLOT', rowX + 65, y + 5);
+        ctx.fillText(user ? (user.username || 'Archivist').toUpperCase() : 'VACANT SLOT', rowX + 55, y + 5);
 
         // Level
         if (user) {

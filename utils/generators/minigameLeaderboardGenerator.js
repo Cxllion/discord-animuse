@@ -2,8 +2,8 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const { lightenColor } = require('../config/colorConfig');
 
-const CARD_WIDTH = 930;
-const CARD_HEIGHT = 550;
+const CARD_WIDTH = 500;
+const CARD_HEIGHT = 600;
 
 const drawRoundedRect = (ctx, x, y, width, height, radius) => {
     ctx.beginPath();
@@ -27,7 +27,8 @@ const hexToRgb = (hex) => {
 };
 
 /**
- * Minigame Leaderboard Generator V2: Arcade aesthetics with champion spotlight.
+ * Minigame Leaderboard Generator V21: "Linked Archive".
+ * Bridging the spatial gap with digital dot-leaders and refined horizontal tracks.
  */
 const generateMinigameLeaderboard = async (challenger, challengerStats, topPlayers, primaryColor = '#3B82F6') => {
     const SCALE = 2;
@@ -35,177 +36,186 @@ const generateMinigameLeaderboard = async (challenger, challengerStats, topPlaye
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    // --- 1. TRANSPARENCY & THEME ---
+    // --- 1. THE ARCHIVE VOID ---
     ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
     const THEME_COLOR = primaryColor;
     const { r, g, b } = hexToRgb(THEME_COLOR);
-    const GLASS_BG = `rgba(${Math.floor(r * 0.05)}, ${Math.floor(g * 0.05)}, ${Math.floor(b * 0.05)}, 0.9)`;
     const TEXT_COLOR = '#FFFFFF';
-    const SECONDARY_TEXT = 'rgba(255, 255, 255, 0.5)';
+    const SECONDARY_TEXT = 'rgba(255, 255, 255, 0.35)';
 
-    // --- 2. THE FLOATING ARCADE ISLAND ---
-    const iX = 30, iY = 30, iW = 870, iH = 490;
-
-    ctx.save();
-    // Glass Base
-    ctx.fillStyle = GLASS_BG;
-    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.5)`;
-    ctx.shadowBlur = 30;
-    drawRoundedRect(ctx, iX, iY, iW, iH, 40);
+    const bgGrad = ctx.createRadialGradient(CARD_WIDTH/2, CARD_HEIGHT/2, 50, CARD_WIDTH/2, CARD_HEIGHT/2, 400);
+    bgGrad.addColorStop(0, `rgba(${Math.floor(r * 0.1)}, ${Math.floor(g * 0.1)}, ${Math.floor(b * 0.15)}, 1)`);
+    bgGrad.addColorStop(1, '#050508');
+    
+    ctx.fillStyle = bgGrad;
+    drawRoundedRect(ctx, 15, 15, 470, 570, 24);
     ctx.fill();
 
-    // Dot Grid Pattern (Arcade Feel)
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
-    for (let x = iX; x < iX + iW; x += 15) {
-        for (let y = iY; y < iY + iH; y += 15) {
-            ctx.beginPath(); ctx.arc(x, y, 1, 0, Math.PI * 2); ctx.fill();
+    // Neural Mesh
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.12)`;
+    for (let x = 30; x < 470; x += 20) {
+        for (let y = 30; y < 570; y += 20) {
+            ctx.beginPath(); ctx.arc(x, y, 0.5, 0, Math.PI * 2); ctx.fill();
         }
     }
-    ctx.restore();
 
-    // Double-Line Glow Border
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(iX + 8, iY + 8, iW - 16, iH - 16, 34);
-    ctx.stroke();
-    ctx.restore();
-
-    // --- Header Title (Left Aligned V2.8 Style) ---
+    // Header
     ctx.save();
-    ctx.fillStyle = SECONDARY_TEXT;
-    ctx.font = '900 11px monalqo, sans-serif';
     ctx.textAlign = 'left';
-    ctx.letterSpacing = '3px';
-    ctx.fillText('MINIGAME CHAMPIONS', iX + 40, iY + 40);
+    ctx.fillStyle = THEME_COLOR;
+    ctx.font = '900 11px monalqo, sans-serif';
+    ctx.letterSpacing = '6px';
+    ctx.fillText('LIBRARY_ARCADIAN // HIGH_SCORES', 45, 55);
+    ctx.fillStyle = SECONDARY_TEXT;
+    ctx.font = '900 8px monalqo, sans-serif';
+    ctx.letterSpacing = '1px';
+    ctx.fillText(`SESSION_LOADED: ${new Date().getFullYear()}.${(new Date().getMonth() + 1).toString().padStart(2, '0')}`, 45, 68);
     ctx.restore();
 
-    // --- 3. CHAMPION SPOTLIGHT (Top 3) ---
-    const drawSpotlight = async (player, rank, x, baseY, size) => {
+    // --- 3. THE ARCHIVIST THRONES ---
+    const drawThrone = async (player, rank, x, baseY, size) => {
         if (!player) return;
-        const color = rank === 1 ? '#FFD700' : (rank === 2 ? '#C0C0C0' : '#CD7F32');
-        const avY = baseY - (rank === 1 ? 95 : 60);
+        const color = rank === 1 ? '#FFD700' : (rank === 2 ? '#E5E7EB' : '#D97706');
+        const avY = baseY - (rank === 1 ? 65 : 40);
 
-        // Avatar
+        const drawHex = (hx, hy, hr) => {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * 60 - 90) * Math.PI / 180;
+                ctx.lineTo(hx + hr * Math.cos(angle), hy + hr * Math.sin(angle));
+            }
+            ctx.closePath();
+        };
+
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, avY, size, 0, Math.PI * 2);
-        ctx.clip();
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        ctx.lineWidth = 1;
+        drawHex(x, avY, size + 10); ctx.stroke();
+        ctx.shadowColor = color; ctx.shadowBlur = rank === 1 ? 25 : 12;
+        ctx.strokeStyle = color; ctx.lineWidth = rank === 1 ? 3 : 2;
+        drawHex(x, avY, size + 4); ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        drawHex(x, avY, size); ctx.clip();
         try {
             const avatarImg = await loadImage(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
             ctx.drawImage(avatarImg, x - size, avY - size, size * 2, size * 2);
-        } catch (e) { ctx.fillStyle = '#111116'; ctx.fill(); }
+        } catch (e) { ctx.fillStyle = '#0a0a0f'; ctx.fill(); }
         ctx.restore();
 
-        // Ring
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = rank === 1 ? 5 : 3;
-        if (rank === 1) {
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 25;
-        } else {
-            ctx.strokeStyle = `rgba(${hexToRgb(color).r}, ${hexToRgb(color).g}, ${hexToRgb(color).b}, 0.5)`;
-        }
-        ctx.beginPath(); ctx.arc(x, avY, size + 5, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
-
-        // Stacked Info (Badge -> Name -> Points)
-        const badgeY = avY + size + 8;
+        const insigniaY = avY + size + 6;
         ctx.fillStyle = color;
-        drawRoundedRect(ctx, x - 22, badgeY - 12, 44, 24, 12);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(x, insigniaY, 10, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#000';
-        ctx.font = '900 13px monalqo, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`#${rank}`, x, badgeY);
+        ctx.font = '900 12px monalqo, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(`${rank}`, x, insigniaY);
 
-        const nameY = badgeY + 32;
+        const nameY = insigniaY + 26;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = TEXT_COLOR;
-        ctx.font = '900 15px monalqo, sans-serif';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillText((player.username || 'PLAYER').toUpperCase(), x, nameY);
-        
+        ctx.font = '900 12px monalqo, sans-serif';
+        ctx.fillText((player.username || 'ANONYMOUS').toUpperCase(), x, nameY);
         ctx.fillStyle = color;
-        ctx.font = '900 13px monalqo, sans-serif';
-        ctx.fillText(`${formatPoints(player.total_points)} PTS`, x, nameY + 18);
+        ctx.font = '900 11px monalqo, sans-serif';
+        ctx.fillText(`${formatPoints(player.total_points)} PTS`, x, nameY + 14);
     };
 
-    const spotlightBase = iY + 185;
-    await drawSpotlight(topPlayers[1], 2, iX + 220, spotlightBase, 45);
-    await drawSpotlight(topPlayers[2], 3, iX + iW - 220, spotlightBase, 45);
-    await drawSpotlight(topPlayers[0], 1, iX + iW / 2, spotlightBase, 60);
+    const podiumBase = 185;
+    await drawThrone(topPlayers[1], 2, 115, podiumBase, 34);
+    await drawThrone(topPlayers[2], 3, 385, podiumBase, 34);
+    await drawThrone(topPlayers[0], 1, 250, podiumBase, 50);
 
-    // --- 4. THE RANKINGS LIST (#4-10) ---
-    const listY = iY + 265;
-    const maxPoints = topPlayers[0]?.total_points || 1;
+    // --- 4. THE LINKED ARCHIVE (Ranking List) ---
+    const listY = 285;
     const rowH = 24;
 
     for (let i = 3; i < 10; i++) {
         const player = topPlayers[i];
-        const y = listY + (i - 3) * (rowH + 4);
-        const rowX = iX + 120;
-        const rowW = iW - 240;
+        const y = listY + (i - 3) * (rowH + 12);
+        const rX = 40, rW = 420;
 
-        // Rank
-        ctx.fillStyle = SECONDARY_TEXT;
-        ctx.font = '900 12px monalqo, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(`#${i + 1}`, rowX, y + 5);
-
-        // Name
-        ctx.fillStyle = player ? TEXT_COLOR : 'rgba(255,255,255,0.1)';
-        ctx.font = '900 12px monalqo, sans-serif';
-        ctx.fillText(player ? (player.username || 'ARCHIVIST').toUpperCase() : 'EMPTY SLOT', rowX + 50, y + 5);
-
-        // Point Bar
-        const barX = rowX + 200;
-        const barMaxW = rowW - 280;
-        const barH = 4;
+        ctx.fillStyle = i % 2 === 0 ? `rgba(${r}, ${g}, ${b}, 0.12)` : 'rgba(255,255,255,0.03)';
+        drawRoundedRect(ctx, rX, y - 12, rW, rowH, 4); ctx.fill();
         
-        drawRoundedRect(ctx, barX, y - 2, barMaxW, barH, 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
-        ctx.fill();
-
+        // PFP
         if (player) {
-            const barW = Math.max(4, (player.total_points / maxPoints) * barMaxW);
-            drawRoundedRect(ctx, barX, y - 2, barW, barH, 2);
-            ctx.fillStyle = THEME_COLOR;
-            ctx.fill();
+            const miniSize = 10; const miniX = rX + 45;
+            ctx.save();
+            ctx.beginPath(); ctx.arc(miniX, y, miniSize, 0, Math.PI * 2); ctx.clip();
+            try {
+                const mImg = await loadImage(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
+                ctx.drawImage(mImg, miniX - miniSize, y - miniSize, miniSize * 2, miniSize * 2);
+            } catch (e) { ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill(); }
+            ctx.restore();
+            ctx.strokeStyle = THEME_COLOR; ctx.lineWidth = 1; ctx.stroke();
+        }
+
+        // Rank & Name
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = SECONDARY_TEXT;
+        ctx.font = '900 10px monalqo, sans-serif';
+        ctx.fillText(`#${i + 1}`, rX + 10, y);
+
+        const username = player ? (player.username || 'USER').toUpperCase() : 'NO_RECORDS';
+        ctx.fillStyle = player ? TEXT_COLOR : 'rgba(255,255,255,0.1)';
+        ctx.font = '900 11px monalqo, sans-serif';
+        ctx.fillText(username, rX + 65, y);
+
+        // V21: Digital Dot-Leaders (Bridging the gap)
+        if (player) {
+            const nameWidth = ctx.measureText(username).width;
+            const startX = rX + 65 + nameWidth + 15;
+            const endX = rX + rW - 55;
             
-            // Point Count
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.15)`;
+            for (let dotX = startX; dotX < endX; dotX += 8) {
+                ctx.beginPath(); ctx.arc(dotX, y, 1, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Score
             ctx.textAlign = 'right';
             ctx.fillStyle = THEME_COLOR;
-            ctx.font = '900 12px monalqo, sans-serif';
-            ctx.fillText(`${formatPoints(player.total_points)}`, rowX + rowW, y + 5);
+            ctx.font = '900 14px monalqo, sans-serif';
+            ctx.fillText(`${formatPoints(player.total_points)}`, rX + rW - 12, y);
         }
     }
 
-    // --- 5. FOOTER (YOUR STATS) ---
-    const footerY = iY + iH - 50;
+    // --- 5. THE TERMINAL HUD ---
+    const footerY = 540;
+    const fX = 40, fW = 420, fH = 34;
+
     ctx.save();
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.15)`;
-    drawRoundedRect(ctx, iX + 60, footerY, iW - 120, 36, 18);
-    ctx.fill();
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+    ctx.strokeStyle = THEME_COLOR;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 15;
+    drawRoundedRect(ctx, fX, footerY, fW, fH, 4); ctx.fill(); ctx.stroke();
 
-    ctx.textAlign = 'left';
-    ctx.fillStyle = TEXT_COLOR;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(fX, footerY + 10); ctx.lineTo(fX, footerY); ctx.lineTo(fX + 10, footerY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fX + fW, footerY + fH - 10); ctx.lineTo(fX + fW, footerY + fH); ctx.lineTo(fX + fW - 10, footerY + fH); ctx.stroke();
+
+    const cY = footerY + fH/2;
+    const cSize = 11; const cX = fX + 22;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cX, cY, cSize, 0, Math.PI * 2); ctx.clip();
+    try {
+        const cImg = await loadImage(challenger.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
+        ctx.drawImage(cImg, cX - cSize, cY - cSize, cSize * 2, cSize * 2);
+    } catch (e) { ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill(); }
+    ctx.restore();
+    ctx.strokeStyle = THEME_COLOR; ctx.lineWidth = 1; ctx.stroke();
+
+    ctx.textAlign = 'left'; ctx.fillStyle = TEXT_COLOR;
     ctx.font = '900 11px monalqo, sans-serif';
-    ctx.letterSpacing = '1px';
-    ctx.fillText(`YOUR ARCHIVE STANDING: #${challengerStats.rank}`, iX + 90, footerY + 22);
+    ctx.fillText(`LOCAL_RANK: #${challengerStats.rank}`, fX + 42, cY);
 
-    ctx.textAlign = 'right';
-    ctx.fillStyle = THEME_COLOR;
-    ctx.font = '900 12px monalqo, sans-serif';
-    ctx.fillText(`${formatPoints(challengerStats.total_points)} TOTAL POINTS ★`, iX + iW - 90, footerY + 22);
+    ctx.textAlign = 'right'; ctx.fillStyle = THEME_COLOR;
+    ctx.font = '900 14px monalqo, sans-serif';
+    ctx.fillText(`${formatPoints(challengerStats.total_points)} PTS`, fX + fW - 12, cY);
     ctx.restore();
 
     return await canvas.encode('webp', { quality: 85 });
