@@ -40,7 +40,8 @@ module.exports = {
             { name: '🔔 Activity Feed', value: 'activity' },
             { name: '📢 Airing Tower', value: 'airing' },
             { name: '📋 Security Logs', value: 'logs' },
-            { name: '🖼️ Identity Dump', value: 'dump' }
+            { name: '🖼️ Identity Dump', value: 'dump' },
+            { name: '🕹️ Arcade Protocol', value: 'arcade' }
         ];
 
         const filtered = choices.filter(choice => choice.name.toLowerCase().includes(focusedValue));
@@ -137,6 +138,13 @@ module.exports = {
                         content: `✅ **Configuration Updated**\nThis channel (${channel}) is now the **Static Identity Archive**. All custom banners will be permanently stored here to prevent CDN invalidation.`
                     });
                 }
+                else if (type === 'arcade') {
+                    await upsertConfig(guildId, { arcade_channel_id: channel.id });
+
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nThe **Arcade Protocol** has been localized to ${channel}. Minigames will now be strictly managed within this wing.`
+                    });
+                }
 
             } catch (error) {
                 logger.error('Command Error: /channel assign', error, 'ChannelCommand');
@@ -165,6 +173,7 @@ module.exports = {
                         { name: '👋 Greeting Hall', value: fmt(config?.greeting_channel_id), inline: true },
                         { name: '📢 Airing Tower', value: fmt(config?.airing_channel_id), inline: true },
                         { name: '🔔 Activity Feed', value: fmt(config?.activity_channel_id), inline: true },
+                        { name: '🕹️ Arcade Protocol', value: fmt(config?.arcade_channel_id), inline: true },
                         { name: '📜 Security Logs', value: fmt(config?.logs_channel_id), inline: true },
                         { name: '🖼️ Identity Dump', value: fmt(config?.banner_dump_channel_id), inline: true },
                         { name: '📸 Media Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }

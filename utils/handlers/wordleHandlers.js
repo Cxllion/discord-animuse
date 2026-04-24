@@ -12,6 +12,7 @@ const wordleService = require('../services/wordleService');
 const wordleGenerator = require('../generators/wordleGenerator');
 const toastGenerator = require('../generators/toastGenerator');
 const baseEmbed = require('../generators/baseEmbed');
+const { fetchConfig } = require('../core/database');
 const logger = require('../core/logger');
 
 /**
@@ -19,7 +20,17 @@ const logger = require('../core/logger');
  */
 
 const handleWordleInteraction = async (interaction) => {
-    const { customId, user } = interaction;
+    const { customId, user, guildId } = interaction;
+
+    // 0. Arcade Protocol: Channel Verification
+    const config = await fetchConfig(guildId);
+    if (config?.arcade_channel_id && interaction.channelId !== config.arcade_channel_id) {
+        return await interaction.reply({
+            content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be accessed within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+            flags: [MessageFlags.Ephemeral]
+        });
+    }
+
     const parts = customId.split('_'); // wordle, action, userId
     const action = parts[1];
     const targetUserId = parts[2];
@@ -95,7 +106,17 @@ const handleWordleInteraction = async (interaction) => {
 };
 
 const handleWordleModals = async (interaction) => {
-    const { customId, user, fields } = interaction;
+    const { customId, user, fields, guildId } = interaction;
+
+    // 0. Arcade Protocol: Channel Verification
+    const config = await fetchConfig(guildId);
+    if (config?.arcade_channel_id && interaction.channelId !== config.arcade_channel_id) {
+        return await interaction.reply({
+            content: `❌ **Arcade Protocol Deviation**: Submission refused. Terminal input must be synchronized within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+            flags: [MessageFlags.Ephemeral]
+        });
+    }
+
     const guess = fields.getTextInputValue('guess_input').toUpperCase();
 
     // Basic Validation

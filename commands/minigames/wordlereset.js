@@ -27,8 +27,8 @@ module.exports = {
                 });
             }
 
-            // 2. Trigger Nuclear Reset
-            await wordleService.forceReset();
+            // 2. Trigger Nuclear Reset (With Broadcast)
+            await wordleService.forceReset(interaction.client);
             
             logger.warn(`[Admin] Wordle RESET manually triggered by ${interaction.user.tag} (${interaction.user.id})`);
             

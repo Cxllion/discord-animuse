@@ -185,5 +185,13 @@ module.exports = {
     pulseChannelActivity,
     pinChannelPosition,
     getGuildChannelData,
+    getAllArcadeChannels: async () => {
+        if (!supabase) return [];
+        const { data } = await supabase
+            .from('guild_configs')
+            .select('guild_id, arcade_channel_id')
+            .not('arcade_channel_id', 'is', null);
+        return data || [];
+    },
     clearConfigCache
 };

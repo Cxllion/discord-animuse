@@ -9,7 +9,7 @@
 const { 
     fetchConfig, upsertConfig, assignChannel, getArchiveSettings,
     registerParentServer, getParentSettings, isParentServer,
-    pulseChannelActivity, pinChannelPosition, getGuildChannelData 
+    pulseChannelActivity, pinChannelPosition, getGuildChannelData, getAllArcadeChannels
 } = require('../services/guildConfigService');
 
 const { 
@@ -67,6 +67,7 @@ module.exports = {
     pulseChannelActivity,
     pinChannelPosition,
     getGuildChannelData,
+    getAllArcadeChannels,
 
     // User
     linkAnilistAccount,

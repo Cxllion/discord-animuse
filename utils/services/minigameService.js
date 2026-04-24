@@ -247,6 +247,10 @@ class MinigameService {
         if (!supabase) return;
         const today = new Date().toISOString().split('T')[0];
 
+        // 0. Fetch Previous Word for broadcast
+        const { data: currentWordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
+        const previousWord = currentWordData?.word || this.cache.get(today);
+
         // 1. Fetch Today's History to find who to deduct from
         const { data: history } = await supabase
             .from('wordle_history')
@@ -255,14 +259,12 @@ class MinigameService {
 
         if (history && history.length > 0) {
             for (const record of history) {
-                // If they solved it, they got points. Deduct them.
                 if (record.solved) {
                     const points = record.metadata?.points_earned || 0;
                     if (points > 0) {
                         await this.deductPoints(record.user_id, points, { gameId: 'wordle' });
                     }
                 } else {
-                    // Even if they failed, we need to decrement their total_plays
                     await this.deductPoints(record.user_id, 0, { gameId: 'wordle' });
                 }
             }
@@ -271,17 +273,17 @@ class MinigameService {
         // 2. Clear Local Cache
         this.cache.delete(today);
 
-        // 3. Remove from DB (Wordle Daily Table) - This triggers a repick on next access
+        // 3. Remove from DB
         await supabase.from('wordle_daily').delete().eq('date', today);
 
-        // 4. Clear all active sessions (New word means old sessions are invalid)
+        // 4. Clear all active sessions
         await this.clearAllWordleSessions();
 
         // 5. Remove from History
         await supabase.from('wordle_history').delete().eq('date', today);
 
         logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. All history wiped and points deducted.`);
-        return true;
+        return previousWord;
     }
 
     /**

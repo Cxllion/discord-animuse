@@ -153,17 +153,60 @@ class WordleService {
     /**
      * Forcefully resets the Daily Wordle session.
      */
-    async forceReset() {
-        // 1. Reset the underlying service data
-        await minigameService.resetDailyWord();
+    async forceReset(client = null) {
+        // 1. Reset the underlying service data (Returns previous word)
+        const previousWord = await minigameService.resetDailyWord();
 
-        // 3. Clear sessions table entirely (Daily reset)
-        // Since Wordle is daily, we should ideally clear all sessions when the word changes
-        // But for simplicity here, we clear memory.
-        // Actually, we should clear the whole table if it's a global reset.
+        // 2. Clear sessions memory
         this.activeGames.clear();
 
+        // 3. Broadcast to all Arcade Channels
+        if (client) {
+            await this.broadcastReset(client, previousWord);
+        }
+
         return true;
+    }
+
+    /**
+     * Announces the wordle reset to all configured Arcade Protocol channels.
+     */
+    async broadcastReset(client, previousWord) {
+        const { getAllArcadeChannels } = require('../core/database');
+        const baseEmbed = require('../generators/baseEmbed');
+        
+        try {
+            const channels = await getAllArcadeChannels();
+            if (channels.length === 0) return;
+
+            const embed = baseEmbed(
+                '🕹️ Arcade Protocol: Solar Cycle Reset',
+                'The daily Wordle archives have been synchronized. A new 5-letter cipher has been generated and is now awaiting decryption. ♡',
+                null
+            )
+            .addFields(
+                { name: '🗝️ Previous Key', value: `**${previousWord || 'UNKNOWN'}**`, inline: true },
+                { name: '📍 Deployment', value: 'Localized to all Arcade Wings', inline: true }
+            )
+            .setFooter({ text: 'Use /wordle to initialize your personal decoding terminal.' })
+            .setColor(0x4ade80);
+
+            for (const config of channels) {
+                try {
+                    const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
+                    if (!guild) continue;
+
+                    const channel = await guild.channels.fetch(config.arcade_channel_id).catch(() => null);
+                    if (!channel) continue;
+
+                    await channel.send({ embeds: [embed] });
+                } catch (e) {
+                    logger.error(`[Wordle] Failed to broadcast reset to guild ${config.guild_id}:`, e);
+                }
+            }
+        } catch (err) {
+            logger.error('[Wordle] Broadcast failed:', err);
+        }
     }
 
     /**

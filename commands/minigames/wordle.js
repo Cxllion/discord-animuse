@@ -2,6 +2,8 @@ const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, 
 const wordleService = require('../../utils/services/wordleService');
 const wordleGenerator = require('../../utils/generators/wordleGenerator');
 const baseEmbed = require('../../utils/generators/baseEmbed');
+const { fetchConfig } = require('../../utils/core/database');
+const logger = require('../../utils/core/logger');
 
 /**
  * Wordle Command: Entry point for the Daily Wordle challenge.
@@ -24,6 +26,14 @@ module.exports = {
                 username: interaction.user.username,
                 avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
             };
+
+            // 0. Arcade Protocol: Channel Verification
+            const config = await fetchConfig(interaction.guildId);
+            if (config?.arcade_channel_id && interaction.channelId !== config.arcade_channel_id) {
+                return await interaction.editReply({
+                    content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be initialized in the designated Arcade wing: <#${config.arcade_channel_id}>.`
+                });
+            }
             
             // 1. Initialize Game State (Individual)
             const gameState = await wordleService.startNewGame(userId);
