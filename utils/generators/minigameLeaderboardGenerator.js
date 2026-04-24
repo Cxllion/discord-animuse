@@ -30,7 +30,7 @@ const hexToRgb = (hex) => {
  * Minigame Leaderboard Generator V21: "Linked Archive".
  * Bridging the spatial gap with digital dot-leaders and refined horizontal tracks.
  */
-const generateMinigameLeaderboard = async (challenger, challengerStats, topPlayers, primaryColor = '#3B82F6') => {
+const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor = '#3B82F6') => {
     const SCALE = 2;
     const canvas = createCanvas(CARD_WIDTH * SCALE, CARD_HEIGHT * SCALE);
     const ctx = canvas.getContext('2d');
@@ -210,12 +210,12 @@ const generateMinigameLeaderboard = async (challenger, challengerStats, topPlaye
     ctx.strokeStyle = THEME_COLOR; ctx.lineWidth = 1; ctx.stroke();
 
     ctx.textAlign = 'left'; ctx.fillStyle = TEXT_COLOR;
-    ctx.font = '900 11px monalqo, sans-serif';
-    ctx.fillText(`LOCAL_RANK: #${challengerStats.rank}`, fX + 42, cY);
+    ctx.font = '900 12px monalqo, sans-serif';
+    ctx.fillText((challenger.username || 'ANONYMOUS').toUpperCase(), fX + 42, cY);
 
     ctx.textAlign = 'right'; ctx.fillStyle = THEME_COLOR;
     ctx.font = '900 14px monalqo, sans-serif';
-    ctx.fillText(`${formatPoints(challengerStats.total_points)} PTS`, fX + fW - 12, cY);
+    ctx.fillText(`${formatPoints(challenger.stats.total_points)} PTS`, fX + fW - 12, cY);
     ctx.restore();
 
     return await canvas.encode('webp', { quality: 85 });

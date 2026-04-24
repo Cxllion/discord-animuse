@@ -126,8 +126,8 @@ class MinigameService {
             else basePoints = 5;
         }
 
-        // 3. Apply Streak Multiplier (5% per day)
-        const multiplier = 1 + (streak * 0.05);
+        // 3. Apply Streak Multiplier (5% per day, starts from Day 2)
+        const multiplier = streak > 1 ? (1 + (streak * 0.05)) : 1;
         const totalEarned = Math.round(basePoints * multiplier);
         const streakBonus = totalEarned - basePoints;
 
@@ -226,8 +226,50 @@ class MinigameService {
             return data.word;
         }
 
-        const response = await axios.get(this.WORD_API);
-        const word = response.data[0].toUpperCase();
+        // 1. Fetch Global Used Words Archive
+        const { data: sysStats } = await supabase
+            .from('minigame_stats')
+            .select('metadata')
+            .eq('user_id', 'SYSTEM')
+            .eq('game_id', 'wordle_used')
+            .maybeSingle();
+        
+        const usedWords = new Set(sysStats?.metadata?.words || []);
+
+        // 2. Fetch unique word
+        let word = null;
+        let attempts = 0;
+        
+        while (!word && attempts < 5) {
+            try {
+                // Fetch a batch of 10 to reduce API calls
+                const response = await axios.get('https://random-word-api.herokuapp.com/word?length=5&number=10');
+                const candidates = response.data.map(w => w.toUpperCase());
+                
+                for (const candidate of candidates) {
+                    if (!usedWords.has(candidate)) {
+                        word = candidate;
+                        break;
+                    }
+                }
+            } catch (e) {
+                logger.error('[Wordle] Dictionary API error:', e);
+            }
+            attempts++;
+        }
+
+        if (!word) word = 'PULSE'; // Ultimate Fallback
+
+        // 3. Register as Used
+        usedWords.add(word);
+        await supabase.from('minigame_stats').upsert({
+            user_id: 'SYSTEM',
+            game_id: 'wordle_used',
+            metadata: { words: Array.from(usedWords) },
+            last_played: new Date().toISOString()
+        });
+
+        // 4. Save as Today's Word
         await supabase.from('wordle_daily').upsert({ date: today, word: word });
         this.cache.set(today, word);
         return word;
@@ -282,7 +324,7 @@ class MinigameService {
         // 5. Remove from History
         await supabase.from('wordle_history').delete().eq('date', today);
 
-        logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. All history wiped and points deducted.`);
+        logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. Key was: ${previousWord || 'UNKNOWN'}. All history wiped and points deducted.`);
         return previousWord;
     }
 

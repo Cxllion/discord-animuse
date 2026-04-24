@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../core/logger');
 const minigameService = require('./minigameService');
+const supabase = require('../core/supabaseClient');
 
 /**
  * Wordle Service: Handles the logic and state for the Daily Wordle minigame.
@@ -230,7 +231,7 @@ class WordleService {
         // 2. Get Finished Games (Database)
         try {
             const today = new Date().toISOString().split('T')[0];
-            const { data } = await minigameService.supabase
+            const { data } = await supabase
                 .from('wordle_history')
                 .select('user_id, guesses, solved, solved_at')
                 .eq('date', today)

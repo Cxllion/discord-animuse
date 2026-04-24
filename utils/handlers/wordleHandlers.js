@@ -209,7 +209,9 @@ const handleWordleModals = async (interaction) => {
             gameName: 'Wordle',
             extraLine: gameState.reward.definition
         });
-        personalAttachments.push(new AttachmentBuilder(toastBuffer, { name: 'success-slip.png' }));
+        // ONLY show the receipt on win/loss
+        personalAttachments.length = 0; 
+        personalAttachments.push(new AttachmentBuilder(toastBuffer, { name: 'success-slip.webp' }));
     }
 
     // 5. Update BOTH views
@@ -227,9 +229,7 @@ const handleWordleModals = async (interaction) => {
         }
 
         const responseData = {
-            content: gameState.status !== 'PLAYING' 
-                ? `🏮 **TERMINAL DEACTIVATED**\nResults have been archived. Use \`/leaderboard: minigames\` to check global standings.` 
-                : null,
+            content: null,
             components: [row], 
             files: personalAttachments
         };
@@ -259,8 +259,21 @@ module.exports = {
     handleWordleInteraction, 
     handleWordleModals,
     routerConfig: {
-        prefixes: ['wordle_'],
+        prefixes: ['wordle_', 'leaderboard_minigames'],
         handle: async (interaction) => {
+            if (interaction.customId === 'leaderboard_minigames') {
+                const leaderboardCommand = require('../../commands/social/leaderboard');
+                
+                // Mock the options to simulate `/leaderboard type: minigames`
+                interaction.options = {
+                    getString: (name) => {
+                        if (name === 'type') return 'minigames';
+                        return null;
+                    }
+                };
+                
+                return await leaderboardCommand.execute(interaction);
+            }
             if (interaction.isModalSubmit()) return handleWordleModals(interaction);
             return handleWordleInteraction(interaction);
         }

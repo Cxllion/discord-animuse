@@ -55,7 +55,19 @@ module.exports = {
                     })));
                 }
 
+                const resolveAvatar = (userId, member) => {
+                    const config = avatarConfigs[userId];
+                    let url = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
+                    if (config) {
+                        if (config.source === 'CUSTOM' && config.customUrl) url = config.customUrl;
+                        else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) url = anilistMap[config.anilistUsername];
+                        else if (config.source === 'DISCORD_GUILD' && member) url = member.displayAvatarURL({ extension: 'png', size: 512 });
+                    }
+                    return url;
+                };
+
                 for (const player of topPlayers) {
+
                     const member = members.get(player.user_id);
                     const config = avatarConfigs[player.user_id];
                     let avatarUrl = member ? member.user.displayAvatarURL({ extension: 'png', size: 256 }) : null;
@@ -73,7 +85,16 @@ module.exports = {
                     });
                 }
 
-                const buffer = await generateMinigameLeaderboard(interaction.user, challengerStats, topWithDetails, color);
+                const challengerAvatarUrl = resolveAvatar(interaction.user.id, interaction.member);
+                const challengerName = getResolvableName(interaction.member);
+                
+                const challengerData = {
+                    username: challengerName,
+                    avatarUrl: challengerAvatarUrl,
+                    stats: challengerStats
+                };
+
+                const buffer = await generateMinigameLeaderboard(challengerData, topWithDetails, color);
                 const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard_minigames.webp' });
 
                 return await loader.stop({ files: [attachment] });
@@ -86,6 +107,7 @@ module.exports = {
 
         // --- EXP LEADERBOARD LOGIC (Original) ---
         // 1. Fetch Top 10 Data
+
         const topRaw = await getTopUsers(guildId);
 
         // 2. Resolve Avatars & Details
@@ -101,6 +123,7 @@ module.exports = {
                 if (data && data.avatar) anilistMap[username] = data.avatar.large;
             })));
         }
+
 
         const resolveAvatar = (userId, member) => {
             const config = avatarConfigs[userId];
