@@ -48,47 +48,139 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     };
 
 
-    // --- 1. TRANSPARENCY & BASE ---
+    // --- 1. TRANSPARENCY & THEME ---
     ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
-
     const THEME_COLOR = primaryColor;
     const { r, g, b } = hexToRgb(THEME_COLOR);
-    const GLASS_BG = `rgba(${Math.floor(r * 0.1)}, ${Math.floor(g * 0.1)}, ${Math.floor(b * 0.1)}, 0.85)`;
     const TEXT_COLOR = '#FFFFFF';
-    const SECONDARY_TEXT = 'rgba(255, 255, 255, 0.6)';
+    const SECONDARY_TEXT = 'rgba(255, 255, 255, 0.4)';
 
-    // --- 2. ISLAND LAYOUT (V2: 2 Islands) ---
+    // Subtle Dust Motes (Restricted to visible layer best effort)
+    for (let i = 0; i < 25; i++) {
+        const sX = Math.random() * CARD_WIDTH;
+        const sY = Math.random() * CARD_HEIGHT;
+        const sR = Math.random() * 1.5;
+        ctx.fillStyle = `rgba(255, 230, 200, ${Math.random() * 0.15})`;
+        ctx.beginPath(); ctx.arc(sX, sY, sR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // --- 2. ISLAND LAYOUT (V3.5: Prismatic) ---
     const islands = [
-        { x: 30, y: 30, w: 260, h: 490, title: 'USER ARCHIVE' }, // Left: User Stats
-        { x: 310, y: 30, w: 590, h: 490, title: 'GRAND ARCHIVE RANKINGS' } // Right: Podium + List
+        { x: 30, y: 30, w: 260, h: 490, title: 'USER ARCHIVE' },
+        { x: 310, y: 30, w: 590, h: 490, title: 'GRAND ARCHIVE RANKINGS' }
     ];
+
+    const GOLD_LEAF = ctx.createLinearGradient(0, 0, 100, 100);
+    GOLD_LEAF.addColorStop(0, '#D4AF37'); // Classic Gold
+    GOLD_LEAF.addColorStop(0.3, '#F9F4AD'); // Light Shine
+    GOLD_LEAF.addColorStop(0.6, '#D4AF37');
+    GOLD_LEAF.addColorStop(1, '#996515'); // Dark Bronze
 
     islands.forEach(is => {
         ctx.save();
-        ctx.fillStyle = GLASS_BG;
-        ctx.shadowColor = `rgba(${r},${g},${b},0.4)`;
-        ctx.shadowBlur = 25;
+        
+        // V3.6: Dynamic Island Gradient (The Luminous Tome)
+        const islandGrad = ctx.createLinearGradient(is.x, is.y, is.x + is.w, is.y + is.h);
+        islandGrad.addColorStop(0, `rgba(${Math.floor(r * 0.12)}, ${Math.floor(g * 0.12)}, ${Math.floor(b * 0.12)}, 0.97)`); 
+        islandGrad.addColorStop(1, `rgba(${Math.floor(r * 0.04)}, ${Math.floor(g * 0.04)}, ${Math.floor(b * 0.04)}, 0.98)`);
+        
+        ctx.fillStyle = islandGrad;
+        ctx.shadowColor = `rgba(0,0,0,0.9)`;
+        ctx.shadowBlur = 45;
         
         drawRoundedRect(ctx, is.x, is.y, is.w, is.h, 32); 
         ctx.fill();
 
-        // Accent Gradient Bar (Top)
-        const grad = ctx.createLinearGradient(is.x, is.y, is.x + is.w, is.y);
-        grad.addColorStop(0, THEME_COLOR);
-        grad.addColorStop(1, `rgba(${r},${g},${b}, 0.3)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.roundRect(is.x + 20, is.y + 10, is.w - 40, 4, 2);
-        ctx.fill();
+        // V3.6: Diagonal Glass Sheen
+        ctx.save();
+        ctx.clip();
+        const sheen = ctx.createLinearGradient(is.x, is.y, is.x + is.w, is.y + is.h);
+        sheen.addColorStop(0, `rgba(255, 255, 255, 0.05)`);
+        sheen.addColorStop(0.2, 'transparent');
+        sheen.addColorStop(0.8, 'transparent');
+        sheen.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
+        ctx.fillStyle = sheen;
+        ctx.fillRect(is.x, is.y, is.w, is.h);
+        ctx.restore();
 
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.3)`;
+        // Parchment Texture
+        ctx.save();
+        ctx.clip();
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = `rgba(255, 230, 180, 0.02)`;
+        for (let j = 0; j < 1000; j++) {
+            const px = is.x + Math.random() * is.w;
+            const py = is.y + Math.random() * is.h;
+            ctx.fillRect(px, py, 1.5, 1.5);
+        }
+        ctx.restore();
+
+        // V3.8: Inner Edge Glow (Subtle Inset Border)
+        ctx.save();
+        drawRoundedRect(ctx, is.x, is.y, is.w, is.h, 32);
+        ctx.clip();
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.15)`;
         ctx.lineWidth = 1.5;
+        drawRoundedRect(ctx, is.x + 1, is.y + 1, is.w - 2, is.h - 2, 31);
         ctx.stroke();
         ctx.restore();
 
-        // V2.8.1: Balanced Alignment
+        // V3.8: Inner Vignette (Depth)
         ctx.save();
-        ctx.fillStyle = SECONDARY_TEXT;
+        drawRoundedRect(ctx, is.x, is.y, is.w, is.h, 32);
+        ctx.clip();
+        const vigGrad = ctx.createRadialGradient(
+            is.x + is.w / 2, is.y + is.h / 2, is.w * 0.2,
+            is.x + is.w / 2, is.y + is.h / 2, is.w * 0.7
+        );
+        vigGrad.addColorStop(0, 'transparent');
+        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.25)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(is.x, is.y, is.w, is.h);
+        ctx.restore();
+
+        // V3.7: Luminous Header Binding (Theme-Colored)
+        const headGrad = ctx.createLinearGradient(is.x + 40, is.y, is.x + is.w - 40, is.y);
+        headGrad.addColorStop(0, 'transparent');
+        headGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.5)`);
+        headGrad.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = headGrad;
+        ctx.shadowColor = THEME_COLOR;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.roundRect(is.x + 40, is.y + 8, is.w - 80, 2, 1);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // V3.8: Bottom Luminous Binding (Mirror)
+        const footGrad = ctx.createLinearGradient(is.x + 40, is.y + is.h, is.x + is.w - 40, is.y + is.h);
+        footGrad.addColorStop(0, 'transparent');
+        footGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.3)`);
+        footGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = footGrad;
+        ctx.shadowColor = THEME_COLOR;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.roundRect(is.x + 40, is.y + is.h - 10, is.w - 80, 2, 1);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Subtle Header Spotlight
+        const spotGrad = ctx.createRadialGradient(is.x + is.w / 2, is.y + 20, 0, is.x + is.w / 2, is.y + 20, 60);
+        spotGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.1)`);
+        spotGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = spotGrad;
+        ctx.fillRect(is.x, is.y, is.w, 80);
+
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.05)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+
+        // V3.0: Elegant Alignment
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 230, 180, 0.4)`; // Antique White
         ctx.font = '900 11px monalqo, sans-serif';
         ctx.letterSpacing = '3px';
         
@@ -97,7 +189,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
             ctx.fillText(is.title, is.x + is.w / 2, is.y + 35);
         } else {
             ctx.textAlign = 'left';
-            ctx.fillText(is.title, is.x + 35, is.y + 35);
+            ctx.fillText(is.title, is.x + 40, is.y + 35);
         }
         ctx.restore();
     });
@@ -147,45 +239,86 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     // Name
     ctx.fillStyle = TEXT_COLOR;
     const nameStr = (challengerName || challenger.username).toUpperCase();
-    const nameSize = fitText(ctx, nameStr, i1.w - 40, 22);
+    const nameSize = fitText(ctx, nameStr, i1.w - 40, 24);
     ctx.font = `900 ${nameSize}px monalqo, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(nameStr, cX, i1.y + 320);
+    ctx.fillText(nameStr, cX, i1.y + 310);
 
-    // Stat Breakdown (Centered for Balance)
-    const statsY = i1.y + 360;
-    const drawStat = (label, value, y) => {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = SECONDARY_TEXT;
-        ctx.font = '900 11px monalqo, sans-serif';
-        ctx.letterSpacing = '2px';
-        ctx.fillText(label, cX, y);
-        
-        ctx.fillStyle = THEME_COLOR;
-        ctx.font = '900 18px monalqo, sans-serif';
-        ctx.letterSpacing = '0px';
-        ctx.fillText(value, cX, y + 20);
-    };
+    // --- V3.4.3: REFINED VERTICAL RHYTHM ---
+    const statsY = i1.y + 345;
+    
+    // Level Hero Capsule (Centered)
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(255, 230, 180, 0.5)`;
+    ctx.font = '900 11px monalqo, sans-serif';
+    ctx.letterSpacing = '3px';
+    ctx.fillText('CURRENT LEVEL', cX, statsY);
 
-    drawStat('LEVEL', challengerData.level, statsY);
-    drawStat('TOTAL XP', formatStat(challengerData.xp), statsY + 45);
+    const levelStr = String(challengerData.level);
+    ctx.font = '900 32px monalqo, sans-serif';
+    const lW = Math.max(80, ctx.measureText(levelStr).width + 40);
+    
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+    ctx.strokeStyle = THEME_COLOR;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = THEME_COLOR;
+    ctx.shadowBlur = 10;
+    drawRoundedRect(ctx, cX - lW / 2, statsY + 12, lW, 45, 12);
+    ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Progress Bar
-    const barW = i1.w - 80;
-    const barX = i1.x + 40;
-    const barY = statsY + 85;
-    drawRoundedRect(ctx, barX, barY, barW, 6, 3);
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.fillText(levelStr, cX, statsY + 46);
+    ctx.restore();
+
+    // Progress Section
+    const barW = i1.w - 70;
+    const barX = i1.x + 35;
+    const barY = i1.y + i1.h - 45;
+    const barH = 10;
+
+    // Labels (Top Left: EXP, Top Right: X/X)
+    ctx.save();
+    ctx.font = '900 10px monalqo, sans-serif';
+    ctx.letterSpacing = '1px';
+    
+    ctx.textAlign = 'left';
+    ctx.fillStyle = `rgba(255, 230, 180, 0.4)`;
+    ctx.fillText('EXP', barX, barY - 12);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = THEME_COLOR;
+    const progressTxt = `${formatStat(challengerData.current || 0)} / ${formatStat(challengerData.required || 100)}`;
+    ctx.fillText(progressTxt, barX + barW, barY - 12);
+    ctx.restore();
+
+    // Bar Base (Glass)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    drawRoundedRect(ctx, barX, barY, barW, barH, barH / 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    const progress = Math.min(1, Math.max(0, challengerData.percent));
+    const progress = Math.min(1, Math.max(0, challengerData.percent / 100));
     if (progress > 0) {
-        drawRoundedRect(ctx, barX, barY, barW * progress, 6, 3);
-        ctx.fillStyle = THEME_COLOR;
+        ctx.save();
+        const pGrad = ctx.createLinearGradient(barX, barY, barX + barW, barY);
+        pGrad.addColorStop(0, THEME_COLOR);
+        pGrad.addColorStop(1, lightenColor(THEME_COLOR, 20));
+        
+        ctx.fillStyle = pGrad;
         ctx.shadowColor = THEME_COLOR;
         ctx.shadowBlur = 10;
+        drawRoundedRect(ctx, barX, barY, barW * progress, barH, barH / 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
+        
+        // Inner Shine
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        drawRoundedRect(ctx, barX, barY + 2, barW * progress, 2, 1);
+        ctx.fill();
+        ctx.restore();
     }
 
     // --- 4. ISLAND 2: RANKINGS ---
@@ -255,14 +388,28 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         }
     };
 
-    const pBaseline = i2.y + 175; 
+    const pBaseline = i2.y + 165; 
     const pStep = i2.w / 4;
-    await drawPodium(topUsers[1], 2, i2.x + pStep, pBaseline, 44); // Left
-    await drawPodium(topUsers[2], 3, i2.x + i2.w - pStep, pBaseline, 44); // Right
-    await drawPodium(topUsers[0], 1, i2.x + i2.w / 2, pBaseline, 56); // Center (Top)
+
+    // V3.8: Crown Glow behind #1
+    ctx.save();
+    const crownGlow = ctx.createRadialGradient(
+        i2.x + i2.w / 2, pBaseline - 70, 0,
+        i2.x + i2.w / 2, pBaseline - 70, 90
+    );
+    crownGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.12)`);
+    crownGlow.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.04)`);
+    crownGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = crownGlow;
+    ctx.fillRect(i2.x + i2.w / 2 - 100, pBaseline - 160, 200, 200);
+    ctx.restore();
+
+    await drawPodium(topUsers[1], 2, i2.x + pStep, pBaseline, 40); // Left
+    await drawPodium(topUsers[2], 3, i2.x + i2.w - pStep, pBaseline, 40); // Right
+    await drawPodium(topUsers[0], 1, i2.x + i2.w / 2, pBaseline, 50); // Center (Top)
 
     // --- LIST SECTION (Ranks 4-10) ---
-    const listStartY = i2.y + 265;
+    const listStartY = i2.y + 250;
     const rowH = 32;
 
     for (let i = 3; i < 10; i++) {
@@ -271,10 +418,20 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         const rowX = i2.x + 40;
         const rowW = i2.w - 80;
 
-        // Row Backdrop
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent';
+        // V3.8: Enhanced Row Backdrop
+        ctx.fillStyle = i % 2 === 0 ? `rgba(${r}, ${g}, ${b}, 0.04)` : 'rgba(255,255,255,0.015)';
         drawRoundedRect(ctx, rowX - 10, y - 15, rowW + 20, rowH, 10);
         ctx.fill();
+
+        // V3.8: Row Separator Line
+        if (i < 9) {
+            const sepGrad = ctx.createLinearGradient(rowX, y + 15, rowX + rowW, y + 15);
+            sepGrad.addColorStop(0, 'transparent');
+            sepGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.08)`);
+            sepGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = sepGrad;
+            ctx.fillRect(rowX, y + 15, rowW, 1);
+        }
 
         // Rank
         ctx.textAlign = 'left';

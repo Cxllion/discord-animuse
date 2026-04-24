@@ -198,7 +198,7 @@ const generators = {
             username: 'Tester', 
             displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' 
         };
-        const challengerData = { rank: 4, level: 25, xp: 8400, percent: 0.7 };
+        const challengerData = { rank: 4, level: 25, xp: 8400, current: 840, required: 1200, percent: 70 };
         const topUsers = Array.from({ length: 10 }, (_, i) => ({
             username: `User ${i+1}`,
             level: 50 - i,

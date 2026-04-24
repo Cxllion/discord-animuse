@@ -41,19 +41,39 @@ module.exports = {
                     getUserColor(interaction.user.id, guildId)
                 ]);
 
-                // Resolve Usernames for top players (best effort)
-                const topWithNames = [];
+                // 1. Resolve Avatars & Names for top players
+                const topWithDetails = [];
                 const members = await interaction.guild.members.fetch({ user: topPlayers.map(u => u.user_id) }).catch(() => new Map());
+                const avatarConfigs = await getBulkUserAvatarConfig(guildId, topPlayers.map(u => u.user_id));
+
+                // 2. Fetch AniList Avatars if needed
+                const anilistMap = {};
+                const anilistToFetch = [...new Set(Object.values(avatarConfigs).filter(c => c.source === 'ANILIST' && c.anilistUsername).map(c => c.anilistUsername))];
+                if (anilistToFetch.length > 0) {
+                    await Promise.all(anilistToFetch.map(username => getAnilistUser(username).then(data => {
+                        if (data && data.avatar) anilistMap[username] = data.avatar.large;
+                    })));
+                }
 
                 for (const player of topPlayers) {
                     const member = members.get(player.user_id);
-                    topWithNames.push({
+                    const config = avatarConfigs[player.user_id];
+                    let avatarUrl = member ? member.user.displayAvatarURL({ extension: 'png', size: 256 }) : null;
+
+                    if (config) {
+                        if (config.source === 'CUSTOM' && config.customUrl) avatarUrl = config.customUrl;
+                        else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) avatarUrl = anilistMap[config.anilistUsername];
+                        else if (config.source === 'DISCORD_GUILD' && member) avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
+                    }
+
+                    topWithDetails.push({
                         ...player,
-                        username: member ? getResolvableName(member) : 'Unknown Archivist'
+                        username: member ? getResolvableName(member) : 'Unknown Archivist',
+                        avatarUrl
                     });
                 }
 
-                const buffer = await generateMinigameLeaderboard(interaction.user, challengerStats, topWithNames, color);
+                const buffer = await generateMinigameLeaderboard(interaction.user, challengerStats, topWithDetails, color);
                 const attachment = new AttachmentBuilder(buffer, { name: 'leaderboard_minigames.webp' });
 
                 return await loader.stop({ files: [attachment] });
@@ -68,71 +88,44 @@ module.exports = {
         // 1. Fetch Top 10 Data
         const topRaw = await getTopUsers(guildId);
 
-        // 2. Resolve User Objects for Top 10 (parallel)
+        // 2. Resolve Avatars & Details
         const topUsers = [];
-        const members = await interaction.guild.members.fetch({ user: topRaw.map(u => u.user_id) }).catch(() => new Map());
+        const members = await interaction.guild.members.fetch({ user: [...topRaw.map(u => u.user_id), interaction.user.id] }).catch(() => new Map());
+        const avatarConfigs = await getBulkUserAvatarConfig(guildId, [...topRaw.map(u => u.user_id), interaction.user.id]);
+
+        // 3. Bulk Fetch AniList
+        const anilistMap = {};
+        const anilistToFetch = [...new Set(Object.values(avatarConfigs).filter(c => c.source === 'ANILIST' && c.anilistUsername).map(c => c.anilistUsername))];
+        if (anilistToFetch.length > 0) {
+            await Promise.all(anilistToFetch.map(username => getAnilistUser(username).then(data => {
+                if (data && data.avatar) anilistMap[username] = data.avatar.large;
+            })));
+        }
+
+        const resolveAvatar = (userId, member) => {
+            const config = avatarConfigs[userId];
+            let url = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
+            if (config) {
+                if (config.source === 'CUSTOM' && config.customUrl) url = config.customUrl;
+                else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) url = anilistMap[config.anilistUsername];
+                else if (config.source === 'DISCORD_GUILD' && member) url = member.displayAvatarURL({ extension: 'png', size: 512 });
+            }
+            return url;
+        };
 
         for (const raw of topRaw) {
             const member = members.get(raw.user_id);
-            if (member) {
-                topUsers.push({
-                    ...raw,
-                    username: getResolvableName(member),
-                    avatarUrl: member.user.displayAvatarURL({ extension: 'png', size: 256 })
-                });
-            } else {
-                topUsers.push({
-                    ...raw,
-                    username: 'Unknown User',
-                    avatarUrl: null
-                });
-            }
+            topUsers.push({
+                ...raw,
+                username: member ? getResolvableName(member) : 'Unknown User',
+                avatarUrl: resolveAvatar(raw.user_id, member)
+            });
         }
 
-        const userIds = topUsers.map(u => u.user_id);
-        const avatarConfigs = await getBulkUserAvatarConfig(guildId, userIds);
-
-        const anilistFetches = [];
-        const anilistMap = {};
-
-        for (const user of topUsers) {
-            const member = members.get(user.user_id);
-            const config = avatarConfigs[user.user_id];
-
-            if (config) {
-                if (config.source === 'CUSTOM' && config.customUrl) {
-                    user.avatarUrl = config.customUrl;
-                }
-                else if (config.source === 'ANILIST' && config.anilistUsername) {
-                    if (!anilistMap[config.anilistUsername]) {
-                        anilistFetches.push(getAnilistUser(config.anilistUsername).then(data => {
-                            if (data && data.avatar) anilistMap[config.anilistUsername] = data.avatar.large;
-                        }));
-                    }
-                }
-                else if (config.source === 'DISCORD_GUILD' && member) {
-                    user.avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
-                }
-            }
-        }
-
-        if (anilistFetches.length > 0) {
-            await Promise.all(anilistFetches);
-            for (const user of topUsers) {
-                const config = avatarConfigs[user.user_id];
-                if (config && config.source === 'ANILIST' && config.anilistUsername) {
-                    if (anilistMap[config.anilistUsername]) {
-                        user.avatarUrl = anilistMap[config.anilistUsername];
-                    }
-                }
-            }
-        }
-
-        const [rankData, bgUrl, color, challengerConfig] = await Promise.all([
+        const [rankData, bgUrl, color] = await Promise.all([
             getUserRank(interaction.user.id, guildId),
             getUserBannerConfig(interaction.user.id, guildId),
-            getUserColor(interaction.user.id, guildId),
-            require('../../utils/core/database').getUserAvatarConfig(interaction.user.id, guildId)
+            getUserColor(interaction.user.id, guildId)
         ]);
 
         const xp = rankData ? parseInt(rankData.xp) : 0;
@@ -143,20 +136,12 @@ module.exports = {
             rank: rankData ? rankData.rank : '?',
             level,
             xp,
+            current: progress.current,
+            required: progress.required,
             percent: progress.percent
         };
 
-        let challengerAvatarUrl = interaction.user.displayAvatarURL({ extension: 'png', size: 512 });
-        if (challengerConfig) {
-            if (challengerConfig.source === 'CUSTOM' && challengerConfig.customUrl) {
-                challengerAvatarUrl = challengerConfig.customUrl;
-            } else if (challengerConfig.source === 'DISCORD_GUILD') {
-                challengerAvatarUrl = interaction.member.displayAvatarURL({ extension: 'png', size: 512 });
-            } else if (challengerConfig.source === 'ANILIST' && challengerConfig.anilistUsername) {
-                const aniData = await getAnilistUser(challengerConfig.anilistUsername);
-                if (aniData && aniData.avatar) challengerAvatarUrl = aniData.avatar.large;
-            }
-        }
+        const challengerAvatarUrl = resolveAvatar(interaction.user.id, interaction.member);
 
         let challengerName = getResolvableName(interaction.member);
         const buffer = await generateLeaderboard(interaction.user, challengerData, topUsers, bgUrl, color, challengerName, challengerAvatarUrl);

@@ -79,9 +79,13 @@ const updateUserColor = async (userId, guildId, color) => {
 };
 
 const getUserAvatarConfig = async (userId, guildId) => {
-    if (!supabase) return { source: 'DISCORD_GLOBAL', customUrl: null };
-    const { data } = await supabase.from('users').select('avatar_source, custom_avatar_url').eq('user_id', userId).eq('guild_id', guildId).single();
-    return { source: data ? (data.avatar_source || 'DISCORD_GLOBAL') : 'DISCORD_GLOBAL', customUrl: data ? data.custom_avatar_url : null };
+    if (!supabase) return { source: 'DISCORD_GLOBAL', customUrl: null, anilistUsername: null };
+    const { data } = await supabase.from('users').select('avatar_source, custom_avatar_url, anilist_username').eq('user_id', userId).eq('guild_id', guildId).single();
+    return { 
+        source: data ? (data.avatar_source || 'DISCORD_GLOBAL') : 'DISCORD_GLOBAL', 
+        customUrl: data ? data.custom_avatar_url : null,
+        anilistUsername: data ? data.anilist_username : null
+    };
 };
 
 const updateUserAvatarConfig = async (userId, guildId, source, customUrl = null) => {
