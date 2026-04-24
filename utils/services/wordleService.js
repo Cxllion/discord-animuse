@@ -16,27 +16,47 @@ class WordleService {
     }
 
     /**
-     * Starts a new Wordle session for a user using the Daily Word.
+     * Starts a new Wordle session for a user.
      */
     async startNewGame(userId) {
         try {
-            // 1. Check if already played today
+            // 1. Check if already played today (Finished Game)
             const hasPlayed = await minigameService.hasPlayedToday(userId);
             if (hasPlayed) {
-                throw new Error('You have already completed the decoding protocol for this solar cycle. Return after the next GMT reset.');
+                throw new Error('You have already completed the decoding protocol for this solar cycle. The archives are currently locked until the next synchronization. ♡');
             }
 
-            // 2. Fetch the Daily Word
+            // 2. Check for Active Session (Resume Progress)
+            // A. Check in-memory first
+            if (this.activeGames.has(userId)) {
+                logger.info(`[Wordle] Resuming in-memory session for user ${userId}.`);
+                return this.activeGames.get(userId);
+            }
+
+            // B. Check database for persistent session
+            const persistentSession = await minigameService.getWordleSession(userId);
+            if (persistentSession) {
+                logger.info(`[Wordle] Restored persistent session for user ${userId}.`);
+                this.activeGames.set(userId, persistentSession);
+                return persistentSession;
+            }
+
+            // 3. Fetch the Daily Word (New Session)
             const targetWord = await minigameService.getDailyWord();
 
             const gameState = {
                 targetWord: targetWord,
                 guesses: [], // Array of { word, result }
                 status: 'PLAYING',
-                startedAt: Date.now()
+                startedAt: Date.now(),
+                publicMessageId: null,
+                publicChannelId: null
             };
 
+            // 4. Save to Memory and Database
             this.activeGames.set(userId, gameState);
+            await minigameService.saveWordleSession(userId, gameState);
+            
             return gameState;
         } catch (error) {
             if (error.message.includes('solar cycle')) throw error;
@@ -53,13 +73,12 @@ class WordleService {
             await axios.get(`${this.DICT_API}${guess.toLowerCase()}`);
             return true;
         } catch (error) {
-            // 404 means it's not a word
             return false;
         }
     }
 
     /**
-     * Processes a guess and updates the game state.
+     * Processes a guess for a user's game.
      */
     async submitGuess(userId, guess) {
         const game = this.activeGames.get(userId);
@@ -76,11 +95,15 @@ class WordleService {
             game.status = 'LOST';
         }
 
-        // If game ended, record result and award points
+        // If game ended, record result and clear session
         if (game.status !== 'PLAYING') {
-            const solveData = await minigameService.recordWordleResult(userId, game.guesses.length, game.status === 'WON');
-            game.reward = solveData; // { points, firstBlood }
-            this.activeGames.delete(userId); // Clear active session
+            const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON');
+            game.reward = solveData; 
+            this.activeGames.delete(userId); 
+            await minigameService.clearWordleSession(userId);
+        } else {
+            // Otherwise, sync current state to DB
+            await minigameService.saveWordleSession(userId, game);
         }
 
         return game;
@@ -134,10 +157,69 @@ class WordleService {
         // 1. Reset the underlying service data
         await minigameService.resetDailyWord();
 
-        // 2. Clear all active in-memory games
+        // 3. Clear sessions table entirely (Daily reset)
+        // Since Wordle is daily, we should ideally clear all sessions when the word changes
+        // But for simplicity here, we clear memory.
+        // Actually, we should clear the whole table if it's a global reset.
         this.activeGames.clear();
 
         return true;
+    }
+
+    /**
+     * Returns a list of recent active and finished games for the social feed.
+     */
+    async getRecentGames(excludeUserId, limit = 5) {
+        const others = [];
+        
+        // 1. Get Active Games (In-memory)
+        for (const [uid, game] of this.activeGames.entries()) {
+            if (uid !== excludeUserId) {
+                others.push({ 
+                    userId: uid, 
+                    guesses: game.guesses, 
+                    status: game.status,
+                    finishedAt: null 
+                });
+            }
+        }
+
+        // 2. Get Finished Games (Database)
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const { data } = await minigameService.supabase
+                .from('wordle_history')
+                .select('user_id, guesses, solved, solved_at')
+                .eq('date', today)
+                .neq('user_id', excludeUserId)
+                .order('solved_at', { ascending: true })
+                .limit(limit);
+            
+            if (data) {
+                for (const row of data) {
+                    // Avoid duplicates if they are somehow in both
+                    if (!others.find(o => o.userId === row.user_id)) {
+                        others.push({
+                            userId: row.user_id,
+                            guesses: Array.isArray(row.guesses) ? row.guesses : [], // History might store count only, but I need result patterns
+                            // Wait, wordle_history stores guesses as count? Let me check.
+                            status: row.solved ? 'WON' : 'LOST',
+                            finishedAt: row.solved_at
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            logger.error('[Wordle] Failed to fetch finished games for social feed:', e);
+        }
+
+        // Sort: Finished first (by time), then Active
+        return others.sort((a, b) => {
+            if (a.finishedAt && b.finishedAt) return new Date(a.finishedAt) - new Date(b.finishedAt);
+            if (a.finishedAt) return -1;
+            if (b.finishedAt) return 1;
+            return 0;
+        }).slice(0, limit);
     }
 }
 

@@ -6,12 +6,12 @@ const logger = require('../core/logger');
  */
 class WordleGenerator {
     constructor() {
-        this.CARD_WIDTH = 450;
-        this.CARD_HEIGHT = 550;
-        this.TILE_SIZE = 70;
-        this.TILE_GAP = 12;
-        this.GRID_X = 25;
-        this.GRID_Y = 25;
+        this.CARD_WIDTH = 600;
+        this.CARD_HEIGHT = 950; // Increased for better spacing
+        this.TILE_SIZE = 85; // Slightly larger for clarity
+        this.TILE_GAP = 14;
+        this.GRID_X = (this.CARD_WIDTH - (5 * this.TILE_SIZE + 4 * this.TILE_GAP)) / 2;
+        this.GRID_Y = 135; // Moved up to make room
         
         // Animuse Color Palette
         this.COLORS = {
@@ -26,8 +26,8 @@ class WordleGenerator {
     }
 
     async generateBoard(gameState, options = {}) {
-        const SCALE = 3;
-        const { anonymize = false } = options;
+        const SCALE = 2;
+        const { anonymize = false, user = null } = options;
         const canvas = createCanvas(this.CARD_WIDTH * SCALE, this.CARD_HEIGHT * SCALE);
         const ctx = canvas.getContext('2d');
         ctx.scale(SCALE, SCALE);
@@ -45,7 +45,10 @@ class WordleGenerator {
         // 2. Scanlines (Signature Animuse texture)
         this.drawScanlines(ctx);
 
-        // 3. Grid Rendering
+        // 3. Header (User Info & Title)
+        await this.drawHeader(ctx, user, anonymize);
+
+        // 4. Grid Rendering
         const { guesses } = gameState;
         for (let row = 0; row < 6; row++) {
             for (let col = 0; col < 5; col++) {
@@ -65,7 +68,15 @@ class WordleGenerator {
             }
         }
 
-        // 4. Header/Stats (Optional Footer)
+        // 4. Content Logic (Keyboard for Private, Social Feed for Public)
+        if (!anonymize) {
+            this.drawKeyboard(ctx, guesses);
+        } else {
+            const otherGames = options.otherGames || [];
+            await this.drawSocialFeed(ctx, otherGames);
+        }
+
+        // 5. Header/Stats (Optional Footer)
         this.drawFooter(ctx, gameState, anonymize);
 
         return await canvas.encode('png');
@@ -183,22 +194,245 @@ class WordleGenerator {
         ctx.restore();
     }
 
-    drawFooter(ctx, gameState, anonymize = false) {
-        if (anonymize) return; // Skip footer for anonymized boards
-        
+    async drawHeader(ctx, user, anonymize = false) {
         ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.font = `700 10px 'monalqo', sans-serif`;
+
+        // Title
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `900 24px 'monalqo', sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.fillText('DAILY ARCHIVE DECODING', 35, 60);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = `600 12px 'monalqo', sans-serif`;
         ctx.letterSpacing = '1px';
+        ctx.fillText(anonymize ? 'PUBLIC FEED | ANONYMIZED DATA' : 'PERSONAL CONSOLE | SECURE LINK', 35, 80);
+
+        if (user) {
+            // User Avatar (Right side)
+            const avatarSize = 60;
+            const avatarX = this.CARD_WIDTH - 35 - avatarSize;
+            const avatarY = 35;
+
+            // Clip Avatar to Squircle
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(avatarX, avatarY, avatarSize, avatarSize, 15);
+            ctx.clip();
+            
+            try {
+                const { loadImage } = require('@napi-rs/canvas');
+                const avatar = await loadImage(user.avatarURL);
+                ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
+            } catch (err) {
+                // Fallback if avatar fails
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+            }
+            ctx.restore();
+
+            // Username (Next to avatar)
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `800 16px 'monalqo', sans-serif`;
+            ctx.fillText(user.username.toUpperCase(), avatarX - 15, 60);
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.font = `600 10px 'monalqo', sans-serif`;
+            ctx.fillText('IDENTIFIED PATRON', avatarX - 15, 78);
+        }
+
+        ctx.restore();
+    }
+
+    drawFooter(ctx, gameState, anonymize = false) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.font = `700 10px 'monalqo', sans-serif`;
+        ctx.letterSpacing = '2px';
         ctx.textAlign = 'center';
         
-        const text = gameState.status === 'PLAYING' 
-            ? `SESSION: ${gameState.guesses.length}/6 • ARCHIVE-LINKED WORDLE`
-            : gameState.status === 'WON' 
-                ? `VICTORY ACHIEVED • ${gameState.guesses.length} TRIES` 
-                : `ARCHIVE LOST • THE WORD WAS: ${gameState.targetWord}`;
+        const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase();
+        const text = `ANIMUSE WORDLE | ${dateStr}`;
+        ctx.fillText(text, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 25);
+        ctx.restore();
+    }
+
+    drawKeyboard(ctx, guesses) {
+        ctx.save();
         
-        ctx.fillText(text.toUpperCase(), this.CARD_WIDTH / 2, this.CARD_HEIGHT - 35);
+        // 1. Calculate best state for each letter
+        const states = {};
+        for (const guess of guesses) {
+            for (let i = 0; i < 5; i++) {
+                const char = guess.word[i];
+                const state = guess.result[i];
+                if (!states[char] || state > states[char]) {
+                    states[char] = state;
+                }
+            }
+        }
+
+        const keys = [
+            ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+            ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+            ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
+        ];
+
+        const keyW = 40; // Slightly narrower
+        const keyH = 50; 
+        const gap = 8;
+        const startY = 740; // Sufficient clearance from grid
+
+        keys.forEach((row, rowIndex) => {
+            const rowW = row.length * (keyW + gap) - gap;
+            const startX = (this.CARD_WIDTH - rowW) / 2;
+
+            row.forEach((key, colIndex) => {
+                const x = startX + colIndex * (keyW + gap);
+                const y = startY + rowIndex * (keyH + gap);
+                const state = states[key];
+
+                ctx.beginPath();
+                ctx.roundRect(x, y, keyW, keyH, 8);
+                
+                let color = 'rgba(255, 255, 255, 0.05)';
+                if (state === 0) color = this.COLORS.ABSENT;
+                if (state === 1) color = this.COLORS.PRESENT;
+                if (state === 2) color = this.COLORS.CORRECT;
+                
+                ctx.fillStyle = color;
+                ctx.fill();
+
+                ctx.fillStyle = state !== undefined ? '#FFFFFF' : 'rgba(255, 255, 255, 0.4)';
+                ctx.font = `800 16px 'monalqo', sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(key, x + keyW / 2, y + keyH / 2 + 1);
+            });
+        });
+
+        ctx.restore();
+    }
+
+    async drawSocialFeed(ctx, otherGames) {
+        ctx.save();
+        
+        const startY = 755;
+        const feedW = this.CARD_WIDTH - 60;
+        const startX = 30;
+
+        // Draw Feed Label (Centered and Prominent)
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.font = `900 12px 'monalqo', sans-serif`;
+        ctx.letterSpacing = '3px';
+        
+        // Subtle Glow
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+        ctx.shadowBlur = 4;
+        ctx.fillText('OTHER DECODERS', this.CARD_WIDTH / 2, startY - 25);
+        ctx.shadowBlur = 0;
+
+        // Symmetric Divider Lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1.2;
+        
+        // Left Line
+        ctx.beginPath();
+        ctx.moveTo(startX + 10, startY - 30);
+        ctx.lineTo(this.CARD_WIDTH / 2 - 85, startY - 30);
+        ctx.stroke();
+
+        // Right Line
+        ctx.beginPath();
+        ctx.moveTo(this.CARD_WIDTH / 2 + 85, startY - 30);
+        ctx.lineTo(this.CARD_WIDTH - startX - 10, startY - 30);
+        ctx.stroke();
+
+        if (otherGames.length === 0) {
+            // Placeholder
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.font = `italic 500 14px 'monalqo', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('Waiting for more patrons to initialize terminals...', this.CARD_WIDTH / 2, startY + 50);
+        } else {
+            // Draw up to 5 mini sessions
+            const maxSlots = 5;
+            const slotW = feedW / maxSlots;
+            const miniTile = 12;
+            const miniGap = 3;
+            const avSize = 40;
+
+            for (let i = 0; i < Math.min(otherGames.length, maxSlots); i++) {
+                const game = otherGames[i];
+                const x = startX + i * slotW + (slotW / 2) - (avSize / 2); 
+                const y = startY;
+
+                // 1. Medal Check
+                let medalColor = null;
+                if (game.status === 'WON' && game.finishedAt) {
+                    if (i === 0) medalColor = '#FFD700'; 
+                    else if (i === 1) medalColor = '#C0C0C0'; 
+                    else if (i === 2) medalColor = '#CD7F32'; 
+                }
+
+                // 2. Mini Avatar with Medal Ring
+                if (game.user.avatarURL) {
+                    ctx.save();
+                    if (medalColor) {
+                        ctx.beginPath();
+                        ctx.arc(x + avSize / 2, y + avSize / 2, (avSize / 2) + 3, 0, Math.PI * 2);
+                        ctx.strokeStyle = medalColor;
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(x + avSize / 2, y + avSize / 2, avSize / 2, 0, Math.PI * 2);
+                    ctx.clip();
+                    try {
+                        const { loadImage } = require('@napi-rs/canvas');
+                        const av = await loadImage(game.user.avatarURL);
+                        ctx.drawImage(av, x, y, avSize, avSize);
+                    } catch (e) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+
+                // 3. Name
+                ctx.fillStyle = medalColor || 'rgba(255, 255, 255, 0.6)';
+                ctx.font = `800 10px 'monalqo', sans-serif`;
+                ctx.textAlign = 'center';
+                const displayName = game.user.username.length > 8 ? game.user.username.substring(0, 6) + '..' : game.user.username;
+                ctx.fillText(displayName.toUpperCase(), x + (avSize / 2), y + avSize + 15);
+
+                // 4. Mini Grid
+                const gridW = (5 * miniTile) + (4 * miniGap);
+                const gridX = x + (avSize / 2) - (gridW / 2);
+                const gridY = y + avSize + 25;
+
+                for (let r = 0; r < 6; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        const guess = game.guesses[r];
+                        let color = 'rgba(255, 255, 255, 0.05)';
+                        if (guess) {
+                            const state = guess.result[c];
+                            if (state === 0) color = this.COLORS.ABSENT;
+                            if (state === 1) color = this.COLORS.PRESENT;
+                            if (state === 2) color = this.COLORS.CORRECT;
+                        }
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        ctx.roundRect(gridX + c * (miniTile + miniGap), gridY + r * (miniTile + miniGap), miniTile, miniTile, 2.5);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
         ctx.restore();
     }
 }

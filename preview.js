@@ -253,13 +253,35 @@ const generators = {
         const wordleGenerator = require('./utils/generators/wordleGenerator');
         const gameState = {
             guesses: [
-                { word: 'anime', result: [2, 0, 1, 0, 0] },
-                { word: 'manga', result: [1, 2, 2, 0, 2] }
+                { word: 'ANIME', result: [2, 0, 1, 0, 0] },
+                { word: 'MANGA', result: [1, 2, 2, 0, 2] }
             ],
             status: 'PLAYING',
             targetWord: 'MAGIC'
         };
-        return await wordleGenerator.generateBoard(gameState);
+
+        const mockOtherGames = [
+            { 
+                userId: '123', 
+                guesses: [{ word: 'GHOST', result: [2, 0, 0, 1, 0] }], 
+                user: { username: 'Alex', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' } 
+            },
+            { 
+                userId: '456', 
+                guesses: [{ word: 'PLANE', result: [0, 1, 2, 0, 0] }, { word: 'MUSIC', result: [1, 0, 0, 0, 2] }], 
+                user: { username: 'Sami', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' } 
+            }
+        ];
+
+        const user = { username: 'Librarian Cxllion', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' };
+
+        const bufferPrivate = await wordleGenerator.generateBoard(gameState, { anonymize: false, user });
+        const bufferPublic = await wordleGenerator.generateBoard(gameState, { anonymize: true, user, otherGames: mockOtherGames });
+
+        return [
+            { name: 'private', buffer: bufferPrivate },
+            { name: 'public', buffer: bufferPublic }
+        ];
     },
     mafia_role: async (roleName = null, isBatch = false) => {
         const { generateRoleCard } = require('./utils/generators/mafia/roleGenerator');

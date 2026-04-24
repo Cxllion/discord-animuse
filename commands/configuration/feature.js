@@ -66,6 +66,7 @@ module.exports = {
                     await interaction.editReply({ content: '🕹️ **Arcade Diagnostic**: Materializing minigame-specific graphics... ♡' });
 
                     const wordleGenerator = require('../../utils/generators/wordleGenerator');
+                    const toastGenerator = require('../../utils/generators/toastGenerator');
                     const themeColor = await getUserColor(interaction.user.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
 
                     try {
@@ -94,14 +95,109 @@ module.exports = {
                             }
                         ];
 
+                        const mockOtherGames = [
+                            { 
+                                userId: '123', 
+                                guesses: [{ word: 'GHOST', result: [2, 0, 0, 1, 0] }, { word: 'MUSIC', result: [2, 2, 2, 2, 2] }], 
+                                status: 'WON',
+                                finishedAt: new Date(Date.now() - 50000).toISOString(),
+                                user: { username: 'Alex', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' } 
+                            },
+                            { 
+                                userId: '456', 
+                                guesses: [{ word: 'PLANE', result: [0, 1, 2, 0, 0] }, { word: 'MAGIC', result: [2, 2, 2, 2, 2] }], 
+                                status: 'WON',
+                                finishedAt: new Date(Date.now() - 40000).toISOString(),
+                                user: { username: 'Sami', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' } 
+                            },
+                            { 
+                                userId: '789', 
+                                guesses: [{ word: 'BOOKS', result: [2, 2, 2, 2, 2] }], 
+                                status: 'WON',
+                                finishedAt: new Date(Date.now() - 30000).toISOString(),
+                                user: { username: 'Jordan', avatarURL: 'https://cdn.discordapp.com/embed/avatars/2.png' } 
+                            },
+                            { 
+                                userId: '101', 
+                                guesses: [{ word: 'ENIGMA', result: [1, 0, 0, 0, 1] }], 
+                                status: 'PLAYING',
+                                user: { username: 'Casey', avatarURL: 'https://cdn.discordapp.com/embed/avatars/3.png' } 
+                            },
+                            { 
+                                userId: '202', 
+                                guesses: [{ word: 'QUEST', result: [0, 0, 2, 0, 0] }], 
+                                status: 'PLAYING',
+                                user: { username: 'Taylor', avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' } 
+                            }
+                        ];
+
                         const wordleAttachments = [];
                         for (const task of wordleTasks) {
-                            const buffer = await wordleGenerator.generateBoard(task.state);
+                            const buffer = await wordleGenerator.generateBoard(task.state, {
+                                anonymize: task.state.status === 'PLAYING',
+                                user: {
+                                    username: interaction.user.username,
+                                    avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
+                                },
+                                otherGames: task.state.status === 'PLAYING' ? mockOtherGames : []
+                            });
                             wordleAttachments.push(new AttachmentBuilder(buffer, { name: `wordle-${task.name}.webp` }));
                         }
 
+                        // Add a specific Community variant with all 5 slots
+                        const communityState = { targetWord: 'DAILY', status: 'PLAYING', guesses: [{ word: 'HELLO', result: [0, 0, 1, 0, 0] }] };
+                        const communityBuffer = await wordleGenerator.generateBoard(communityState, {
+                            anonymize: true,
+                            user: { username: interaction.user.username, avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 }) },
+                            otherGames: mockOtherGames
+                        });
+                        wordleAttachments.push(new AttachmentBuilder(communityBuffer, { name: 'wordle-community-full.webp' }));
+
+                        // NEW: Toast Diagnostics (Success Slips)
+                        const toastTasks = [
+                            {
+                                name: 'toast-1st-place',
+                                data: {
+                                    pointsEarned: 12, // 10 base + streak
+                                    streakBonus: 2,
+                                    totalPoints: 1250,
+                                    streak: 5,
+                                    extraLine: "Enigma: A person or thing that is mysterious, puzzling, or difficult to understand."
+                                }
+                            },
+                            {
+                                name: 'toast-standard-win',
+                                data: {
+                                    pointsEarned: 6, // 5 base + streak
+                                    streakBonus: 1,
+                                    totalPoints: 840,
+                                    streak: 3,
+                                    extraLine: "Music: Vocal or instrumental sounds combined in such a way as to produce beauty of form."
+                                }
+                            },
+                            {
+                                name: 'toast-participation',
+                                data: {
+                                    pointsEarned: 2, 
+                                    streakBonus: 0,
+                                    totalPoints: 320,
+                                    streak: 1,
+                                    extraLine: "Lost: Unable to find one's way; not knowing one's whereabouts."
+                                }
+                            }
+                        ];
+
+                        for (const toast of toastTasks) {
+                            const buffer = await toastGenerator.generateSuccessSlip({
+                                user: { username: interaction.user.username, avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 }) },
+                                ...toast.data,
+                                gameName: 'Wordle'
+                            });
+                            wordleAttachments.push(new AttachmentBuilder(buffer, { name: `${toast.name}.png` }));
+                        }
+
                         await interaction.editReply({ 
-                            content: `✅ **Arcade Diagnostic Complete**\nGenerated **Wordle Board Matrix**.`,
+                            content: `✅ **Arcade Diagnostic Complete**\nGenerated **Wordle Board Matrix** and **Success Slip Archives** (1st Place, Standard, Participation).`,
                             files: wordleAttachments 
                         });
 

@@ -12,60 +12,29 @@ module.exports = {
     cooldown: 15, 
     data: new SlashCommandBuilder()
         .setName('wordle')
-        .setDescription('Daily Wordle challenge protocols.')
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('decode')
-                .setDescription('Initialize the Daily Wordle decoding protocol.')
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('reset')
-                .setDescription('ADMIN: Forcefully reset the daily word and history.')
-        ),
+        .setDescription('Initialize the Daily Wordle decoding protocol.'),
     
     async execute(interaction) {
-        const subcommand = interaction.options.getSubcommand();
+        // Initial reply is public (Patron's Private Board)
         await interaction.deferReply();
         
         try {
-            // --- RESET SUBCOMMAND ---
-            if (subcommand === 'reset') {
-                // Fetch application info to verify owner
-                if (!interaction.client.application.owner) await interaction.client.application.fetch();
-                
-                const ownerId = interaction.client.application.owner.id || interaction.client.application.owner.ownerId; // Support teams
-                if (interaction.user.id !== ownerId) {
-                    return interaction.editReply({ 
-                        content: '🔒 **Access Denied.** This protocol is restricted to the Archive Overseer.', 
-                        flags: MessageFlags.Ephemeral 
-                    });
-                }
-
-                await wordleService.forceReset();
-                return interaction.editReply({ 
-                    content: '♻️ **Archive Reset Complete.** The daily cipher has been purged and a new one will be materialized on next access.' 
-                });
-            }
-
-            // --- DECODE SUBCOMMAND ---
             const userId = interaction.user.id;
+            const user = {
+                username: interaction.user.username,
+                avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
+            };
             
-            // 1. Initialize Game State (Daily Word)
+            // 1. Initialize Game State (Individual)
             const gameState = await wordleService.startNewGame(userId);
             
-            const nextReset = new Date();
-            nextReset.setUTCHours(24, 0, 0, 0);
-            const resetTs = Math.floor(nextReset.getTime() / 1000);
+            // 2. Generate Anonymized Board Card (Public)
+            const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
+                anonymize: true,
+                user: user
+            });
+            const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-archival.png' });
 
-            // 2. Generate Anonymized Board (Public)
-            const bufferAnon = await wordleGenerator.generateBoard(gameState, { anonymize: true });
-            const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' });
-            
-            // 3. Construct Public Response
-            const embedAnon = baseEmbed('Daily Archive Decoding', `The current 5-letter cipher has been materialized. The archive will synchronize <t:${resetTs}:R>.`)
-                .setImage('attachment://wordle-anon.png');
-            
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`wordle_guess_${userId}`)
@@ -73,31 +42,22 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji('⌨️')
             );
-            
-            await interaction.editReply({ 
-                embeds: [embedAnon], 
-                components: [row], 
-                files: [attachmentAnon] 
+
+            // Respond with the Image Card
+            const publicMsg = await interaction.editReply({
+                files: [attachmentAnon],
+                components: [row]
             });
 
-            // 4. Generate Personalized Board (Private Ephemeral)
-            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false });
-            const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' });
-
-            const embedPersonal = baseEmbed('Daily Wordle (Personal Console)')
-                .setDescription('Your private decoding terminal is active. Submit your guesses via the public button.')
-                .setImage('attachment://wordle-personal.png');
-
-            await interaction.followUp({
-                embeds: [embedPersonal],
-                files: [attachmentPersonal],
-                flags: MessageFlags.Ephemeral
-            });
+            // Store IDs for future background updates
+            gameState.publicMessageId = publicMsg.id;
+            gameState.publicChannelId = publicMsg.channelId;
 
         } catch (error) {
+            logger.error('[Wordle] Command Execution Failed:', error);
             await interaction.editReply({ 
                 content: `❌ **Protocol Failure:** ${error.message}`, 
-                flags: MessageFlags.Ephemeral 
+                flags: [MessageFlags.Ephemeral] 
             });
         }
     }
