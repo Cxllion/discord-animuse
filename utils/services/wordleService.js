@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../core/logger');
 const minigameService = require('./minigameService');
+const { isWordInOfflineArchive } = require('../core/wordDictionary');
 const supabase = require('../core/supabaseClient');
 
 /**
@@ -78,10 +79,14 @@ class WordleService {
             // 404 means the word doesn't exist.
             if (error.response?.status === 404) return false;
             
-            // Any other error (503, Timeout, etc) means the API is down.
-            // We reject the word gracefully rather than allowing gibberish.
-            logger.warn(`[Wordle] Validation API offline (${error.message}). Denying guess: ${guess}`);
-            throw new Error('The Dictionary API is currently unreachable. Please try again in a few moments.');
+            // FALLBACK: If API is down, check our curated offline dictionary
+            logger.warn(`[Wordle] Validation API offline (${error.message}). Checking offline archives...`);
+            if (isWordInOfflineArchive(guess)) {
+                return true;
+            }
+
+            // If not in offline dictionary either, we must deny to prevent gibberish exploits
+            throw new Error('The Dictionary API is currently unreachable and the word is not in our offline archives. Please try again later.');
         }
     }
 

@@ -311,23 +311,28 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
 
         // A. Update Private Response
         const personalAttachments = [];
-        if (gameState.status !== 'PLAYING' && gameState.reward) {
-            const toastBuffer = await toastGenerator.generateSuccessSlip({
-                user: userData,
-                pointsEarned: gameState.reward.points,
-                streakBonus: gameState.reward.streakBonus,
-                totalPoints: gameState.reward.totalPoints,
-                streak: gameState.reward.streak,
-                gameName: 'Wordle',
-                extraLine: gameState.status === 'WON' ? gameState.reward?.definition : null
-            });
-            personalAttachments.push(new AttachmentBuilder(toastBuffer, { name: 'success-slip.webp' }));
+        let privateContent = null;
+
+        if (gameState.status !== 'PLAYING') {
+            // Simplify private console on completion
+            privateContent = `🏁 **Archive Synchronized.** Your decoding session for today has been successfully archived. You may now dismiss this console. ♡`;
+            
+            // Optionally still show the personal board if they click "View Result" button later, 
+            // but for the fresh end, we keep it clean.
+            if (!isFreshEnd) {
+                const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
+                personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
+            }
         } else {
             const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
             personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
         }
-
-        const responseData = { components: [privateRow], files: personalAttachments };
+ 
+        const responseData = { 
+            content: privateContent,
+            components: [privateRow], 
+            files: personalAttachments 
+        };
 
         if (interaction.isModalSubmit()) {
             if (interaction.deferred || interaction.replied) await interaction.editReply(responseData);
@@ -380,7 +385,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                     files: [new AttachmentBuilder(bufferAnon, { name: `wordle-anon-${Date.now()}.png` })],
                     attachments: [],
                     components: [publicRow] 
-                });
+                }).catch(err => logger.warn(`[Wordle] Failed to edit public message ${gameState.publicMessageId}:`, err));
 
                 // NEW: Broadcast Public Receipt on Fresh Completion
                 if (isFreshEnd && gameState.status !== 'PLAYING' && gameState.reward) {
@@ -401,7 +406,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                     await channel.send({
                         content: celebration,
                         files: [new AttachmentBuilder(toastBuffer, { name: 'success-slip-public.webp' })]
-                    });
+                    }).catch(err => logger.error('[Wordle] Failed to send public receipt:', err));
                 }
             }
         }

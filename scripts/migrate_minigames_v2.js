@@ -51,7 +51,18 @@ async function migrate() {
         guesses INTEGER DEFAULT 0,
         solved BOOLEAN DEFAULT FALSE,
         solved_at TIMESTAMP WITH TIME ZONE,
+        metadata JSONB DEFAULT '{}'::jsonb,
         UNIQUE(user_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS public.wordle_sessions (
+        user_id TEXT PRIMARY KEY,
+        target_word TEXT NOT NULL,
+        guesses JSONB DEFAULT '[]'::jsonb,
+        status TEXT DEFAULT 'PLAYING',
+        public_message_id TEXT,
+        public_channel_id TEXT,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     -- RLS Policies (Basic hardening for bot access)

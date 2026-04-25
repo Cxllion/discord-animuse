@@ -3,6 +3,7 @@ const logger = require('../core/logger');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { getRandomOfflineWord } = require('../core/wordDictionary');
 
 /**
  * Minigame Service V2: The "Arcade Protocol" Archivist.
@@ -321,17 +322,7 @@ class MinigameService {
         let word = null;
         let attempts = 0;
         
-        const BACKUP_WORDS = [
-            'STORM', 'FLARE', 'GHOST', 'PLUME', 'VIVID', 'BLAZE', 'CRISP', 'SHINE', 'PRIDE', 'LIGHT',
-            'BRAVE', 'DREAM', 'PIVOT', 'SPARK', 'WHALE', 'ORBIT', 'PULSE', 'STERN', 'FLINT', 'CROWN',
-            'SWORD', 'MAGIC', 'MANGA', 'ANIME', 'OTAKU', 'QUEST', 'STEEL', 'BLOOD', 'WITCH', 'DEMON',
-            'SPELL', 'BEAST', 'CLASH', 'GLORY', 'REALM', 'FAIRY', 'VOICE', 'PIECE', 'FRUIT', 'PIRAT',
-            'NINJA', 'KUNAI', 'GEASS', 'MECHA', 'PILOT', 'SPACE', 'ALIEN', 'GHOUL', 'TITAN', 'SLASH',
-            'WATER', 'EARTH', 'STONE', 'FLAME', 'FROST', 'CHILL', 'STARS', 'MOONS', 'SUNNY', 'NIGHT',
-            'DAWN', 'DUSK', 'TWIN', 'SOUL', 'HEART', 'SMILE', 'TEARS', 'ANGRY', 'HAPPY', 'SLEEP',
-            'DREAM', 'WAKE', 'ARISE', 'STAND', 'FIGHT', 'BRAWL', 'PUNCH', 'KICK', 'JUMP', 'DASH',
-            'SWIFT', 'QUICK', 'FAST', 'SLOW', 'HEAVY', 'LIGHT', 'DARK', 'SHADE', 'GLOOM', 'GLARE'
-        ];
+        // Loop for API attempts
 
         while (!word && attempts < 3) {
             try {
@@ -351,12 +342,10 @@ class MinigameService {
             attempts++;
         }
 
+        // 3. Final Fail-Safe: If API is completely down, use our robust offline dictionary
         if (!word) {
-            // Pick a word from backup that hasn't been used recently
-            const backupCandidates = BACKUP_WORDS.filter(w => !usedWords.has(w));
-            word = backupCandidates.length > 0 
-                ? backupCandidates[Math.floor(Math.random() * backupCandidates.length)]
-                : BACKUP_WORDS[Math.floor(Math.random() * BACKUP_WORDS.length)];
+            logger.info('[Wordle] All external word sources failed. Deploying Offline Decryption Key...');
+            word = getRandomOfflineWord();
         }
 
         // 3. Save as Today's Word

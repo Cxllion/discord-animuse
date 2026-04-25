@@ -417,8 +417,23 @@ const initializeDatabase = async () => {
                 guesses integer NOT NULL,
                 solved boolean NOT NULL,
                 solved_at timestamp with time zone DEFAULT now(),
+                metadata jsonb DEFAULT '{}'::jsonb,
                 CONSTRAINT unique_user_wordle_date UNIQUE (user_id, date)
             );
+
+            CREATE TABLE IF NOT EXISTS public.wordle_sessions (
+                user_id text PRIMARY KEY,
+                target_word text NOT NULL,
+                guesses jsonb DEFAULT '[]'::jsonb,
+                status text DEFAULT 'PLAYING',
+                public_message_id text,
+                public_channel_id text,
+                updated_at timestamp with time zone DEFAULT now()
+            );
+
+            ALTER TABLE public.wordle_history ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+            ALTER TABLE public.wordle_history ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE public.wordle_sessions ENABLE ROW LEVEL SECURITY;
         `);
 
         // 16. Leveling RPC Logic (Critical Fix)
