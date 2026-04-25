@@ -376,7 +376,8 @@ const updateWordleViews = async (interaction, gameState, user) => {
                         });
                 
                 await channel.messages.edit(gameState.publicMessageId, {
-                    files: [new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' })],
+                    files: [new AttachmentBuilder(bufferAnon, { name: `wordle-anon-${Date.now()}.png` })],
+                    attachments: [],
                     components: [publicRow] 
                 });
             }

@@ -45,8 +45,10 @@ class WordleService {
                 word = await minigameService.generateDailyWord();
             }
 
+            const today = minigameService.getWordleDate();
             const gameState = {
                 targetWord: word,
+                date: today, // NEW: Lock session to the generation cycle
                 guesses: [], // Array of { word, result }
                 status: 'PLAYING',
                 startedAt: Date.now(),
@@ -107,7 +109,7 @@ class WordleService {
 
             // If game ended, record result and clear session
             if (game.status !== 'PLAYING') {
-                const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON');
+                const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON', game.date);
                 game.reward = solveData; 
                 await minigameService.clearWordleSession(userId);
             } else {
@@ -130,7 +132,7 @@ class WordleService {
             if (!game || game.status !== 'PLAYING') return null;
 
             game.status = 'LOST';
-            const solveData = await minigameService.recordWordleResult(userId, game.guesses, false);
+            const solveData = await minigameService.recordWordleResult(userId, game.guesses, false, game.date);
             game.reward = solveData;
             
             await minigameService.clearWordleSession(userId);
@@ -277,6 +279,7 @@ class WordleService {
 
         const games = [];
         const today = minigameService.getWordleDate();
+        const targetWord = await minigameService.getDailyWord();
 
         // 1. Get Top Solvers for Today (Wall of Fame)
         try {
@@ -291,9 +294,16 @@ class WordleService {
             if (winners) {
                 winners.forEach(row => {
                     if (row.user_id === excludeUserId) return;
+                    
+                    const rawGuesses = row.metadata?.full_guesses || [];
+                    const parsedGuesses = rawGuesses.map(word => ({
+                        word,
+                        result: this.calculateTileStates(targetWord, word)
+                    }));
+
                     games.push({
                         userId: row.user_id,
-                        guesses: row.metadata?.full_guesses || [], // FIXED: Use array from metadata
+                        guesses: parsedGuesses, // FIXED: Parsed with calculateTileStates
                         status: 'WON',
                         finishedAt: row.solved_at,
                         solvedOrder: row.metadata?.solved_order
@@ -346,9 +356,16 @@ class WordleService {
                     if (others) {
                         others.forEach(row => {
                             if (games.some(g => g.userId === row.user_id)) return;
+                            
+                            const rawGuesses = row.metadata?.full_guesses || [];
+                            const parsedGuesses = rawGuesses.map(word => ({
+                                word,
+                                result: this.calculateTileStates(targetWord, word)
+                            }));
+
                             games.push({
                                 userId: row.user_id,
-                                guesses: row.metadata?.full_guesses || [], 
+                                guesses: parsedGuesses, 
                                 status: 'LOST',
                                 finishedAt: row.solved_at,
                                 solvedOrder: null

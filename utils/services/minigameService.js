@@ -108,9 +108,9 @@ class MinigameService {
     /**
      * Record a Wordle result with the new 10/8/6/5/2 Point System and Streak logic.
      */
-    async recordWordleResult(userId, guesses, solved) {
+    async recordWordleResult(userId, guesses, solved, date = null) {
         if (!supabase) return;
-        const today = this.getWordleDate();
+        const today = date || this.getWordleDate();
 
         // 1. Fetch Streak and Metadata (Resilient Fallback)
         let streak = 1;
@@ -178,20 +178,20 @@ class MinigameService {
             definition = resp.data[0]?.meanings[0]?.definitions[0]?.definition || definition;
         } catch (e) {}
 
-        // 5. Save History (Resilient)
-        try {
-            await supabase
-                .from('wordle_history')
-                .upsert({
-                    user_id: userId,
-                    date: today,
-                    guesses: guesses.length, 
-                    solved: solved,
-                    solved_at: new Date().toISOString(),
-                    metadata: { full_guesses: guesses, solved_order: solvedOrder, awarded_points: totalEarned }
-                }, { onConflict: 'user_id,date' });
-        } catch (historyErr) {
-            logger.warn(`[WordleHistory] Skipping history record: ${historyErr.message}`);
+        // 5. Save History (Mandatory for attempt locking)
+        const { error: historyError } = await supabase
+            .from('wordle_history')
+            .upsert({
+                user_id: userId,
+                date: today,
+                guesses: guesses.length, 
+                solved: solved,
+                solved_at: new Date().toISOString(),
+                metadata: { full_guesses: guesses, solved_order: solvedOrder, awarded_points: totalEarned }
+            }, { onConflict: 'user_id,date' });
+
+        if (historyError) {
+            throw new Error(`Failed to record archival history: ${historyError.message}`);
         }
 
         // Award via Arcade Protocol
