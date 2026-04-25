@@ -84,7 +84,7 @@ const handleWordleInteraction = async (interaction) => {
             if (!gameState) return;
 
             // Update views to show game over
-            await updateWordleViews(interaction, gameState, user);
+            await updateWordleViews(interaction, gameState, user, { isFreshEnd: true });
         } catch (error) {
             logger.error('[Wordle] Forfeit failed:', error);
             await interaction.followUp({ content: `❌ **Forfeit Failure:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
@@ -257,7 +257,7 @@ const handleWordleModals = async (interaction) => {
     }
 
     // 5. Update BOTH views
-    await updateWordleViews(interaction, gameState, user);
+    await updateWordleViews(interaction, gameState, user, { isFreshEnd: true });
     } catch (error) {
         logger.error('[Wordle] Modal submission error:', error);
         if (interaction.deferred || interaction.replied) {
@@ -271,7 +271,8 @@ const handleWordleModals = async (interaction) => {
 /**
  * Shared utility to update public and private views.
  */
-const updateWordleViews = async (interaction, gameState, user) => {
+const updateWordleViews = async (interaction, gameState, user, options = {}) => {
+    const { isFreshEnd = false } = options;
     const userData = {
         username: user.username,
         displayName: interaction.member?.displayName || user.username,
@@ -380,6 +381,28 @@ const updateWordleViews = async (interaction, gameState, user) => {
                     attachments: [],
                     components: [publicRow] 
                 });
+
+                // NEW: Broadcast Public Receipt on Fresh Completion
+                if (isFreshEnd && gameState.status !== 'PLAYING' && gameState.reward) {
+                    const toastBuffer = await toastGenerator.generateSuccessSlip({
+                        user: userData,
+                        pointsEarned: gameState.reward.points,
+                        streakBonus: gameState.reward.streakBonus,
+                        totalPoints: gameState.reward.totalPoints,
+                        streak: gameState.reward.streak,
+                        gameName: 'Wordle',
+                        extraLine: gameState.status === 'WON' ? gameState.reward?.definition : null
+                    });
+                    
+                    const celebration = gameState.status === 'WON' 
+                        ? `🎊 **Arcade Protocol Alert**: <@${user.id}> has successfully decrypted today's cipher! ♡`
+                        : `🏁 **Arcade Protocol Alert**: <@${user.id}> has completed today's decryption protocol. ♡`;
+
+                    await channel.send({
+                        content: celebration,
+                        files: [new AttachmentBuilder(toastBuffer, { name: 'success-slip-public.webp' })]
+                    });
+                }
             }
         }
     } catch (err) {
