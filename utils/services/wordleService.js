@@ -8,9 +8,8 @@ const supabase = require('../core/supabaseClient');
  */
 class WordleService {
     constructor() {
-        // In-memory storage for active sessions (current day only)
-        // Key: userId, Value: { guesses, status, startedAt }
-        this.activeGames = new Map();
+        // Concurrency lock for user submissions (avoids race conditions)
+        this.processingLocks = new Set();
         
         // API Endpoints
         this.DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
@@ -30,18 +29,10 @@ class WordleService {
                 throw new Error('You have already completed the decoding protocol for this solar cycle. The archives are currently locked until the next synchronization. ♡');
             }
 
-            // 2. Check for Active Session (Resume Progress)
-            // A. Check in-memory first
-            if (this.activeGames.has(userId)) {
-                logger.info(`[Wordle] Resuming in-memory session for user ${userId}.`);
-                return this.activeGames.get(userId);
-            }
-
-            // B. Check database for persistent session
+            // 2. Check for Active Session (Resume Progress) from database directly
             const persistentSession = await minigameService.getWordleSession(userId);
             if (persistentSession) {
                 logger.info(`[Wordle] Restored persistent session for user ${userId}.`);
-                this.activeGames.set(userId, persistentSession);
                 return persistentSession;
             }
 
@@ -63,8 +54,7 @@ class WordleService {
                 publicChannelId: null
             };
 
-            // 4. Save to Memory and Database
-            this.activeGames.set(userId, gameState);
+            // 4. Save to Database
             await minigameService.saveWordleSession(userId, gameState);
             
             return gameState;
@@ -87,9 +77,9 @@ class WordleService {
             if (error.response?.status === 404) return false;
             
             // Any other error (503, Timeout, etc) means the API is down.
-            // We bypass validation to keep the game playable during outages.
-            logger.warn(`[Wordle] Validation API offline (${error.message}). Bypassing for: ${guess}`);
-            return true;
+            // We reject the word gracefully rather than allowing gibberish.
+            logger.warn(`[Wordle] Validation API offline (${error.message}). Denying guess: ${guess}`);
+            throw new Error('The Dictionary API is currently unreachable. Please try again in a few moments.');
         }
     }
 
@@ -97,12 +87,13 @@ class WordleService {
      * Processes a guess for a user's game.
      */
     async submitGuess(userId, guess) {
-        const game = this.activeGames.get(userId);
-        if (!game || game.status !== 'PLAYING') return null;
-        if (game.isProcessing) return null; // Debounce double-submissions
-
-        game.isProcessing = true;
+        if (this.processingLocks.has(userId)) return null; // Debounce double-submissions at the memory level
+        this.processingLocks.add(userId);
+        
         try {
+            const game = await minigameService.getWordleSession(userId);
+            if (!game || game.status !== 'PLAYING') return null;
+
             const target = game.targetWord;
             const result = this.calculateTileStates(target, guess.toUpperCase());
             
@@ -118,7 +109,6 @@ class WordleService {
             if (game.status !== 'PLAYING') {
                 const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON');
                 game.reward = solveData; 
-                this.activeGames.delete(userId); 
                 await minigameService.clearWordleSession(userId);
             } else {
                 // Otherwise, sync current state to DB
@@ -127,22 +117,28 @@ class WordleService {
 
             return game;
         } finally {
-            if (game) game.isProcessing = false;
+            this.processingLocks.delete(userId);
         }
     }
 
     async forfeitGame(userId) {
-        const game = this.activeGames.get(userId);
-        if (!game || game.status !== 'PLAYING') return null;
+        if (this.processingLocks.has(userId)) return null;
+        this.processingLocks.add(userId);
+        
+        try {
+            const game = await minigameService.getWordleSession(userId);
+            if (!game || game.status !== 'PLAYING') return null;
 
-        game.status = 'LOST';
-        const solveData = await minigameService.recordWordleResult(userId, game.guesses, false);
-        game.reward = solveData;
-        
-        this.activeGames.delete(userId);
-        await minigameService.clearWordleSession(userId);
-        
-        return game;
+            game.status = 'LOST';
+            const solveData = await minigameService.recordWordleResult(userId, game.guesses, false);
+            game.reward = solveData;
+            
+            await minigameService.clearWordleSession(userId);
+            
+            return game;
+        } finally {
+            this.processingLocks.delete(userId);
+        }
     }
 
     /**
@@ -183,24 +179,11 @@ class WordleService {
     }
 
     /**
-     * Retrieves a game state, attempting to restore from database if memory is cold.
+     * Retrieves a game state, restoring from database.
      */
     async getGame(userId) {
-        // 1. Check Memory
-        let game = this.activeGames.get(userId);
-        if (game) {
-            // Validate word consistency (new day check)
-            const currentDaily = await minigameService.getDailyWord();
-            if (game.targetWord !== currentDaily) {
-                logger.warn(`[Wordle] Clearing stale memory session for ${userId} (Word Mismatch).`);
-                this.activeGames.delete(userId);
-                return null;
-            }
-            return game;
-        }
-
-        // 2. Check Database
-        game = await minigameService.getWordleSession(userId);
+        // Always check Database directly
+        const game = await minigameService.getWordleSession(userId);
         if (game) {
             const currentDaily = await minigameService.getDailyWord();
             if (game.targetWord !== currentDaily) {
@@ -209,8 +192,6 @@ class WordleService {
                 return null;
             }
             
-            logger.info(`[Wordle] Restored session from DB for ${userId}.`);
-            this.activeGames.set(userId, game);
             return game;
         }
 
@@ -227,8 +208,8 @@ class WordleService {
         // 2. Immediately Determine the NEW word for the cycle
         await minigameService.generateDailyWord();
 
-        // 3. Clear sessions memory
-        this.activeGames.clear();
+        // 3. Clear locks memory
+        this.processingLocks.clear();
 
         // 4. Broadcast to all Arcade Channels (Show previous word)
         if (client) {
@@ -312,7 +293,7 @@ class WordleService {
                     if (row.user_id === excludeUserId) return;
                     games.push({
                         userId: row.user_id,
-                        guesses: row.guesses || [],
+                        guesses: row.metadata?.full_guesses || [], // FIXED: Use array from metadata
                         status: 'WON',
                         finishedAt: row.solved_at,
                         solvedOrder: row.metadata?.solved_order
@@ -323,18 +304,31 @@ class WordleService {
             logger.error('[Wordle] Failed to fetch winners:', e);
         }
 
-        // 2. Fill remaining slots with Active Games (Memory)
+        // 2. Fill remaining slots with Active Games (Database)
         if (games.length < limit) {
-            for (const [userId, game] of this.activeGames.entries()) {
-                if (userId === excludeUserId || games.some(g => g.userId === userId)) continue;
-                games.push({
-                    userId,
-                    guesses: game.guesses,
-                    status: game.status,
-                    finishedAt: null,
-                    solvedOrder: null
-                });
-                if (games.length >= limit) break;
+            try {
+                // Fetch active sessions from DB
+                const { data: activeSessions } = await supabase
+                    .from('wordle_sessions')
+                    .select('user_id, guesses, status')
+                    .neq('user_id', excludeUserId)
+                    .order('updated_at', { ascending: false })
+                    .limit(limit);
+
+                if (activeSessions) {
+                    activeSessions.forEach(session => {
+                        if (games.some(g => g.userId === session.user_id)) return;
+                        games.push({
+                            userId: session.user_id,
+                            guesses: session.guesses || [],
+                            status: session.status,
+                            finishedAt: null,
+                            solvedOrder: null
+                        });
+                    });
+                }
+            } catch (e) {
+                logger.error('[Wordle] Failed to fetch active sessions for social feed:', e);
             }
         }
 
@@ -354,7 +348,7 @@ class WordleService {
                             if (games.some(g => g.userId === row.user_id)) return;
                             games.push({
                                 userId: row.user_id,
-                                guesses: row.guesses || [],
+                                guesses: row.metadata?.full_guesses || [], 
                                 status: 'LOST',
                                 finishedAt: row.solved_at,
                                 solvedOrder: null

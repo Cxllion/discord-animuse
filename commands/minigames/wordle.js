@@ -25,6 +25,7 @@ module.exports = {
             const userId = interaction.user.id;
             const user = {
                 username: interaction.user.username,
+                displayName: interaction.member?.displayName || interaction.user.username,
                 avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
             };
 
@@ -46,13 +47,9 @@ module.exports = {
                 });
             }
 
-            // 1. Check if already played today (Finished Game)
             const hasPlayed = await minigameService.hasPlayedToday(userId);
             if (hasPlayed) {
-                const session = await wordleService.startNewGame(userId).catch(() => null);
-                
-                // If they have played, session will throw or we can fetch history
-                const history = await minigameService.getWordleSession(userId) || await minigameService.getWordleHistory(userId);
+                const history = await minigameService.getWordleHistory(userId);
                 
                 if (history) {
                     const bufferPersonal = await wordleGenerator.generateBoard(history, { anonymize: false, user: user });
@@ -67,6 +64,9 @@ module.exports = {
                         files: [attachmentPersonal],
                         components: [row]
                     });
+                } else {
+                    // This should theoretically not happen if hasPlayed is true
+                    throw new Error('You have completed today\'s protocol, but your archival record is still synchronizing. Please try again in a moment. ♡');
                 }
             }
             

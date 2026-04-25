@@ -192,15 +192,16 @@ const handleWordleModals = async (interaction) => {
         }
     }
 
-    // 2. Validate Word (External API)
-    const isValid = await wordleService.isValidWord(guess);
-    if (!isValid) {
-        return interaction.followUp({ content: `❌ **"${guess}"** is not a recognized word in our archives.`, flags: MessageFlags.Ephemeral });
-    }
+    try {
+        // 2. Validate Word (External API)
+        const isValid = await wordleService.isValidWord(guess);
+        if (!isValid) {
+            return interaction.followUp({ content: `❌ **"${guess}"** is not a recognized word in our archives.`, flags: MessageFlags.Ephemeral });
+        }
 
-    // 3. Process Guess
-    const gameState = await wordleService.submitGuess(user.id, guess);
-    if (!gameState) return;
+        // 3. Process Guess
+        const gameState = await wordleService.submitGuess(user.id, guess);
+        if (!gameState) return;
 
     const userData = {
         username: user.username,
@@ -257,6 +258,14 @@ const handleWordleModals = async (interaction) => {
 
     // 5. Update BOTH views
     await updateWordleViews(interaction, gameState, user);
+    } catch (error) {
+        logger.error('[Wordle] Modal submission error:', error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.followUp({ content: `❌ **Protocol Error:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
+        } else {
+            await interaction.reply({ content: `❌ **Protocol Error:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
+        }
+    }
 };
 
 /**
@@ -265,6 +274,7 @@ const handleWordleModals = async (interaction) => {
 const updateWordleViews = async (interaction, gameState, user) => {
     const userData = {
         username: user.username,
+        displayName: interaction.member?.displayName || user.username,
         avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 })
     };
 
@@ -339,15 +349,23 @@ const updateWordleViews = async (interaction, gameState, user) => {
                                 let u = interaction.client.users.cache.get(g.userId);
                                 if (!u) u = await interaction.client.users.fetch(g.userId).catch(() => null);
                                 
+                                // Optional: Fetch member for nickname if in the same guild
+                                let dName = u?.username || 'Patron';
+                                if (interaction.guild && u) {
+                                    const member = await interaction.guild.members.fetch(u.id).catch(() => null);
+                                    if (member) dName = member.displayName;
+                                }
+
                                 return { 
                                     ...g, 
                                     user: { 
-                                        username: u?.username || 'Patron', 
+                                        username: u?.username || 'Patron',
+                                        displayName: dName,
                                         avatarURL: u?.displayAvatarURL({ extension: 'png', size: 64 }) || null 
                                     } 
                                 };
                             } catch (e) {
-                                return { ...g, user: { username: 'Patron', avatarURL: null } };
+                                return { ...g, user: { username: 'Patron', displayName: 'Patron', avatarURL: null } };
                             }
                         }));
 

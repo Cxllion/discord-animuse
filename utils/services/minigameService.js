@@ -138,6 +138,7 @@ class MinigameService {
 
         if (solved) {
             try {
+                // Determine Solve Order based on current winners today
                 const { count } = await supabase
                     .from('wordle_history')
                     .select('*', { count: 'exact', head: true })
@@ -145,17 +146,23 @@ class MinigameService {
                     .eq('solved', true);
                 
                 solvedOrder = (count || 0) + 1;
+                
+                // Base Points based on Solve Order (10, 8, 6, 5)
                 if (solvedOrder === 1) basePoints = 10;
                 else if (solvedOrder === 2) basePoints = 8;
                 else if (solvedOrder === 3) basePoints = 6;
                 else basePoints = 5;
 
-                // Precision Bonus (Attempt-based)
+                // Precision Bonus (Efficiency based)
                 if (guesses.length === 1) basePoints += 2;
                 else if (guesses.length === 2) basePoints += 1;
             } catch (e) {
+                logger.error('[Wordle] Failed to calculate solve order:', e);
                 basePoints = 5; 
             }
+        } else {
+            // Participation reward for trying but losing
+            basePoints = 2;
         }
 
         // 3. Apply Streak Multiplier (Simplistic fallback)
@@ -406,10 +413,10 @@ class MinigameService {
             await this._saveLocalSessions({}); // Flush local cache
         }
 
-        // Clear memory cache of sessions
+        // Clear memory cache of locks
         const wordleService = require('./wordleService');
-        if (wordleService && wordleService.activeGames) {
-            wordleService.activeGames.clear();
+        if (wordleService && wordleService.processingLocks) {
+            wordleService.processingLocks.clear();
         }
 
         logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. Key was: ${previousWord || 'UNKNOWN'}. Today's history wiped for fresh attempts.`);
@@ -587,7 +594,6 @@ class MinigameService {
                 .maybeSingle();
             
             if (data) {
-                // Fetch target word from wordle_daily to rebuild state
                 const { data: wordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
                 return {
                     targetWord: wordData?.word || '?????',

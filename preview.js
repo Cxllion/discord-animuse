@@ -205,14 +205,19 @@ const generators = {
             avatarUrl: `https://cdn.discordapp.com/embed/avatars/${i % 5}.png`
         }));
 
-        const bufferExp = await generateLeaderboard(challenger, challengerData, topUsers, null, '#8B5CF6');
+        const bufferExp = await generateLeaderboard(challenger, challengerData, topUsers, null, '#8B5CF6', challenger.username, challenger.displayAvatarURL());
 
         const miniStats = { rank: 12, total_points: 4500 };
         const topMini = Array.from({ length: 10 }, (_, i) => ({
             username: `Pro ${i+1}`,
             total_points: 10000 - (i * 500)
         }));
-        const bufferMini = await generateMinigameLeaderboard(challenger, miniStats, topMini, '#3B82F6');
+        const miniChallenger = {
+            username: challenger.username,
+            avatarUrl: challenger.displayAvatarURL(),
+            stats: miniStats
+        };
+        const bufferMini = await generateMinigameLeaderboard(miniChallenger, topMini, '#3B82F6');
 
         return [
             { name: 'exp', buffer: bufferExp },

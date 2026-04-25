@@ -1,4 +1,5 @@
-const { createCanvas } = require('@napi-rs/canvas');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const path = require('path');
 const logger = require('../core/logger');
 
 /**
@@ -23,6 +24,32 @@ class WordleGenerator {
             CORRECT: '#22C55E', // Vibrant Green
             EMPTY: 'transparent'
         };
+    }
+
+    /**
+     * Sanitizes and selects the best display name (Nickname vs Username).
+     * Fallback to username if nickname contains non-standard symbols.
+     */
+    getDisplayName(user) {
+        if (!user) return 'PATRON';
+        
+        const rawName = user.displayName || user.username || 'PATRON';
+        
+        // Standard ASCII + common punctuation regex
+        const standardRegex = /^[a-zA-Z0-9\s._\-|[\]()!@#%^&*+=~]+$/;
+        
+        let finalName = rawName;
+        // If nickname has complex symbols/emojis, fallback to clean username
+        if (user.displayName && !standardRegex.test(rawName)) {
+            finalName = user.username || 'PATRON';
+        }
+
+        // Truncate long names to prevent overlap with the 'DAILY ARCHIVE DECODING' title
+        if (finalName.length > 15) {
+            finalName = finalName.substring(0, 13) + '..';
+        }
+
+        return finalName.toUpperCase();
     }
 
     async generateBoard(gameState, options = {}) {
@@ -221,7 +248,6 @@ class WordleGenerator {
             ctx.clip();
             
             try {
-                const { loadImage } = require('@napi-rs/canvas');
                 const avatar = await loadImage(user.avatarURL);
                 ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
             } catch (err) {
@@ -231,11 +257,12 @@ class WordleGenerator {
             }
             ctx.restore();
 
-            // Username (Next to avatar)
+            // Display Name (Next to avatar)
+            const displayName = this.getDisplayName(user);
             ctx.textAlign = 'right';
             ctx.fillStyle = '#FFFFFF';
             ctx.font = `800 16px 'monalqo', sans-serif`;
-            ctx.fillText(user.username.toUpperCase(), avatarX - 15, 60);
+            ctx.fillText(displayName, avatarX - 15, 60);
             
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
             ctx.font = `600 10px 'monalqo', sans-serif`;
@@ -392,7 +419,6 @@ class WordleGenerator {
                     ctx.arc(x + avSize / 2, y + avSize / 2, avSize / 2, 0, Math.PI * 2);
                     ctx.clip();
                     try {
-                        const { loadImage } = require('@napi-rs/canvas');
                         const av = await loadImage(game.user.avatarURL);
                         ctx.drawImage(av, x, y, avSize, avSize);
                     } catch (e) {
@@ -409,11 +435,14 @@ class WordleGenerator {
                 const gridX = x + (avSize / 2) - (gridW / 2);
                 const gridY = y + avSize + 8; // Tighter alignment without name
 
+                // Ensure we have an array of guesses
+                const guesses = Array.isArray(game.guesses) ? game.guesses : [];
+
                 for (let r = 0; r < 6; r++) {
                     for (let c = 0; c < 5; c++) {
-                        const guess = game.guesses[r];
+                        const guess = guesses[r];
                         let color = 'rgba(255, 255, 255, 0.05)';
-                        if (guess) {
+                        if (guess && Array.isArray(guess.result)) {
                             const state = guess.result[c];
                             if (state === 0) color = this.COLORS.ABSENT;
                             if (state === 1) color = this.COLORS.PRESENT;
