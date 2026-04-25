@@ -13,6 +13,7 @@ const wordleGenerator = require('../generators/wordleGenerator');
 const toastGenerator = require('../generators/toastGenerator');
 const baseEmbed = require('../generators/baseEmbed');
 const { fetchConfig } = require('../core/database');
+const minigameService = require('../services/minigameService');
 const logger = require('../core/logger');
 
 /**
@@ -24,11 +25,17 @@ const handleWordleInteraction = async (interaction) => {
 
     // 0. Arcade Protocol: Channel Verification
     const config = await fetchConfig(guildId);
-    if (config?.arcade_channel_id && interaction.channelId !== config.arcade_channel_id) {
-        return await interaction.reply({
-            content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be accessed within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
-            flags: [MessageFlags.Ephemeral]
-        });
+    const isAdmin = interaction.member?.permissions.has('Administrator');
+    const isArcadeChannel = config?.arcade_channel_id && interaction.channelId === config.arcade_channel_id;
+
+    if (config?.arcade_channel_id && !isArcadeChannel) {
+        if (!isAdmin) {
+            return await interaction.reply({
+                content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be accessed within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+                flags: [MessageFlags.Ephemeral]
+            });
+        }
+        // Nudge already provided during initialization usually, but let's keep it robust
     }
 
     const parts = customId.split('_'); // wordle, action, userId
@@ -61,47 +68,62 @@ const handleWordleInteraction = async (interaction) => {
         return interaction.showModal(modal);
     }
 
-    if (action === 'new') {
+    if (action === 'forfeit') {
         try {
-            if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
-            
-            const gameState = await wordleService.startNewGame(user.id);
-            
-            // 1. Generate Anonymized (Public)
-            const bufferAnon = await wordleGenerator.generateBoard(gameState, { anonymize: true });
-            const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' });
+            // NEW: Source-aware defer logic to prevent public board corruption
+            if (!interaction.deferred && !interaction.replied) {
+                if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+                    await interaction.deferUpdate();
+                } else {
+                    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+                }
+            }
+            // Ensure session is in memory first
+            await wordleService.getGame(user.id); 
+            const gameState = await wordleService.forfeitGame(user.id);
+            if (!gameState) return;
 
-            const nextReset = new Date();
-            nextReset.setUTCHours(24, 0, 0, 0);
-            const resetTs = Math.floor(nextReset.getTime() / 1000);
-
-            const embedAnon = baseEmbed('Daily Archive Decoding', `The current 5-letter cipher has been materialized. The archive will synchronize <t:${resetTs}:R>.`)
-                .setImage('attachment://wordle-anon.png');
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️')
-            );
-
-            // Update Public Message
-            await interaction.editReply({ embeds: [embedAnon], components: [row], files: [attachmentAnon] });
-
-            // 2. Generate Personalized (Private Ephemeral)
-            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false });
-            const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' });
-
-            const embedPersonal = baseEmbed('Daily Wordle (Personal Console)')
-                .setDescription('Your private decoding terminal is active. Submit your guesses via the public button.')
-                .setImage('attachment://wordle-personal.png');
-
-            await interaction.followUp({ 
-                files: [attachmentPersonal], 
-                flags: [MessageFlags.Ephemeral] 
-            });
-
+            // Update views to show game over
+            await updateWordleViews(interaction, gameState, user);
         } catch (error) {
-            logger.error('[Wordle] Failed to start new game:', error);
-            await interaction.followUp({ content: `❌ **Protocol Failure:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
+            logger.error('[Wordle] Forfeit failed:', error);
+            await interaction.followUp({ content: `❌ **Forfeit Failure:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
         }
+        return;
+    }
+
+    if (action === 'progress') {
+        try {
+            const gameState = await wordleService.getGame(user.id);
+            if (!gameState) {
+                return interaction.reply({ content: '❌ **No Active Session.** Use `/wordle` to start a new one.', flags: [MessageFlags.Ephemeral] });
+            }
+
+            await updateWordleViews(interaction, gameState, user);
+        } catch (error) {
+            logger.error('[Wordle] Progress recovery failed:', error);
+            await interaction.reply({ content: `❌ **Recovery Failure:** ${error.message}`, flags: [MessageFlags.Ephemeral] });
+        }
+        return;
+    }
+
+    if (action === 'result') {
+        try {
+            const history = await minigameService.getWordleHistory(user.id);
+            if (!history) return interaction.reply({ content: '❌ No history found for today.', flags: [MessageFlags.Ephemeral] });
+
+            const bufferPersonal = await wordleGenerator.generateBoard(history, { anonymize: false, user: { username: user.username, avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 }) } });
+            const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-result.png' });
+            
+            await interaction.reply({
+                files: [attachmentPersonal],
+                flags: [MessageFlags.Ephemeral]
+            });
+        } catch (error) {
+            logger.error('[Wordle] Result view failed:', error);
+            await interaction.reply({ content: '❌ Failed to fetch result.', flags: [MessageFlags.Ephemeral] });
+        }
+        return;
     }
 };
 
@@ -110,11 +132,16 @@ const handleWordleModals = async (interaction) => {
 
     // 0. Arcade Protocol: Channel Verification
     const config = await fetchConfig(guildId);
-    if (config?.arcade_channel_id && interaction.channelId !== config.arcade_channel_id) {
-        return await interaction.reply({
-            content: `❌ **Arcade Protocol Deviation**: Submission refused. Terminal input must be synchronized within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
-            flags: [MessageFlags.Ephemeral]
-        });
+    const isAdmin = interaction.member?.permissions.has('Administrator');
+    const isArcadeChannel = config?.arcade_channel_id && interaction.channelId === config.arcade_channel_id;
+
+    if (config?.arcade_channel_id && !isArcadeChannel) {
+        if (!isAdmin) {
+            return await interaction.reply({
+                content: `❌ **Arcade Protocol Deviation**: Submission refused. Terminal input must be synchronized within the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+                flags: [MessageFlags.Ephemeral]
+            });
+        }
     }
 
     const guess = fields.getTextInputValue('guess_input').toUpperCase();
@@ -125,10 +152,17 @@ const handleWordleModals = async (interaction) => {
     }
 
     // 1. Retrieve Private Game
-    const game = wordleService.getGame(user.id);
+    const game = await wordleService.getGame(user.id);
     if (!game) {
+        const hasPlayed = await minigameService.hasPlayedToday(user.id);
+        if (hasPlayed) {
+            return interaction.reply({ 
+                content: '🏁 **Archive Synchronized.** You have already completed the decoding protocol for this cycle.', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
         return interaction.reply({ 
-            content: '❌ **Session Expired.** Please use `/wordle` to initialize a new decoding session.', 
+            content: '❌ **Session Expired.** The Daily Wordle archives have shifted. Please use `/wordle` to initialize a new decoding session.', 
             flags: [MessageFlags.Ephemeral] 
         });
     }
@@ -149,7 +183,14 @@ const handleWordleModals = async (interaction) => {
         });
     }
 
-    if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+    // 1. Source-aware defer logic to prevent public board corruption
+    if (!interaction.deferred && !interaction.replied) {
+        if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+            await interaction.deferUpdate();
+        } else {
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        }
+    }
 
     // 2. Validate Word (External API)
     const isValid = await wordleService.isValidWord(guess);
@@ -215,38 +256,110 @@ const handleWordleModals = async (interaction) => {
     }
 
     // 5. Update BOTH views
+    await updateWordleViews(interaction, gameState, user);
+};
+
+/**
+ * Shared utility to update public and private views.
+ */
+const updateWordleViews = async (interaction, gameState, user) => {
+    const userData = {
+        username: user.username,
+        avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 })
+    };
+
     try {
-        const row = new ActionRowBuilder();
-        
+        // 1. Create Private Row (No View Progress)
+        const privateRow = new ActionRowBuilder();
         if (gameState.status === 'PLAYING') {
-            row.addComponents(
-                new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️')
+            privateRow.addComponents(
+                new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️'),
+                new ButtonBuilder().setCustomId(`wordle_forfeit_${user.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
         } else {
-            row.addComponents(
+            privateRow.addComponents(
+                new ButtonBuilder().setCustomId(`wordle_result_${user.id}`).setLabel('View Result').setStyle(ButtonStyle.Primary).setEmoji('👁️'),
                 new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
             );
         }
 
-        const responseData = {
-            content: null,
-            components: [row], 
-            files: personalAttachments
-        };
-
-        if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
-            await interaction.editReply(responseData);
+        // 2. Create Public Row (Includes View Progress)
+        const publicRow = new ActionRowBuilder();
+        if (gameState.status === 'PLAYING') {
+            publicRow.addComponents(
+                new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️'),
+                new ButtonBuilder().setCustomId(`wordle_forfeit_${user.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️'),
+                new ButtonBuilder().setCustomId(`wordle_progress_${user.id}`).setLabel('View Progress').setStyle(ButtonStyle.Secondary).setEmoji('🔍')
+            );
         } else {
-            await interaction.followUp({ ...responseData, flags: [MessageFlags.Ephemeral] });
+            publicRow.addComponents(
+                new ButtonBuilder().setCustomId(`wordle_result_${user.id}`).setLabel('View Result').setStyle(ButtonStyle.Primary).setEmoji('👁️'),
+                new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
+            );
         }
 
-        // B. Update Public Feed (In background)
-        if (gameState.publicMessageId && gameState.publicChannelId) {
-            const channel = await interaction.client.channels.fetch(gameState.publicChannelId);
-            if (channel) {
+        // A. Update Private Response
+        const personalAttachments = [];
+        if (gameState.status !== 'PLAYING' && gameState.reward) {
+            const toastBuffer = await toastGenerator.generateSuccessSlip({
+                user: userData,
+                pointsEarned: gameState.reward.points,
+                streakBonus: gameState.reward.streakBonus,
+                totalPoints: gameState.reward.totalPoints,
+                streak: gameState.reward.streak,
+                gameName: 'Wordle',
+                extraLine: gameState.status === 'WON' ? gameState.reward?.definition : null
+            });
+            personalAttachments.push(new AttachmentBuilder(toastBuffer, { name: 'success-slip.webp' }));
+        } else {
+            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
+            personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
+        }
+
+        const responseData = { components: [privateRow], files: personalAttachments };
+
+        if (interaction.isModalSubmit()) {
+            if (interaction.deferred || interaction.replied) await interaction.editReply(responseData);
+            else await interaction.reply({ ...responseData, flags: [MessageFlags.Ephemeral] });
+        } else {
+            // Button interactions
+            if (interaction.deferred || interaction.replied) await interaction.editReply(responseData);
+            else await interaction.reply({ ...responseData, flags: [MessageFlags.Ephemeral] });
+        }
+
+                // 4. Update Public Feed
+                if (gameState.publicMessageId && gameState.publicChannelId) {
+                    const channel = await interaction.client.channels.fetch(gameState.publicChannelId).catch(() => null);
+                    if (channel) {
+                        // Optimized: Fetch recent games and resolve users with cache-priority
+                        const others = await wordleService.getRecentGames(user.id, 5);
+                        const otherGames = await Promise.all(others.map(async (g) => {
+                            try {
+                                // Priority: Client Cache -> Global Fetch
+                                let u = interaction.client.users.cache.get(g.userId);
+                                if (!u) u = await interaction.client.users.fetch(g.userId).catch(() => null);
+                                
+                                return { 
+                                    ...g, 
+                                    user: { 
+                                        username: u?.username || 'Patron', 
+                                        avatarURL: u?.displayAvatarURL({ extension: 'png', size: 64 }) || null 
+                                    } 
+                                };
+                            } catch (e) {
+                                return { ...g, user: { username: 'Patron', avatarURL: null } };
+                            }
+                        }));
+
+                        const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
+                            anonymize: true, 
+                            user: userData,
+                            otherGames: otherGames
+                        });
+                
                 await channel.messages.edit(gameState.publicMessageId, {
-                    files: [attachmentAnon],
-                    components: [row] 
+                    files: [new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' })],
+                    components: [publicRow] 
                 });
             }
         }

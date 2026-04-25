@@ -14,6 +14,9 @@ class WordleService {
         
         // API Endpoints
         this.DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
+
+        // Social Feed Cache (30s)
+        this.socialCache = { data: [], lastUpdate: 0 };
     }
 
     /**
@@ -42,11 +45,17 @@ class WordleService {
                 return persistentSession;
             }
 
-            // 3. Fetch the Daily Word (New Session)
-            const targetWord = await minigameService.getDailyWord();
+            // 3. Get Target Word (Universal Determined Word)
+            let word = await minigameService.getDailyWord();
+            
+            // If word is missing (Scheduler missed or first run), generate it once.
+            if (!word) {
+                logger.warn(`[Wordle] Target word missing for today. Triggering on-demand synchronization.`);
+                word = await minigameService.generateDailyWord();
+            }
 
             const gameState = {
-                targetWord: targetWord,
+                targetWord: word,
                 guesses: [], // Array of { word, result }
                 status: 'PLAYING',
                 startedAt: Date.now(),
@@ -71,10 +80,16 @@ class WordleService {
      */
     async isValidWord(guess) {
         try {
-            await axios.get(`${this.DICT_API}${guess.toLowerCase()}`);
+            await axios.get(`${this.DICT_API}${guess.toLowerCase()}`, { timeout: 4000 });
             return true;
         } catch (error) {
-            return false;
+            // 404 means the word doesn't exist.
+            if (error.response?.status === 404) return false;
+            
+            // Any other error (503, Timeout, etc) means the API is down.
+            // We bypass validation to keep the game playable during outages.
+            logger.warn(`[Wordle] Validation API offline (${error.message}). Bypassing for: ${guess}`);
+            return true;
         }
     }
 
@@ -84,29 +99,49 @@ class WordleService {
     async submitGuess(userId, guess) {
         const game = this.activeGames.get(userId);
         if (!game || game.status !== 'PLAYING') return null;
+        if (game.isProcessing) return null; // Debounce double-submissions
 
-        const target = game.targetWord;
-        const result = this.calculateTileStates(target, guess.toUpperCase());
+        game.isProcessing = true;
+        try {
+            const target = game.targetWord;
+            const result = this.calculateTileStates(target, guess.toUpperCase());
+            
+            game.guesses.push({ word: guess.toUpperCase(), result });
+
+            if (guess.toUpperCase() === target) {
+                game.status = 'WON';
+            } else if (game.guesses.length >= 6) {
+                game.status = 'LOST';
+            }
+
+            // If game ended, record result and clear session
+            if (game.status !== 'PLAYING') {
+                const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON');
+                game.reward = solveData; 
+                this.activeGames.delete(userId); 
+                await minigameService.clearWordleSession(userId);
+            } else {
+                // Otherwise, sync current state to DB
+                await minigameService.saveWordleSession(userId, game);
+            }
+
+            return game;
+        } finally {
+            if (game) game.isProcessing = false;
+        }
+    }
+
+    async forfeitGame(userId) {
+        const game = this.activeGames.get(userId);
+        if (!game || game.status !== 'PLAYING') return null;
+
+        game.status = 'LOST';
+        const solveData = await minigameService.recordWordleResult(userId, game.guesses, false);
+        game.reward = solveData;
         
-        game.guesses.push({ word: guess.toUpperCase(), result });
-
-        if (guess.toUpperCase() === target) {
-            game.status = 'WON';
-        } else if (game.guesses.length >= 6) {
-            game.status = 'LOST';
-        }
-
-        // If game ended, record result and clear session
-        if (game.status !== 'PLAYING') {
-            const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON');
-            game.reward = solveData; 
-            this.activeGames.delete(userId); 
-            await minigameService.clearWordleSession(userId);
-        } else {
-            // Otherwise, sync current state to DB
-            await minigameService.saveWordleSession(userId, game);
-        }
-
+        this.activeGames.delete(userId);
+        await minigameService.clearWordleSession(userId);
+        
         return game;
     }
 
@@ -147,8 +182,39 @@ class WordleService {
         return result;
     }
 
-    getGame(userId) {
-        return this.activeGames.get(userId);
+    /**
+     * Retrieves a game state, attempting to restore from database if memory is cold.
+     */
+    async getGame(userId) {
+        // 1. Check Memory
+        let game = this.activeGames.get(userId);
+        if (game) {
+            // Validate word consistency (new day check)
+            const currentDaily = await minigameService.getDailyWord();
+            if (game.targetWord !== currentDaily) {
+                logger.warn(`[Wordle] Clearing stale memory session for ${userId} (Word Mismatch).`);
+                this.activeGames.delete(userId);
+                return null;
+            }
+            return game;
+        }
+
+        // 2. Check Database
+        game = await minigameService.getWordleSession(userId);
+        if (game) {
+            const currentDaily = await minigameService.getDailyWord();
+            if (game.targetWord !== currentDaily) {
+                logger.warn(`[Wordle] Clearing stale database session for ${userId} (Word Mismatch).`);
+                await minigameService.clearWordleSession(userId);
+                return null;
+            }
+            
+            logger.info(`[Wordle] Restored session from DB for ${userId}.`);
+            this.activeGames.set(userId, game);
+            return game;
+        }
+
+        return null;
     }
 
     /**
@@ -158,10 +224,13 @@ class WordleService {
         // 1. Reset the underlying service data (Returns previous word)
         const previousWord = await minigameService.resetDailyWord();
 
-        // 2. Clear sessions memory
+        // 2. Immediately Determine the NEW word for the cycle
+        await minigameService.generateDailyWord();
+
+        // 3. Clear sessions memory
         this.activeGames.clear();
 
-        // 3. Broadcast to all Arcade Channels
+        // 4. Broadcast to all Arcade Channels (Show previous word)
         if (client) {
             await this.broadcastReset(client, previousWord);
         }
@@ -177,20 +246,9 @@ class WordleService {
         const baseEmbed = require('../generators/baseEmbed');
         
         try {
+            const { getServerRoles } = require('./roleService');
             const channels = await getAllArcadeChannels();
             if (channels.length === 0) return;
-
-            const embed = baseEmbed(
-                '🕹️ Arcade Protocol: Solar Cycle Reset',
-                'The daily Wordle archives have been synchronized. A new 5-letter cipher has been generated and is now awaiting decryption. ♡',
-                null
-            )
-            .addFields(
-                { name: '🗝️ Previous Key', value: `**${previousWord || 'UNKNOWN'}**`, inline: true },
-                { name: '📍 Deployment', value: 'Localized to all Arcade Wings', inline: true }
-            )
-            .setFooter({ text: 'Use /wordle to initialize your personal decoding terminal.' })
-            .setColor(0x4ade80);
 
             for (const config of channels) {
                 try {
@@ -200,7 +258,24 @@ class WordleService {
                     const channel = await guild.channels.fetch(config.arcade_channel_id).catch(() => null);
                     if (!channel) continue;
 
-                    await channel.send({ embeds: [embed] });
+                    // 1. Check for Wordle Role
+                    const serverRoles = await getServerRoles(config.guild_id);
+                    const wordleRoleData = serverRoles.find(r => r.category?.name === 'Wordle');
+                    const pingContent = wordleRoleData ? `<@&${wordleRoleData.role_id}>` : '';
+
+                    const embed = baseEmbed(
+                        '🕹️ Arcade Protocol: Solar Cycle Reset',
+                        'The daily Wordle archives have been synchronized. A new 5-letter cipher has been generated and is now awaiting decryption. ♡',
+                        null
+                    )
+                    .addFields(
+                        { name: '🗝️ Previous Key', value: `**${previousWord || 'UNKNOWN'}**`, inline: true },
+                        { name: '📍 Deployment', value: 'Localized to all Arcade Wings', inline: true }
+                    )
+                    .setFooter({ text: 'Use /wordle to initialize your personal decoding terminal.' })
+                    .setColor(0x4ade80);
+
+                    await channel.send({ content: pingContent, embeds: [embed] });
                 } catch (e) {
                     logger.error(`[Wordle] Failed to broadcast reset to guild ${config.guild_id}:`, e);
                 }
@@ -214,58 +289,88 @@ class WordleService {
      * Returns a list of recent active and finished games for the social feed.
      */
     async getRecentGames(excludeUserId, limit = 5) {
-        const others = [];
-        
-        // 1. Get Active Games (In-memory)
-        for (const [uid, game] of this.activeGames.entries()) {
-            if (uid !== excludeUserId) {
-                others.push({ 
-                    userId: uid, 
-                    guesses: game.guesses, 
-                    status: game.status,
-                    finishedAt: null 
-                });
-            }
+        const now = Date.now();
+        if (now - this.socialCache.lastUpdate < 30000) {
+            return this.socialCache.data.filter(g => g.userId !== excludeUserId).slice(0, limit);
         }
 
-        // 2. Get Finished Games (Database)
+        const games = [];
+        const today = minigameService.getWordleDate();
+
+        // 1. Get Top Solvers for Today (Wall of Fame)
         try {
-            const today = new Date().toISOString().split('T')[0];
-            const { data } = await supabase
+            const { data: winners } = await supabase
                 .from('wordle_history')
-                .select('user_id, guesses, solved, solved_at')
+                .select('user_id, guesses, solved, solved_at, metadata')
                 .eq('date', today)
-                .neq('user_id', excludeUserId)
+                .eq('solved', true)
                 .order('solved_at', { ascending: true })
                 .limit(limit);
-            
-            if (data) {
-                for (const row of data) {
-                    // Avoid duplicates if they are somehow in both
-                    if (!others.find(o => o.userId === row.user_id)) {
-                        others.push({
-                            userId: row.user_id,
-                            guesses: Array.isArray(row.guesses) ? row.guesses : [], // History might store count only, but I need result patterns
-                            // Wait, wordle_history stores guesses as count? Let me check.
-                            status: row.solved ? 'WON' : 'LOST',
-                            finishedAt: row.solved_at
-                        });
-                    }
-                }
+
+            if (winners) {
+                winners.forEach(row => {
+                    if (row.user_id === excludeUserId) return;
+                    games.push({
+                        userId: row.user_id,
+                        guesses: row.guesses || [],
+                        status: 'WON',
+                        finishedAt: row.solved_at,
+                        solvedOrder: row.metadata?.solved_order
+                    });
+                });
             }
         } catch (e) {
-            logger.error('[Wordle] Failed to fetch finished games for social feed:', e);
+            logger.error('[Wordle] Failed to fetch winners:', e);
         }
 
-        // Sort: Finished first (by time), then Active
-        return others.sort((a, b) => {
-            if (a.finishedAt && b.finishedAt) return new Date(a.finishedAt) - new Date(b.finishedAt);
-            if (a.finishedAt) return -1;
-            if (b.finishedAt) return 1;
-            return 0;
-        }).slice(0, limit);
+        // 2. Fill remaining slots with Active Games (Memory)
+        if (games.length < limit) {
+            for (const [userId, game] of this.activeGames.entries()) {
+                if (userId === excludeUserId || games.some(g => g.userId === userId)) continue;
+                games.push({
+                    userId,
+                    guesses: game.guesses,
+                    status: game.status,
+                    finishedAt: null,
+                    solvedOrder: null
+                });
+                if (games.length >= limit) break;
+            }
+        }
+
+        // 3. Last Resort: Recently Finished (Losses)
+        if (games.length < limit) {
+            try {
+                const { data: others } = await supabase
+                    .from('wordle_history')
+                    .select('user_id, guesses, solved, solved_at, metadata')
+                    .eq('date', today)
+                    .eq('solved', false)
+                    .neq('user_id', excludeUserId)
+                    .limit(limit - games.length);
+
+                    if (others) {
+                        others.forEach(row => {
+                            if (games.some(g => g.userId === row.user_id)) return;
+                            games.push({
+                                userId: row.user_id,
+                                guesses: row.guesses || [],
+                                status: 'LOST',
+                                finishedAt: row.solved_at,
+                                solvedOrder: null
+                            });
+                        });
+                    }
+                } catch (e) {
+                    logger.error('[Wordle] Failed to fetch losses:', e);
+                }
+            }
+
+            const result = games.slice(0, limit);
+            this.socialCache = { data: result, lastUpdate: now };
+            return result.filter(g => g.userId !== excludeUserId).slice(0, limit);
+        }
     }
-}
 
 // Singleton instance
 module.exports = new WordleService();

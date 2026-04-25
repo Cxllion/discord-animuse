@@ -1,10 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder, MessageFlags } = require('discord.js');
-const { 
-    fetchConfig, 
-    getUserColor, 
-    getUserAvatarConfig, 
-    getLinkedAnilist: retrieveLinkedUser, 
-    getUserTitle, 
+const {
+    fetchConfig,
+    getUserColor,
+    getUserAvatarConfig,
+    getLinkedAnilist: retrieveLinkedUser,
+    getUserTitle,
     getUserBannerConfig: retrieveBannerConfig,
     getLevelRoles,
     updateUserBannerConfig,
@@ -72,62 +72,62 @@ module.exports = {
                     try {
                         // 1. Wordle Matrix (Won, Lost, Mid-game)
                         const wordleTasks = [
-                            { 
-                                label: 'Wordle (WON)', 
+                            {
+                                label: 'Wordle (WON)',
                                 state: { targetWord: 'MUSES', status: 'WON', guesses: [{ word: 'MUSES', result: [2, 2, 2, 2, 2] }] },
                                 name: 'won'
                             },
-                            { 
-                                label: 'Wordle (LOST)', 
-                                state: { 
-                                    targetWord: 'BOOKS', status: 'LOST', 
-                                    guesses: Array(6).fill({ word: 'WRONG', result: [0, 0, 0, 0, 0] }) 
+                            {
+                                label: 'Wordle (LOST)',
+                                state: {
+                                    targetWord: 'BOOKS', status: 'LOST',
+                                    guesses: Array(6).fill({ word: 'WRONG', result: [0, 0, 0, 0, 0] })
                                 },
                                 name: 'lost'
                             },
-                            { 
-                                label: 'Wordle (MID)', 
-                                state: { 
-                                    targetWord: 'ENIGMA', status: 'PLAYING', 
-                                    guesses: [{ word: 'GHOST', result: [0, 0, 0, 1, 0] }] 
+                            {
+                                label: 'Wordle (MID)',
+                                state: {
+                                    targetWord: 'ENIGMA', status: 'PLAYING',
+                                    guesses: [{ word: 'GHOST', result: [0, 0, 0, 1, 0] }]
                                 },
                                 name: 'mid'
                             }
                         ];
 
                         const mockOtherGames = [
-                            { 
-                                userId: '123', 
-                                guesses: [{ word: 'GHOST', result: [2, 0, 0, 1, 0] }, { word: 'MUSIC', result: [2, 2, 2, 2, 2] }], 
+                            {
+                                userId: '123',
+                                guesses: [{ word: 'GHOST', result: [2, 0, 0, 1, 0] }, { word: 'MUSIC', result: [2, 2, 2, 2, 2] }],
                                 status: 'WON',
                                 finishedAt: new Date(Date.now() - 50000).toISOString(),
-                                user: { username: 'Alex', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' } 
+                                user: { username: 'Alex', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' }
                             },
-                            { 
-                                userId: '456', 
-                                guesses: [{ word: 'PLANE', result: [0, 1, 2, 0, 0] }, { word: 'MAGIC', result: [2, 2, 2, 2, 2] }], 
+                            {
+                                userId: '456',
+                                guesses: [{ word: 'PLANE', result: [0, 1, 2, 0, 0] }, { word: 'MAGIC', result: [2, 2, 2, 2, 2] }],
                                 status: 'WON',
                                 finishedAt: new Date(Date.now() - 40000).toISOString(),
-                                user: { username: 'Sami', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' } 
+                                user: { username: 'Sami', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' }
                             },
-                            { 
-                                userId: '789', 
-                                guesses: [{ word: 'BOOKS', result: [2, 2, 2, 2, 2] }], 
+                            {
+                                userId: '789',
+                                guesses: [{ word: 'BOOKS', result: [2, 2, 2, 2, 2] }],
                                 status: 'WON',
                                 finishedAt: new Date(Date.now() - 30000).toISOString(),
-                                user: { username: 'Jordan', avatarURL: 'https://cdn.discordapp.com/embed/avatars/2.png' } 
+                                user: { username: 'Jordan', avatarURL: 'https://cdn.discordapp.com/embed/avatars/2.png' }
                             },
-                            { 
-                                userId: '101', 
-                                guesses: [{ word: 'ENIGMA', result: [1, 0, 0, 0, 1] }], 
+                            {
+                                userId: '101',
+                                guesses: [{ word: 'ENIGMA', result: [1, 0, 0, 0, 1] }],
                                 status: 'PLAYING',
-                                user: { username: 'Casey', avatarURL: 'https://cdn.discordapp.com/embed/avatars/3.png' } 
+                                user: { username: 'Casey', avatarURL: 'https://cdn.discordapp.com/embed/avatars/3.png' }
                             },
-                            { 
-                                userId: '202', 
-                                guesses: [{ word: 'QUEST', result: [0, 0, 2, 0, 0] }], 
+                            {
+                                userId: '202',
+                                guesses: [{ word: 'QUEST', result: [0, 0, 2, 0, 0] }],
                                 status: 'PLAYING',
-                                user: { username: 'Taylor', avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' } 
+                                user: { username: 'Taylor', avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' }
                             }
                         ];
 
@@ -178,7 +178,7 @@ module.exports = {
                             {
                                 name: 'toast-participation',
                                 data: {
-                                    pointsEarned: 2, 
+                                    pointsEarned: 2,
                                     streakBonus: 0,
                                     totalPoints: 320,
                                     streak: 1,
@@ -196,9 +196,9 @@ module.exports = {
                             wordleAttachments.push(new AttachmentBuilder(buffer, { name: `${toast.name}.png` }));
                         }
 
-                        await interaction.editReply({ 
+                        await interaction.editReply({
                             content: `✅ **Arcade Diagnostic Complete**\nGenerated **Wordle Board Matrix** and **Success Slip Archives** (1st Place, Standard, Participation).`,
-                            files: wordleAttachments 
+                            files: wordleAttachments
                         });
 
                     } catch (err) {
@@ -283,7 +283,7 @@ module.exports = {
 
                     try {
                         const themeColor = await getUserColor(interaction.member.id, interaction.guild.id) || CONFIG.COLORS.PRIMARY;
-                        
+
                         // Scenario A: Solo Airing
                         const bufferSolo = await generateAiringCard(media, { episode: nextEpNum }, [], themeColor);
                         const attachmentSolo = new AttachmentBuilder(bufferSolo, { name: `airing-test-solo-${media.id}.webp` });
@@ -313,10 +313,10 @@ module.exports = {
                         // Phase D: Live Simulation (Simulate one broadcast with a ping)
                         await interaction.followUp({ content: '📤 **Simulation**: Broadcasting live notification to this channel...', flags: MessageFlags.Ephemeral });
                         const episodeData = { episode: nextEpNum, airingAt: Math.floor(Date.now() / 1000), timeUntilAiring: 0 };
-                        await sendNotifications(interaction.client, media, episodeData, { 
-                            forceGuildId: interaction.guild.id, 
+                        await sendNotifications(interaction.client, media, episodeData, {
+                            forceGuildId: interaction.guild.id,
                             forceUserId: interaction.user.id,
-                            forceChannelId: interaction.channel.id 
+                            forceChannelId: interaction.channel.id
                         });
 
                     } catch (err) {
@@ -380,7 +380,7 @@ module.exports = {
                 // --- ACTIVITY GRAPHICS TEST ---
                 else if (type === 'activity') {
                     await interaction.editReply({ content: '🎨 **Generating All Activity Feed States**...' });
-                    
+
                     // Fetch trending items mix
                     const trendingAnime = await getTrendingAnime();
                     const trendingManga = await getTrendingManga();
@@ -416,32 +416,32 @@ module.exports = {
                         // ── Basic Anime Variants ──
                         { status: 'watched episode', progress: '12', score: 8.5, format: 'TV' },
                         { status: 'completed', score: 9.5, format: 'TV' },
-                        
+
                         // ── Binge Variants ──
                         { status: 'watched episode', progress: '1-10', score: 9, format: 'TV' },
                         { status: 'read chapter', progress: '100-115', score: 8.5, mediaType: 'MANGA', format: 'MANGA' },
-                        
+
                         // ── State Variants ──
                         { status: 'paused watching', progress: null, score: 7, format: 'TV' },
                         { status: 'rewatched episode', progress: '4', score: 9.5, format: 'TV' },
                         { status: 'dropped', score: 2, format: 'TV' },
-                        
+
                         // ── Score & Release Variants ──
                         { status: 'planning', score: null, format: 'TV' }, // Planning (Direct)
                         { status: 'plans to watch', score: null, format: 'TV', statusMedia: 'NOT_YET_RELEASED' }, // Unreleased Planning
                         { status: 'plans to read', score: null, mediaType: 'MANGA', format: 'MANGA' }, // Planning Manga
                         { status: 'watched movie', progress: null, score: 4.5, format: 'MOVIE', scoreFormat: 'POINT_5' }, // Star Rating Test
                         { status: 'watched episode', progress: '5', score: null, format: 'TV' }, // Released, no score
-                        
+
                         // ── NSFW / Adult Variants (Spoilered) ──
                         { status: 'watched episode', progress: '1', score: 8, format: 'TV', isAdult: true },
                         { status: 'read chapter', progress: '69', score: 9, mediaType: 'MANGA', format: 'MANGA', isAdult: true },
-                        
+
                         // ── Movie & OVA ──
                         { status: 'watched movie', progress: null, score: 9.8, format: 'MOVIE' },
                         { status: 'watched episode', progress: '3', score: 7.5, format: 'OVA' },
                     ];
-                    
+
                     const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
                     const shuffledAnime = shuffle([...trendingAnime]);
                     const shuffledManga = shuffle([...trendingManga]);
@@ -456,10 +456,10 @@ module.exports = {
                         const isMovie = s.format === 'MOVIE';
                         const pool = isManga ? shuffledManga : isMovie ? shuffledMovies : shuffledAnime;
                         const mockMedia = pool[i % pool.length] || pool[0] || {};
-                        
+
                         const activityData = {
-                            media: { 
-                                ...mockMedia, 
+                            media: {
+                                ...mockMedia,
                                 type: isManga ? 'MANGA' : 'ANIME',
                                 format: s.format || (isManga ? 'MANGA' : 'TV'),
                                 status: s.statusMedia || mockMedia.status,
@@ -486,7 +486,7 @@ module.exports = {
                         const chunk = attachments.slice(i, i + 4);
                         await interaction.followUp({
                             content: i === 0 ? '🏁 **Activity Feed Generation Complete!**' : '',
-                            files: chunk 
+                            files: chunk
                         });
                     }
                 }
@@ -495,7 +495,7 @@ module.exports = {
                 else if (type === 'profile') {
                     const targetUser = query ? (await interaction.guild.members.fetch(query)).user : interaction.user;
                     const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-                    
+
                     await interaction.editReply({ content: `👤 **Profile Diagnostic**: Simulating **Standard** and **Premium** cards for **${targetUser.username}**...` });
 
                     const guildId = interaction.guild.id;
@@ -552,7 +552,7 @@ module.exports = {
 
                     const displayName = member ? member.displayName : targetUser.username;
                     const isBooster = member ? member.roles.cache.some(r => r.name.toLowerCase().includes('sacred muse')) : false;
-                    
+
                     // Generate Hexa-View Scenario Matrix
                     const tasks = [
                         { label: 'Standard Linked', data: { ...baseUser, is_premium: false, is_booster: false, anilist_synced: !!linkedUsername }, name: 'standard' },
@@ -572,12 +572,12 @@ module.exports = {
                         attachments.push(new AttachmentBuilder(buffer, { name: `profile-${task.name}-${targetUser.id}.webp` }));
                     }
 
-                    await interaction.editReply({ 
+                    await interaction.editReply({
                         content: `✅ **Profile Diagnostic Complete**\nGenerated **Full Tier Matrix** (Standard, Premium, Booster) for ${targetUser}.`,
-                        files: attachments 
+                        files: attachments
                     });
                 }
-                
+
                 // --- MAFIA VISUAL DIAGNOSTIC ---
                 else if (type === 'mafia') {
                     await interaction.editReply({ content: '🕵️ **Mafia Diagnostic Initiated**: Constructing a high-alert simulation... ♡' });
@@ -597,11 +597,11 @@ module.exports = {
 
                     // 2. IDENTITY DOSSIERS (Procedural)
                     await interaction.followUp({ content: '📑 **Scene 02: Identity Dossiers**\nProcedurally generated unique identities for every faction.' });
-                    
-                    const { 
+
+                    const {
                         Archivist, TheConservator, TheIndexer, TheGhostwriter, TheScribe, TheHeadCurator,
                         Revision, TheShredder, TheCensor, ThePlagiarist, TheCorruptor,
-                        TheAnomaly, TheCritic, TheBookburner 
+                        TheAnomaly, TheCritic, TheBookburner
                     } = require('../../utils/mafia/MafiaRoles');
 
                     const factions = [
@@ -616,9 +616,9 @@ module.exports = {
                             const buffer = await generateRoleCard(role, interaction.user.username, interaction.guild.name);
                             attachments.push(new AttachmentBuilder(buffer, { name: `dossier-${role.name.toLowerCase().replace(/\s+/g, '_')}.png` }));
                         }
-                        await interaction.followUp({ 
+                        await interaction.followUp({
                             content: `💠 **Faction: ${faction.name}** (${faction.roles.length} Identities)`,
-                            files: attachments 
+                            files: attachments
                         });
                     }
 
@@ -736,15 +736,15 @@ module.exports = {
 
                         // 2. Minigame Leaderboard Diagnostic
                         const topMinigameRaw = await minigameService.getTopPlayers(10);
-                        const topMinigame = topMinigameRaw.length > 0 ? topMinigameRaw : Array.from({ length: 5 }, (_, i) => ({ user_id: '1', total_points: 1000 - (i * 100), username: `Player ${i+1}` }));
+                        const topMinigame = topMinigameRaw.length > 0 ? topMinigameRaw : Array.from({ length: 5 }, (_, i) => ({ user_id: '1', total_points: 1000 - (i * 100), username: `Player ${i + 1}` }));
                         const miniStats = await minigameService.getUserStats(interaction.user.id);
 
                         const bufferMini = await generateMinigameLeaderboard(interaction.user, miniStats, topMinigame, themeColor);
                         const attachmentMini = new AttachmentBuilder(bufferMini, { name: 'test-leaderboard-mini.webp' });
 
-                        await interaction.editReply({ 
+                        await interaction.editReply({
                             content: `✅ **Leaderboard Diagnostic Complete**\nGenerated **Experience** and **Minigame** variants.`,
-                            files: [attachmentExp, attachmentMini] 
+                            files: [attachmentExp, attachmentMini]
                         });
 
                     } catch (err) {

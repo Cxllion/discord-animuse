@@ -315,6 +315,51 @@ const resetUserLevel = async (userId, guildId, member = null) => {
     return await setLevel(userId, guildId, 0, member);
 };
 
+/**
+ * Resets all leveling data for a guild.
+ * @param {string} guildId 
+ */
+const resetAllLevels = async (guildId) => {
+    if (!supabase) return false;
+    try {
+        const { error } = await supabase
+            .from('users')
+            .update({ xp: 0, level: 0 })
+            .eq('guild_id', guildId);
+        
+        if (error) throw error;
+        logger.warn(`[Leveling] GLOBAL EXP WIPE COMPLETED for guild ${guildId}.`);
+        return true;
+    } catch (err) {
+        logger.error(`[Leveling] Failed to reset all levels: ${err.message}`);
+        return false;
+    }
+};
+
+/**
+ * Fetches all user leveling records for a guild.
+ * @param {string} guildId 
+ */
+const getAllLevels = async (guildId) => {
+    if (!supabase) return [];
+    const { data } = await supabase.from('users').select('*').eq('guild_id', guildId);
+    return data || [];
+};
+
+/**
+ * Bulk imports leveling records.
+ * @param {Array} records 
+ */
+const bulkImportLevels = async (records) => {
+    if (!supabase || !records.length) return;
+    try {
+        await supabase.from('users').upsert(records, { onConflict: 'user_id, guild_id' });
+        logger.info(`[Leveling] Bulk restored ${records.length} user records.`);
+    } catch (err) {
+        logger.error(`[Leveling] Bulk import failed: ${err.message}`);
+    }
+};
+
 const getLevelingStats = async (guildId) => {
     if (!supabase) return { totalXp: 0, activeUsers: 0, avgLevel: 0 };
 
@@ -341,6 +386,9 @@ module.exports = {
     adjustXp,
     setLevel,
     resetUserLevel,
+    resetAllLevels,
+    getAllLevels,
+    bulkImportLevels,
     calculateMinXp,
     calculateLevel
 };

@@ -139,26 +139,27 @@ class ToastGenerator {
 
         // 6. Lower Insight Panel
         if (extraLine) {
-            const panelH = 50;
+            const panelH = 52;
+            const panelY = this.HEIGHT - panelH - 15;
             ctx.fillStyle = this.COLORS.PANEL;
             ctx.beginPath();
-            ctx.roundRect(20, this.HEIGHT - panelH - 12, this.WIDTH - 40, panelH, 8);
+            ctx.roundRect(20, panelY, this.WIDTH - 40, panelH, 8);
             ctx.fill();
 
             ctx.textAlign = 'left';
             ctx.fillStyle = this.COLORS.ACCENT;
             ctx.font = `900 10px 'monalqo', sans-serif`;
             ctx.letterSpacing = '1.8px';
-            ctx.fillText('WORD INSIGHT', 32, this.HEIGHT - panelH + 6);
+            ctx.fillText('WORD INSIGHT', 32, panelY + 18);
 
             ctx.fillStyle = this.COLORS.TEXT_SECONDARY;
-            ctx.font = `italic 500 12px 'monalqo', sans-serif`;
+            ctx.font = `italic 500 11px 'monalqo', sans-serif`;
             ctx.letterSpacing = '0px';
             
             const maxWidth = this.WIDTH - 70;
             const words = extraLine.split(' ');
             let line = '';
-            let lineY = this.HEIGHT - 25;
+            let lineY = panelY + 32;
             let lineCount = 0;
             const maxLines = 2;
 
@@ -175,7 +176,7 @@ class ToastGenerator {
                     } else {
                         ctx.fillText(line, 32, lineY);
                         line = words[n] + ' ';
-                        lineY += 16;
+                        lineY += 14;
                     }
                 } else {
                     line = testLine;

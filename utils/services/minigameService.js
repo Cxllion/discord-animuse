@@ -1,6 +1,8 @@
 const supabase = require('../core/supabaseClient');
 const logger = require('../core/logger');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Minigame Service V2: The "Arcade Protocol" Archivist.
@@ -10,6 +12,19 @@ class MinigameService {
     constructor() {
         this.WORD_API = 'https://random-word-api.herokuapp.com/word?length=5';
         this.cache = new Map(); 
+        this.generationPromise = null;
+        this.SESSION_FILE = path.join(__dirname, '../../.wordle_sessions.json');
+    }
+
+    /**
+     * getWordleDate: Returns the current date in GMT+5 format.
+     */
+    getWordleDate() {
+        // GMT+5 is 5 hours ahead of UTC. 
+        const offset = 5 * 60 * 60 * 1000;
+        const now = new Date();
+        const gmtPlus5 = new Date(now.getTime() + offset);
+        return gmtPlus5.toISOString().split('T')[0];
     }
 
     /**
@@ -27,56 +42,66 @@ class MinigameService {
         try {
             // 1. Update Specific Game Stats (High Score, Total Plays)
             // We use upsert with a unique constraint on (user_id, game_id)
-            const { data: existingStats } = await supabase
-                .from('minigame_stats')
-                .select('high_score, total_plays')
-                .eq('user_id', userId)
-                .eq('game_id', gameId)
-                .maybeSingle();
+            try {
+                // Skip if table is known to be missing in this environment
+                const { data: existingStats } = await supabase
+                    .from('minigame_stats')
+                    .select('high_score, total_plays')
+                    .eq('user_id', userId)
+                    .eq('game_id', gameId)
+                    .maybeSingle();
 
-            const newHighScore = Math.max(existingStats?.high_score || 0, score);
-            const newTotalPlays = (existingStats?.total_plays || 0) + 1;
+                const newHighScore = Math.max(existingStats?.high_score || 0, score);
+                const newTotalPlays = (existingStats?.total_plays || 0) + 1;
 
-            await supabase
-                .from('minigame_stats')
-                .upsert({
-                    user_id: userId,
-                    game_id: gameId,
-                    high_score: newHighScore,
-                    total_plays: newTotalPlays,
-                    metadata: metadata,
-                    last_played: new Date().toISOString()
-                });
+                await supabase
+                    .from('minigame_stats')
+                    .upsert({
+                        user_id: userId,
+                        game_id: gameId,
+                        high_score: newHighScore,
+                        total_plays: newTotalPlays,
+                        last_played: new Date().toISOString()
+                    }, { onConflict: 'user_id,game_id' });
+            } catch (statsErr) {
+                // Silently ignore if table is missing 
+            }
 
-            // 2. Update Global Standing (total_points, games_played)
-            const { data: globalStats } = await supabase
+            // 2. Update Global Standing (total_points)
+            const { data: globalStats, error: globalFetchError } = await supabase
                 .from('minigame_scores')
-                .select('total_points, games_played')
+                .select('total_points')
                 .eq('user_id', userId)
                 .maybeSingle();
+
+            if (globalFetchError && globalFetchError.code !== 'PGRST116') {
+                logger.error(`[ArcadeProtocol] Global fetch error for ${userId}:`, globalFetchError);
+            }
 
             const newTotalPoints = (globalStats?.total_points || 0) + amount;
-            const newGamesPlayed = (globalStats?.games_played || 0) + 1;
 
-            await supabase
+            const { error: scoreError } = await supabase
                 .from('minigame_scores')
                 .upsert({
                     user_id: userId,
                     total_points: newTotalPoints,
-                    games_played: newGamesPlayed,
                     last_updated: new Date().toISOString()
-                });
+                }, { onConflict: "user_id" });
 
-            logger.info(`[ArcadeProtocol] Awarded ${amount} pts to ${userId} for [${gameId}]. Global: ${newTotalPoints}`);
+            if (scoreError) {
+                logger.error(`[ArcadeProtocol] Score update failed: ${scoreError.message}`);
+            } else {
+                logger.info(`[ArcadeProtocol] Awarded ${amount} pts to ${userId} for [${gameId}]. Global: ${newTotalPoints}`);
+            }
             
             return {
                 totalPoints: newTotalPoints,
-                isNewHighScore: newHighScore > (existingStats?.high_score || 0)
+                isNewHighScore: false 
             };
 
         } catch (error) {
-            logger.error(`[ArcadeProtocol] Failed to award points for ${userId}:`, error);
-            throw error;
+            logger.error(`[ArcadeProtocol] Critical failure awarding points for ${userId}:`, error);
+            return { totalPoints: 0, isNewHighScore: false };
         }
     }
 
@@ -85,83 +110,87 @@ class MinigameService {
      */
     async recordWordleResult(userId, guesses, solved) {
         if (!supabase) return;
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.getWordleDate();
 
-        // 1. Fetch Streak and Metadata
-        const { data: stats } = await supabase
-            .from('minigame_stats')
-            .select('metadata, last_played')
-            .eq('user_id', userId)
-            .eq('game_id', 'wordle')
-            .maybeSingle();
+        // 1. Fetch Streak and Metadata (Resilient Fallback)
+        let streak = 1;
+        try {
+            const { data: stats } = await supabase
+                .from('minigame_stats')
+                .select('last_played')
+                .eq('user_id', userId)
+                .eq('game_id', 'wordle')
+                .maybeSingle();
 
-        let streak = stats?.metadata?.streak || 0;
-        const lastPlayed = stats?.last_played ? stats.last_played.split('T')[0] : null;
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            const lastPlayed = stats?.last_played ? stats.last_played.split('T')[0] : null;
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-        // Update Streak: If played yesterday, increment. If missed days, reset.
-        if (lastPlayed === yesterday) {
-            streak += 1;
-        } else if (lastPlayed !== today) {
-            streak = 1; // Start fresh today if they haven't played yet
-        }
+            if (lastPlayed === yesterday) {
+                streak = 2; // Basic binary streak since we can't store incremental streak in metadata
+            } else if (lastPlayed !== today) {
+                streak = 1;
+            }
+        } catch (e) {}
 
         // 2. Base Point Calculation (10/8/6/5/2)
-        let basePoints = 2; // Default for Participation
+        let basePoints = 2; 
         let solvedOrder = 0;
 
         if (solved) {
-            // Count how many solved before us today
-            const { count } = await supabase
-                .from('wordle_history')
-                .select('*', { count: 'exact', head: true })
-                .eq('date', today)
-                .eq('solved', true);
-            
-            solvedOrder = (count || 0) + 1;
+            try {
+                const { count } = await supabase
+                    .from('wordle_history')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('date', today)
+                    .eq('solved', true);
+                
+                solvedOrder = (count || 0) + 1;
+                if (solvedOrder === 1) basePoints = 10;
+                else if (solvedOrder === 2) basePoints = 8;
+                else if (solvedOrder === 3) basePoints = 6;
+                else basePoints = 5;
 
-            if (solvedOrder === 1) basePoints = 10;
-            else if (solvedOrder === 2) basePoints = 8;
-            else if (solvedOrder === 3) basePoints = 6;
-            else basePoints = 5;
+                // Precision Bonus (Attempt-based)
+                if (guesses.length === 1) basePoints += 2;
+                else if (guesses.length === 2) basePoints += 1;
+            } catch (e) {
+                basePoints = 5; 
+            }
         }
 
-        // 3. Apply Streak Multiplier (5% per day, starts from Day 2)
-        const multiplier = streak > 1 ? (1 + (streak * 0.05)) : 1;
+        // 3. Apply Streak Multiplier (Simplistic fallback)
+        const multiplier = streak > 1 ? 1.1 : 1; 
         const totalEarned = Math.round(basePoints * multiplier);
         const streakBonus = totalEarned - basePoints;
 
-        // 4. Fetch Insight (Definition)
+        // 4. Fetch Insight
         let definition = "No archives found for this word.";
         try {
             const word = await this.getDailyWord();
             const resp = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
             definition = resp.data[0]?.meanings[0]?.definitions[0]?.definition || definition;
-        } catch (e) {
-            logger.error(`[Wordle] Failed to fetch definition:`, e);
+        } catch (e) {}
+
+        // 5. Save History (Resilient)
+        try {
+            await supabase
+                .from('wordle_history')
+                .upsert({
+                    user_id: userId,
+                    date: today,
+                    guesses: guesses.length, 
+                    solved: solved,
+                    solved_at: new Date().toISOString(),
+                    metadata: { full_guesses: guesses, solved_order: solvedOrder, awarded_points: totalEarned }
+                }, { onConflict: 'user_id,date' });
+        } catch (historyErr) {
+            logger.warn(`[WordleHistory] Skipping history record: ${historyErr.message}`);
         }
 
-        // 5. Save History & Stats
-        await supabase
-            .from('wordle_history')
-            .upsert({
-                user_id: userId,
-                date: today,
-                guesses: guesses,
-                solved: solved,
-                solved_at: new Date().toISOString(),
-                metadata: { 
-                    points_earned: totalEarned, 
-                    streak, 
-                    solved_order: solvedOrder 
-                }
-            });
-
-        // Award via Arcade Protocol (Updates global scores and minigame_stats)
+        // Award via Arcade Protocol
         const result = await this.awardPoints(userId, totalEarned, {
             gameId: 'wordle',
-            score: solved ? (100 / solvedOrder) : 0,
-            metadata: { streak, solvedOrder }
+            score: solved ? (100 / (solvedOrder || 1)) : 0
         });
 
         return { 
@@ -216,34 +245,91 @@ class MinigameService {
     /**
      * Wordle Daily Management (Legacy support)
      */
+    /**
+     * Retrieves the pre-determined daily word.
+     * Does NOT generate a new word if missing.
+     */
     async getDailyWord() {
-        const today = new Date().toISOString().split('T')[0];
+        if (!supabase) return 'STARE';
+        const today = this.getWordleDate();
+        
+        // 1. Check Cache/DB first
         if (this.cache.has(today)) return this.cache.get(today);
-
         const { data } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
         if (data) {
             this.cache.set(today, data.word);
             return data.word;
         }
 
-        // 1. Fetch Global Used Words Archive
-        const { data: sysStats } = await supabase
-            .from('minigame_stats')
-            .select('metadata')
-            .eq('user_id', 'SYSTEM')
-            .eq('game_id', 'wordle_used')
-            .maybeSingle();
+        return null; // Return null if not determined yet
+    }
+
+    /**
+     * Verifies if the database is synchronized with the current Solar Cycle.
+     */
+    async isSyncRequired() {
+        if (!supabase) return false;
+        const today = this.getWordleDate();
         
-        const usedWords = new Set(sysStats?.metadata?.words || []);
+        // Fetch the absolute latest entry in the database
+        const { data } = await supabase.from('wordle_daily').select('date').order('date', { ascending: false }).limit(1).maybeSingle();
+        
+        if (!data) return true; // No records at all
+        return data.date !== today;
+    }
+
+    /**
+     * Forcefully generates and determines the daily word for the current Solar Cycle.
+     */
+    async generateDailyWord() {
+        if (!supabase) return 'STARE';
+        const today = this.getWordleDate();
+
+        // Check if already exists to avoid duplicate generation
+        const existing = await this.getDailyWord();
+        if (existing) return existing;
+
+        // Concurrency Lock: If already generating, await the existing promise
+        if (this.generationPromise) {
+            logger.info('[ArcadeProtocol] Word generation already in progress. Awaiting lock...');
+            return this.generationPromise;
+        }
+
+        this.generationPromise = this._executeWordGeneration(today);
+        try {
+            const word = await this.generationPromise;
+            return word;
+        } finally {
+            this.generationPromise = null; // Release lock
+        }
+    }
+
+    async _executeWordGeneration(today) {
+
+        // 1. Fetch Global Used Words Archive from daily history (Schema-Resilient)
+        const { data: pastWords } = await supabase.from('wordle_daily').select('word');
+        const usedWords = new Set(pastWords?.map(r => r.word) || []);
 
         // 2. Fetch unique word
         let word = null;
         let attempts = 0;
         
-        while (!word && attempts < 5) {
+        const BACKUP_WORDS = [
+            'STORM', 'FLARE', 'GHOST', 'PLUME', 'VIVID', 'BLAZE', 'CRISP', 'SHINE', 'PRIDE', 'LIGHT',
+            'BRAVE', 'DREAM', 'PIVOT', 'SPARK', 'WHALE', 'ORBIT', 'PULSE', 'STERN', 'FLINT', 'CROWN',
+            'SWORD', 'MAGIC', 'MANGA', 'ANIME', 'OTAKU', 'QUEST', 'STEEL', 'BLOOD', 'WITCH', 'DEMON',
+            'SPELL', 'BEAST', 'CLASH', 'GLORY', 'REALM', 'FAIRY', 'VOICE', 'PIECE', 'FRUIT', 'PIRAT',
+            'NINJA', 'KUNAI', 'GEASS', 'MECHA', 'PILOT', 'SPACE', 'ALIEN', 'GHOUL', 'TITAN', 'SLASH',
+            'WATER', 'EARTH', 'STONE', 'FLAME', 'FROST', 'CHILL', 'STARS', 'MOONS', 'SUNNY', 'NIGHT',
+            'DAWN', 'DUSK', 'TWIN', 'SOUL', 'HEART', 'SMILE', 'TEARS', 'ANGRY', 'HAPPY', 'SLEEP',
+            'DREAM', 'WAKE', 'ARISE', 'STAND', 'FIGHT', 'BRAWL', 'PUNCH', 'KICK', 'JUMP', 'DASH',
+            'SWIFT', 'QUICK', 'FAST', 'SLOW', 'HEAVY', 'LIGHT', 'DARK', 'SHADE', 'GLOOM', 'GLARE'
+        ];
+
+        while (!word && attempts < 3) {
             try {
                 // Fetch a batch of 10 to reduce API calls
-                const response = await axios.get('https://random-word-api.herokuapp.com/word?length=5&number=10');
+                const response = await axios.get('https://random-word-api.herokuapp.com/word?length=5&number=10', { timeout: 5000 });
                 const candidates = response.data.map(w => w.toUpperCase());
                 
                 for (const candidate of candidates) {
@@ -253,30 +339,29 @@ class MinigameService {
                     }
                 }
             } catch (e) {
-                logger.error('[Wordle] Dictionary API error:', e);
+                logger.warn(`[Wordle] Dictionary API unreachable (${e.message}). Preparing offline backup...`);
             }
             attempts++;
         }
 
-        if (!word) word = 'PULSE'; // Ultimate Fallback
+        if (!word) {
+            // Pick a word from backup that hasn't been used recently
+            const backupCandidates = BACKUP_WORDS.filter(w => !usedWords.has(w));
+            word = backupCandidates.length > 0 
+                ? backupCandidates[Math.floor(Math.random() * backupCandidates.length)]
+                : BACKUP_WORDS[Math.floor(Math.random() * BACKUP_WORDS.length)];
+        }
 
-        // 3. Register as Used
-        usedWords.add(word);
-        await supabase.from('minigame_stats').upsert({
-            user_id: 'SYSTEM',
-            game_id: 'wordle_used',
-            metadata: { words: Array.from(usedWords) },
-            last_played: new Date().toISOString()
-        });
-
-        // 4. Save as Today's Word
+        // 3. Save as Today's Word
         await supabase.from('wordle_daily').upsert({ date: today, word: word });
         this.cache.set(today, word);
+        
+        logger.info(`[ArcadeProtocol] Universal Word determined for ${today}: ${word}`);
         return word;
     }
 
     async hasPlayedToday(userId) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.getWordleDate();
         const { data } = await supabase.from('wordle_history').select('user_id').eq('user_id', userId).eq('date', today).maybeSingle();
         return !!data;
     }
@@ -287,44 +372,47 @@ class MinigameService {
      */
     async resetDailyWord() {
         if (!supabase) return;
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.getWordleDate();
 
         // 0. Fetch Previous Word for broadcast
         const { data: currentWordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
         const previousWord = currentWordData?.word || this.cache.get(today);
 
-        // 1. Fetch Today's History to find who to deduct from
-        const { data: history } = await supabase
-            .from('wordle_history')
-            .select('user_id, metadata, solved')
-            .eq('date', today);
-
-        if (history && history.length > 0) {
-            for (const record of history) {
-                if (record.solved) {
-                    const points = record.metadata?.points_earned || 0;
-                    if (points > 0) {
-                        await this.deductPoints(record.user_id, points, { gameId: 'wordle' });
-                    }
-                } else {
-                    await this.deductPoints(record.user_id, 0, { gameId: 'wordle' });
-                }
-            }
-        }
-
-        // 2. Clear Local Cache
+        // 1. Clear Local Cache
         this.cache.delete(today);
 
-        // 3. Remove from DB
+        // 2. Reverse points awarded today
+        try {
+            const { data: history } = await supabase.from('wordle_history').select('user_id, metadata').eq('date', today).eq('solved', true);
+            if (history && history.length > 0) {
+                for (const record of history) {
+                    const pts = record.metadata?.awarded_points || 10;
+                    await this.deductPoints(record.user_id, pts, { gameId: 'wordle' });
+                }
+                logger.info(`[ArcadeProtocol] Reversed points for ${history.length} patrons due to daily reset.`);
+            }
+        } catch (e) {
+            logger.error(`[ArcadeProtocol] Failed to reverse points during reset: ${e.message}`);
+        }
+
+        // 3. Remove from DB (Daily Word)
         await supabase.from('wordle_daily').delete().eq('date', today);
 
-        // 4. Clear all active sessions
-        await this.clearAllWordleSessions();
-
-        // 5. Remove from History
+        // 3. Clear today's sessions and history
+        // This allows users to play the fresh word without having "already played" flag
         await supabase.from('wordle_history').delete().eq('date', today);
+        const { error } = await supabase.from('wordle_sessions').delete().eq('target_word', previousWord);
+        if (error) {
+            await this._saveLocalSessions({}); // Flush local cache
+        }
 
-        logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. Key was: ${previousWord || 'UNKNOWN'}. All history wiped and points deducted.`);
+        // Clear memory cache of sessions
+        const wordleService = require('./wordleService');
+        if (wordleService && wordleService.activeGames) {
+            wordleService.activeGames.clear();
+        }
+
+        logger.warn(`[ArcadeProtocol] Daily Wordle RESET triggered for ${today}. Key was: ${previousWord || 'UNKNOWN'}. Today's history wiped for fresh attempts.`);
         return previousWord;
     }
 
@@ -336,41 +424,41 @@ class MinigameService {
         const { gameId = 'generic' } = options;
 
         try {
-            // 1. Update Game Stats (Decrement plays, high score check)
-            const { data: existingStats } = await supabase
-                .from('minigame_stats')
-                .select('high_score, total_plays')
-                .eq('user_id', userId)
-                .eq('game_id', gameId)
-                .maybeSingle();
+            // 1. Update Game Stats (Resilient Check)
+            try {
+                const { data: existingStats } = await supabase
+                    .from('minigame_stats')
+                    .select('total_plays')
+                    .eq('user_id', userId)
+                    .eq('game_id', gameId)
+                    .maybeSingle();
 
-            const newTotalPlays = Math.max(0, (existingStats?.total_plays || 1) - 1);
-            
-            await supabase
-                .from('minigame_stats')
-                .upsert({
-                    user_id: userId,
-                    game_id: gameId,
-                    total_plays: newTotalPlays,
-                    last_played: new Date().toISOString()
-                });
+                const newTotalPlays = Math.max(0, (existingStats?.total_plays || 1) - 1);
+                
+                await supabase
+                    .from('minigame_stats')
+                    .upsert({
+                        user_id: userId,
+                        game_id: gameId,
+                        total_plays: newTotalPlays,
+                        last_played: new Date().toISOString()
+                    });
+            } catch (statsErr) {} // Silently ignore missing stats table
 
             // 2. Update Global Standing (Deduct points)
             const { data: globalStats } = await supabase
                 .from('minigame_scores')
-                .select('total_points, games_played')
+                .select('total_points')
                 .eq('user_id', userId)
                 .maybeSingle();
 
             const newTotalPoints = Math.max(0, (globalStats?.total_points || 0) - amount);
-            const newGamesPlayed = Math.max(0, (globalStats?.games_played || 1) - 1);
 
             await supabase
                 .from('minigame_scores')
                 .upsert({
                     user_id: userId,
                     total_points: newTotalPoints,
-                    games_played: newGamesPlayed,
                     last_updated: new Date().toISOString()
                 });
 
@@ -381,12 +469,34 @@ class MinigameService {
     }
 
     /**
+     * Session Persistence Fallback Helpers
+     */
+    async _getLocalSessions() {
+        try {
+            if (fs.existsSync(this.SESSION_FILE)) {
+                return JSON.parse(await fs.promises.readFile(this.SESSION_FILE, 'utf-8'));
+            }
+        } catch (e) {
+            logger.error('[ArcadeProtocol] Failed to read local sessions:', e);
+        }
+        return {};
+    }
+
+    async _saveLocalSessions(data) {
+        try {
+            await fs.promises.writeFile(this.SESSION_FILE, JSON.stringify(data), 'utf-8');
+        } catch (e) {
+            logger.error('[ArcadeProtocol] Failed to write local sessions:', e);
+        }
+    }
+
+    /**
      * Session Persistence for Wordle (Saves active games across restarts)
      */
     async saveWordleSession(userId, gameState) {
         if (!supabase) return;
         try {
-            await supabase
+            const { error } = await supabase
                 .from('wordle_sessions')
                 .upsert({
                     user_id: userId,
@@ -397,6 +507,13 @@ class MinigameService {
                     public_channel_id: gameState.publicChannelId,
                     updated_at: new Date().toISOString()
                 });
+            
+            if (error) {
+                // Graceful fallback to local filesystem if table is missing
+                const localData = await this._getLocalSessions();
+                localData[userId] = { ...gameState, updated_at: Date.now() };
+                await this._saveLocalSessions(localData);
+            }
         } catch (err) {
             logger.error(`[ArcadeProtocol] Failed to save Wordle session for ${userId}:`, err);
         }
@@ -405,16 +522,31 @@ class MinigameService {
     async getWordleSession(userId) {
         if (!supabase) return null;
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('wordle_sessions')
                 .select('*')
                 .eq('user_id', userId)
                 .maybeSingle();
             
+            if (error || !data) {
+                // Graceful fallback to local filesystem
+                const localData = await this._getLocalSessions();
+                if (localData[userId]) {
+                    const session = localData[userId];
+                    return {
+                        targetWord: session.targetWord || session.target_word,
+                        guesses: Array.isArray(session.guesses) ? session.guesses : [],
+                        status: session.status,
+                        publicMessageId: session.publicMessageId || session.public_message_id,
+                        publicChannelId: session.publicChannelId || session.public_channel_id
+                    };
+                }
+            }
+
             if (data) {
                 return {
                     targetWord: data.target_word,
-                    guesses: data.guesses || [],
+                    guesses: Array.isArray(data.guesses) ? data.guesses : [],
                     status: data.status,
                     publicMessageId: data.public_message_id,
                     publicChannelId: data.public_channel_id,
@@ -430,19 +562,91 @@ class MinigameService {
     async clearWordleSession(userId) {
         if (!supabase) return;
         try {
-            await supabase.from('wordle_sessions').delete().eq('user_id', userId);
+            const { error } = await supabase.from('wordle_sessions').delete().eq('user_id', userId);
+            if (error) {
+                const localData = await this._getLocalSessions();
+                if (localData[userId]) {
+                    delete localData[userId];
+                    await this._saveLocalSessions(localData);
+                }
+            }
         } catch (err) {
             logger.error(`[ArcadeProtocol] Failed to clear Wordle session for ${userId}:`, err);
         }
+    }
+
+    async getWordleHistory(userId) {
+        if (!supabase) return null;
+        const today = this.getWordleDate();
+        try {
+            const { data } = await supabase
+                .from('wordle_history')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('date', today)
+                .maybeSingle();
+            
+            if (data) {
+                // Fetch target word from wordle_daily to rebuild state
+                const { data: wordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
+                return {
+                    targetWord: wordData?.word || '?????',
+                    guesses: data.metadata?.full_guesses || [],
+                    status: data.solved ? 'WON' : 'LOST',
+                    reward: data.metadata
+                };
+            }
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to fetch Wordle history for ${userId}:`, err);
+        }
+        return null;
     }
 
     async clearAllWordleSessions() {
         if (!supabase) return;
         try {
             // Delete all records (no filter)
-            await supabase.from('wordle_sessions').delete().neq('user_id', '0'); 
+            const { error } = await supabase.from('wordle_sessions').delete().neq('user_id', '0'); 
+            if (error) {
+                await this._saveLocalSessions({});
+            }
         } catch (err) {
             logger.error(`[ArcadeProtocol] Failed to clear all Wordle sessions:`, err);
+        }
+    }
+    async resetUserPoints(userId) {
+        if (!supabase) return;
+        try {
+            await supabase.from('minigame_scores').upsert({ user_id: userId, total_points: 0 });
+            logger.info(`[ArcadeProtocol] Reset points for user ${userId}.`, 'Arcade');
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to reset points for ${userId}:`, err);
+        }
+    }
+
+    async resetAllPoints() {
+        if (!supabase) return;
+        try {
+            await supabase.from('minigame_scores').update({ total_points: 0 }).neq('user_id', '0');
+            logger.warn(`[ArcadeProtocol] GLOBAL ARCADE WIPE COMPLETED.`, 'Arcade');
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to reset all points:`, err);
+        }
+    }
+
+    async getAllScores() {
+        if (!supabase) return [];
+        const { data } = await supabase.from('minigame_scores').select('*');
+        return data || [];
+    }
+
+    async bulkImportScores(scores) {
+        if (!supabase || !scores.length) return;
+        try {
+            await supabase.from('minigame_scores').upsert(scores, { onConflict: 'user_id' });
+            logger.info(`[ArcadeProtocol] Bulk restored ${scores.length} score records.`, 'Arcade');
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Bulk import failed:`, err);
         }
     }
 }

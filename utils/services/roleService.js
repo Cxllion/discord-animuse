@@ -68,6 +68,7 @@ const seedRoleCategories = async (guildId) => {
         'Profile (Region)',
         'Levels',
         'Pings',
+        'Wordle',
         'Extra'
     ];
     

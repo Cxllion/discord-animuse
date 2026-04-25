@@ -42,6 +42,11 @@ const routeInteraction = async (interaction) => {
     const { customId } = interaction;
     if (!customId) return false;
 
+    // --- 1. LOCAL ESCAPE HATCH ---
+    // IDs starting with 'local_' are reserved for command-specific collectors.
+    // We return true to signal the global listener to stay silent.
+    if (customId.startsWith('local_')) return true;
+
     try {
         const handler = registry.findHandler(customId);
 

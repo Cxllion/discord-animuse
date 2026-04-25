@@ -49,7 +49,7 @@ class WordleGenerator {
         await this.drawHeader(ctx, user, anonymize);
 
         // 4. Grid Rendering
-        const { guesses } = gameState;
+        const guesses = gameState?.guesses || [];
         for (let row = 0; row < 6; row++) {
             for (let col = 0; col < 5; col++) {
                 const guessData = guesses[row];
@@ -318,7 +318,7 @@ class WordleGenerator {
     async drawSocialFeed(ctx, otherGames) {
         ctx.save();
         
-        const startY = 755;
+        const startY = 780; // Moved down for breathing room
         const feedW = this.CARD_WIDTH - 60;
         const startX = 30;
 
@@ -367,14 +367,14 @@ class WordleGenerator {
             for (let i = 0; i < Math.min(otherGames.length, maxSlots); i++) {
                 const game = otherGames[i];
                 const x = startX + i * slotW + (slotW / 2) - (avSize / 2); 
-                const y = startY;
+                const y = startY - 15; // Shifted higher
 
-                // 1. Medal Check
+                // 1. Medal Check (Based on Solve Order)
                 let medalColor = null;
-                if (game.status === 'WON' && game.finishedAt) {
-                    if (i === 0) medalColor = '#FFD700'; 
-                    else if (i === 1) medalColor = '#C0C0C0'; 
-                    else if (i === 2) medalColor = '#CD7F32'; 
+                if (game.status === 'WON' && game.solvedOrder) {
+                    if (game.solvedOrder === 1) medalColor = '#FFD700'; 
+                    else if (game.solvedOrder === 2) medalColor = '#C0C0C0'; 
+                    else if (game.solvedOrder === 3) medalColor = '#CD7F32'; 
                 }
 
                 // 2. Mini Avatar with Medal Ring
@@ -402,17 +402,12 @@ class WordleGenerator {
                     ctx.restore();
                 }
 
-                // 3. Name
-                ctx.fillStyle = medalColor || 'rgba(255, 255, 255, 0.6)';
-                ctx.font = `800 10px 'monalqo', sans-serif`;
-                ctx.textAlign = 'center';
-                const displayName = game.user.username.length > 8 ? game.user.username.substring(0, 6) + '..' : game.user.username;
-                ctx.fillText(displayName.toUpperCase(), x + (avSize / 2), y + avSize + 15);
+                // 3. Name (REMOVED as per user request)
 
                 // 4. Mini Grid
                 const gridW = (5 * miniTile) + (4 * miniGap);
                 const gridX = x + (avSize / 2) - (gridW / 2);
-                const gridY = y + avSize + 25;
+                const gridY = y + avSize + 8; // Tighter alignment without name
 
                 for (let r = 0; r < 6; r++) {
                     for (let c = 0; c < 5; c++) {

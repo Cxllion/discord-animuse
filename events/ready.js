@@ -128,6 +128,10 @@ module.exports = {
                     clearConfigCache();
                 }, 3600 * 1000, { testModeSafe: true });
 
+                // 5. Wordle Cycle Monitor (15m)
+                const { checkWordleReset } = require('../utils/services/scheduler');
+                client.scheduler.addTask('Wordle Cycle Monitor', checkWordleReset, 15 * 60 * 1000, { immediate: true });
+
             }, 10000);
         } else {
             logger.info('Internal Scheduler disabled. Assuming external worker.', 'System');

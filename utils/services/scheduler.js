@@ -22,6 +22,8 @@ const {
 const { generateActivityCard } = require('../generators/activityGenerator');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
+const minigameService = require('./minigameService');
+const wordleService = require('./wordleService');
 
 // Batch size for AniList queries to avoid hitting complexity limits
 const BATCH_SIZE = 50;
@@ -33,6 +35,8 @@ let isActivityPolling = false;
 // Telemetry for watchdog diagnostics
 let lastAiringPulse = null;
 let lastActivityPulse = null;
+let lastWordleDate = null; 
+let isWordleResetting = false; // Concurrency lock
 
 /**
  * Checks for airing anime and sends notifications.
@@ -566,6 +570,51 @@ const syncAllUserTrackers = async (client) => {
     }
 };
 
+/**
+ * Checks if the Wordle "Solar Cycle" has transitioned and triggers a reset.
+ */
+const checkWordleReset = async (client) => {
+    try {
+        const today = minigameService.getWordleDate();
+        
+        // 1. Initial State (Bot Start)
+        if (!lastWordleDate) {
+            logger.info(`[WordleScheduler] Bot Initializing. Validating Solar Cycle...`, 'Scheduler');
+            const requiresSync = await minigameService.isSyncRequired();
+            
+            if (requiresSync) {
+                logger.warn(`[WordleScheduler] Offline transition detected! Database is desynced. Triggering catch-up reset...`, 'Scheduler');
+                isWordleResetting = true;
+                try {
+                    await wordleService.forceReset(client);
+                } finally {
+                    isWordleResetting = false;
+                }
+            }
+            
+            lastWordleDate = today;
+            logger.info(`[WordleScheduler] Monitoring Solar Cycle. Current: ${today}`, 'Scheduler');
+            return;
+        }
+
+        // 2. Date Transition Detected (New GMT+5 Day)
+        if (today !== lastWordleDate && !isWordleResetting) {
+            isWordleResetting = true;
+            logger.warn(`[WordleScheduler] Solar Cycle Transition Detected! ${lastWordleDate} -> ${today}. Triggering Reset...`, 'Scheduler');
+            
+            try {
+                // Perform Nuclear Reset
+                await wordleService.forceReset(client);
+                lastWordleDate = today;
+            } finally {
+                isWordleResetting = false;
+            }
+        }
+    } catch (e) {
+        logger.error('[WordleScheduler] Cycle check failed:', e, 'Scheduler');
+    }
+};
+
 const getPulseStatus = () => ({
     airing: lastAiringPulse,
     activity: lastActivityPulse,
@@ -579,5 +628,6 @@ module.exports = {
     pulseUserActivity, 
     sendNotifications, 
     getPulseStatus,
-    syncAllUserTrackers
+    syncAllUserTrackers,
+    checkWordleReset
 };
