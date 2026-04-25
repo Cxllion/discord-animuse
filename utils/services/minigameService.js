@@ -3,7 +3,7 @@ const logger = require('../core/logger');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { getRandomOfflineWord } = require('../core/wordDictionary');
+const { getRandomOfflineWord, getOfflineWordData } = require('../core/wordDictionary');
 
 /**
  * Minigame Service V2: The "Arcade Protocol" Archivist.
@@ -172,14 +172,19 @@ class MinigameService {
         const streakBonus = totalEarned - basePoints;
 
         // 4. Fetch Insight
-        let definition = "No archives found for this word.";
+        const target = await this.getDailyWord();
+        // 2. Fetch definition (Best Effort: API -> Local Archive -> Placeholder)
+        let definition = 'A highly confidential decryption key.';
         try {
-            const word = await this.getDailyWord();
-            const resp = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-            definition = resp.data[0]?.meanings[0]?.definitions[0]?.definition || definition;
-        } catch (e) {}
+            const dictRes = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${target.toLowerCase()}`, { timeout: 3000 });
+            definition = dictRes.data[0].meanings[0].definitions[0].definition;
+        } catch (e) {
+            const offlineData = getOfflineWordData(target);
+            if (offlineData) {
+                definition = offlineData.definition;
+            }
+        }
 
-        // 5. Save History (Mandatory for attempt locking)
         const { error: historyError } = await supabase
             .from('wordle_history')
             .upsert({
@@ -345,7 +350,8 @@ class MinigameService {
         // 3. Final Fail-Safe: If API is completely down, use our robust offline dictionary
         if (!word) {
             logger.info('[Wordle] All external word sources failed. Deploying Offline Decryption Key...');
-            word = getRandomOfflineWord();
+            const backup = getRandomOfflineWord();
+            word = backup.word;
         }
 
         // 3. Save as Today's Word

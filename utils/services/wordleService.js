@@ -1,7 +1,7 @@
 const axios = require('axios');
 const logger = require('../core/logger');
 const minigameService = require('./minigameService');
-const { isWordInOfflineArchive } = require('../core/wordDictionary');
+const { getOfflineWordData } = require('../core/wordDictionary');
 const supabase = require('../core/supabaseClient');
 
 /**
@@ -12,8 +12,8 @@ class WordleService {
         // Concurrency lock for user submissions (avoids race conditions)
         this.processingLocks = new Set();
         
-        // API Endpoints
         this.DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
+        this.BACKUP_DICT_API = 'https://api.datamuse.com/words?sp='; // Datamuse is extremely reliable
 
         // Social Feed Cache (30s)
         this.socialCache = { data: [], lastUpdate: 0 };
@@ -79,13 +79,22 @@ class WordleService {
             // 404 means the word doesn't exist.
             if (error.response?.status === 404) return false;
             
-            // FALLBACK: If API is down, check our curated offline dictionary
-            logger.warn(`[Wordle] Validation API offline (${error.message}). Checking offline archives...`);
-            if (isWordInOfflineArchive(guess)) {
+            // BACKUP API: Try Datamuse for verification (no definition, but verifies existence)
+            try {
+                const datamuseRes = await axios.get(`${this.BACKUP_DICT_API}${guess.toLowerCase()}&max=1`, { timeout: 3000 });
+                if (datamuseRes.data.length > 0 && datamuseRes.data[0].word.toUpperCase() === guess.toUpperCase()) {
+                    return true;
+                }
+            } catch (backupError) {
+                logger.warn(`[Wordle] Backup Validation API offline (${backupError.message})`);
+            }
+
+            // FINAL FALLBACK: Check our curated offline dictionary
+            logger.warn(`[Wordle] External APIs offline. Checking offline archives for: ${guess}`);
+            if (getOfflineWordData(guess)) {
                 return true;
             }
 
-            // If not in offline dictionary either, we must deny to prevent gibberish exploits
             throw new Error('The Dictionary API is currently unreachable and the word is not in our offline archives. Please try again later.');
         }
     }
