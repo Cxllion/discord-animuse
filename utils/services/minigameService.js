@@ -4,6 +4,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { getRandomOfflineWord, getOfflineWordData } = require('../core/wordDictionary');
+const { isSafeWord } = require('../core/wordleSafety');
 
 /**
  * Minigame Service V2: The "Arcade Protocol" Archivist.
@@ -330,26 +331,40 @@ class MinigameService {
         // Loop for API attempts
         while (!word && attempts < 3) {
             try {
-                // Fetch 5-letter words from Datamuse
+                // Fetch 5-letter words from Datamuse (Common English words)
                 const response = await axios.get('https://api.datamuse.com/words?sp=?????&max=1000', { timeout: 5000 });
-                // Filter out words with spaces or hyphens, and take words from the middle of the list (not too common, not completely obscure)
+                
+                // Filter for valid 5-letter English words
                 const validCandidates = response.data
                     .filter(w => /^[a-zA-Z]{5}$/.test(w.word))
                     .map(w => w.word.toUpperCase());
                 
-                // Shuffle candidates and pick the first unused one, prioritizing the bottom half of the top 1000 for "not so common"
-                const notSoCommonCandidates = validCandidates.slice(Math.floor(validCandidates.length / 2));
-                
+                // Prioritize the top 1000 but shuffle them to avoid predictability
                 // Shuffle array
-                for (let i = notSoCommonCandidates.length - 1; i > 0; i--) {
+                for (let i = validCandidates.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
-                    [notSoCommonCandidates[i], notSoCommonCandidates[j]] = [notSoCommonCandidates[j], notSoCommonCandidates[i]];
+                    [validCandidates[i], validCandidates[j]] = [validCandidates[j], validCandidates[i]];
                 }
 
-                for (const candidate of notSoCommonCandidates) {
-                    if (!usedWords.has(candidate)) {
-                        word = candidate;
-                        break;
+                // Check candidates one by one until we find a real, unused, and SAFE dictionary word
+                for (const candidate of validCandidates) {
+                    if (usedWords.has(candidate)) continue;
+                    if (!isSafeWord(candidate)) {
+                        logger.warn(`[Wordle] Safety Filter intercepted sensitive candidate: ${candidate}. Searching for alternative...`);
+                        continue;
+                    }
+
+                    // VERIFICATION: Check against Dictionary API to ensure it's a "real" common word
+                    try {
+                        const dictCheck = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${candidate.toLowerCase()}`, { timeout: 2000 });
+                        if (dictCheck.data && dictCheck.data[0]) {
+                            word = candidate;
+                            logger.info(`[Wordle] Determined actual word for today: ${word}`, 'Arcade');
+                            break;
+                        }
+                    } catch (err) {
+                        // If 404 or error, it might not be a "common enough" dictionary word, skip to next
+                        continue;
                     }
                 }
             } catch (e) {
