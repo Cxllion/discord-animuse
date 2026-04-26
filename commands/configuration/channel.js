@@ -41,7 +41,8 @@ module.exports = {
             { name: '📢 Airing Tower', value: 'airing' },
             { name: '📋 Security Logs', value: 'logs' },
             { name: '🖼️ Identity Dump', value: 'dump' },
-            { name: '🕹️ Arcade Protocol', value: 'arcade' }
+            { name: '🕹️ Arcade Protocol', value: 'arcade' },
+            { name: '💡 Suggestions Box', value: 'suggestions' }
         ];
 
         const filtered = choices.filter(choice => choice.name.toLowerCase().includes(focusedValue));
@@ -145,6 +146,13 @@ module.exports = {
                         content: `✅ **Configuration Updated**\nThe **Arcade Protocol** has been localized to ${channel}. Minigames will now be strictly managed within this wing.`
                     });
                 }
+                else if (type === 'suggestions') {
+                    await upsertConfig(guildId, { suggestions_channel_id: channel.id });
+
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nThe **Suggestions Box** has been installed in ${channel}. Members can now share their visions for the library's future here.`
+                    });
+                }
 
             } catch (error) {
                 logger.error('Command Error: /channel assign', error, 'ChannelCommand');
@@ -176,6 +184,7 @@ module.exports = {
                         { name: '🕹️ Arcade Protocol', value: fmt(config?.arcade_channel_id), inline: true },
                         { name: '📜 Security Logs', value: fmt(config?.logs_channel_id), inline: true },
                         { name: '🖼️ Identity Dump', value: fmt(config?.banner_dump_channel_id), inline: true },
+                        { name: '💡 Suggestions Box', value: fmt(config?.suggestions_channel_id), inline: true },
                         { name: '📸 Media Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
                     .setColor(0x3b82f6);
