@@ -409,7 +409,7 @@ class WordleGenerator {
                 // PLAYING / Ongoing gets no ring (ringColor remains null)
 
                 // 2. Mini Avatar with Medal Ring
-                if (game.user.avatarURL) {
+                if (game.user?.avatarURL) {
                     ctx.save();
                     if (ringColor) {
                         ctx.beginPath();

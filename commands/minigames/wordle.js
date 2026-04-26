@@ -83,7 +83,28 @@ module.exports = {
             
             // 3. Generate Anonymized Board Card (Public)
             // Fetch minigrid cache so the very first public board has rings of others
-            const otherGames = await wordleService.getRecentGames(userId, 5);
+            const others = await wordleService.getRecentGames(userId, 5);
+            const otherGames = await Promise.all(others.map(async (g) => {
+                try {
+                    let u = interaction.client.users.cache.get(g.userId);
+                    if (!u) u = await interaction.client.users.fetch(g.userId).catch(() => null);
+                    let dName = u?.username || 'Patron';
+                    if (interaction.guild && u) {
+                        const member = await interaction.guild.members.fetch(u.id).catch(() => null);
+                        if (member) dName = member.displayName;
+                    }
+                    return { 
+                        ...g, 
+                        user: { 
+                            username: u?.username || 'Patron',
+                            displayName: dName,
+                            avatarURL: u?.displayAvatarURL({ extension: 'png', size: 64 }) || null 
+                        } 
+                    };
+                } catch (e) {
+                    return { ...g, user: { username: 'Patron', displayName: 'Patron', avatarURL: null } };
+                }
+            }));
             
             const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
                 anonymize: true,
