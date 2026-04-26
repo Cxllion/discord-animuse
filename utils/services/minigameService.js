@@ -328,21 +328,32 @@ class MinigameService {
         let attempts = 0;
         
         // Loop for API attempts
-
         while (!word && attempts < 3) {
             try {
-                // Fetch a batch of 10 to reduce API calls
-                const response = await axios.get('https://random-word-api.herokuapp.com/word?length=5&number=10', { timeout: 5000 });
-                const candidates = response.data.map(w => w.toUpperCase());
+                // Fetch 5-letter words from Datamuse
+                const response = await axios.get('https://api.datamuse.com/words?sp=?????&max=1000', { timeout: 5000 });
+                // Filter out words with spaces or hyphens, and take words from the middle of the list (not too common, not completely obscure)
+                const validCandidates = response.data
+                    .filter(w => /^[a-zA-Z]{5}$/.test(w.word))
+                    .map(w => w.word.toUpperCase());
                 
-                for (const candidate of candidates) {
+                // Shuffle candidates and pick the first unused one, prioritizing the bottom half of the top 1000 for "not so common"
+                const notSoCommonCandidates = validCandidates.slice(Math.floor(validCandidates.length / 2));
+                
+                // Shuffle array
+                for (let i = notSoCommonCandidates.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [notSoCommonCandidates[i], notSoCommonCandidates[j]] = [notSoCommonCandidates[j], notSoCommonCandidates[i]];
+                }
+
+                for (const candidate of notSoCommonCandidates) {
                     if (!usedWords.has(candidate)) {
                         word = candidate;
                         break;
                     }
                 }
             } catch (e) {
-                logger.warn(`[Wordle] Dictionary API unreachable (${e.message}). Preparing offline backup...`);
+                logger.warn(`[Wordle] Datamuse API unreachable (${e.message}). Retrying...`);
             }
             attempts++;
         }
@@ -590,9 +601,24 @@ class MinigameService {
             
             if (data) {
                 const { data: wordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
+                const target = wordData?.word || '?????';
+                
+                // Parse strings into objects expected by the generator
+                const rawGuesses = data.metadata?.full_guesses || [];
+                const wordleEngine = require('../core/wordleEngine');
+                const parsedGuesses = rawGuesses.map(guessItem => {
+                    if (typeof guessItem === 'string') {
+                        return {
+                            word: guessItem,
+                            result: wordleEngine.calculateTileStates(target, guessItem)
+                        };
+                    }
+                    return guessItem; // Already formatted as { word, result }
+                });
+
                 return {
-                    targetWord: wordData?.word || '?????',
-                    guesses: data.metadata?.full_guesses || [],
+                    targetWord: target,
+                    guesses: parsedGuesses,
                     status: data.solved ? 'WON' : 'LOST',
                     reward: data.metadata
                 };

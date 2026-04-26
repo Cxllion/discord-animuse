@@ -29,11 +29,14 @@ class ToastGenerator {
             totalPoints = 0,
             streak = 0,
             gameName = 'Minigame',
+            attempts = 0,
             extraLine = null
         } = options;
 
-        const canvas = createCanvas(this.WIDTH, this.HEIGHT);
+        const scale = 1.5;
+        const canvas = createCanvas(this.WIDTH * scale, this.HEIGHT * scale);
         const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
 
         // 1. Base Glassmorphism Card
         ctx.fillStyle = this.COLORS.BACKGROUND;
@@ -90,7 +93,8 @@ class ToastGenerator {
         ctx.fillText('ARCADE CREDITS EARNED', contentX, 90);
 
         // 4. Statistics Row (Dynamic Pills)
-        const statsY = 125;
+        const statsY = 114; // Raised to balance vertical gap between text and bottom panel
+        const pillStartX = contentX - 8; // Offset the pill background left so the text aligns with the paragraph
         
         // A. Streak Pill
         const streakText = `${streak} DAYS STREAK`.toUpperCase();
@@ -101,11 +105,11 @@ class ToastGenerator {
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
         ctx.beginPath();
-        ctx.roundRect(contentX, statsY - 14, streakPillW, 22, 5);
+        ctx.roundRect(pillStartX, statsY - 14, streakPillW, 22, 5);
         ctx.fill();
         
         ctx.fillStyle = this.COLORS.TEXT_PRIMARY;
-        ctx.fillText(streakText, contentX + 10, statsY + 1);
+        ctx.fillText(streakText, pillStartX + 10, statsY + 1);
 
         // B. Bonus Pill (Dynamic)
         let bonusPillW = 0;
@@ -117,11 +121,29 @@ class ToastGenerator {
 
             ctx.fillStyle = 'rgba(74, 222, 128, 0.12)';
             ctx.beginPath();
-            ctx.roundRect(contentX + streakPillW + 12, statsY - 14, bonusPillW, 22, 5);
+            ctx.roundRect(pillStartX + streakPillW + 8, statsY - 14, bonusPillW, 22, 5);
             ctx.fill();
             
             ctx.fillStyle = this.COLORS.SUCCESS;
-            ctx.fillText(bonusText, contentX + streakPillW + 22, statsY + 1);
+            ctx.fillText(bonusText, pillStartX + streakPillW + 18, statsY + 1);
+        }
+
+        // C. Precision Pill (Wordle Specialized)
+        if (gameName.toUpperCase() === 'WORDLE' && attempts > 0 && attempts <= 2) {
+            const precisionText = attempts === 1 ? 'FLAWLESS' : 'PRECISION';
+            ctx.font = `800 10px 'monalqo', sans-serif`;
+            const precisionTextWidth = ctx.measureText(precisionText).width;
+            const precisionPillW = precisionTextWidth + 20;
+
+            const precisionX = pillStartX + streakPillW + (bonusPillW > 0 ? bonusPillW + 16 : 8);
+
+            ctx.fillStyle = attempts === 1 ? 'rgba(255, 215, 0, 0.12)' : 'rgba(139, 92, 246, 0.12)'; // Gold for Flawless, Purple for Precision
+            ctx.beginPath();
+            ctx.roundRect(precisionX, statsY - 14, precisionPillW, 22, 5);
+            ctx.fill();
+            
+            ctx.fillStyle = attempts === 1 ? '#FFD700' : '#8B5CF6'; 
+            ctx.fillText(precisionText, precisionX + 10, statsY + 1);
         }
 
         // C. Total Balance

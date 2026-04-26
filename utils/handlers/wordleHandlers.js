@@ -81,7 +81,9 @@ const handleWordleInteraction = async (interaction) => {
             // Ensure session is in memory first
             await wordleService.getGame(user.id); 
             const gameState = await wordleService.forfeitGame(user.id);
-            if (!gameState) return;
+            if (!gameState) {
+                return interaction.followUp({ content: '⚠️ **Invalid State.** Your terminal may have already synced. Please check the public board.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
+            }
 
             // Update views to show game over
             await updateWordleViews(interaction, gameState, user, { isFreshEnd: true });
@@ -201,60 +203,11 @@ const handleWordleModals = async (interaction) => {
 
         // 3. Process Guess
         const gameState = await wordleService.submitGuess(user.id, guess);
-        if (!gameState) return;
-
-    const userData = {
-        username: user.username,
-        avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 })
-    };
-
-    // NEW: Gather Social Feed Data (Extended for 5 slots)
-    const others = await wordleService.getRecentGames(user.id, 5);
-    const otherGames = await Promise.all(others.map(async (g) => {
-        try {
-            const u = await interaction.client.users.fetch(g.userId);
-            return {
-                ...g,
-                user: {
-                    username: u.username,
-                    avatarURL: u.displayAvatarURL({ extension: 'png', size: 64 })
-                }
-            };
-        } catch (e) {
-            return { ...g, user: { username: 'Patron', avatarURL: null } };
+        if (!gameState) {
+            return interaction.followUp({ content: '⚠️ **Processing.** Your terminal is already synchronizing a previous input. Please wait.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
         }
-    }));
 
-    // 4. Render Updates (Full Content Cards)
-    const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
-        anonymize: true, 
-        user: userData,
-        otherGames: otherGames
-    });
-    const bufferPersonal = await wordleGenerator.generateBoard(gameState, { 
-        anonymize: false, 
-        user: userData 
-    });
-    
-    const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-anon.png' });
-    const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' });
-    const personalAttachments = [attachmentPersonal];
-
-    // NEW: Generate Success Slip if game ended
-    if (gameState.status !== 'PLAYING' && gameState.reward) {
-        const toastBuffer = await toastGenerator.generateSuccessSlip({
-            user: { username: interaction.user.username, avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 }) },
-            pointsEarned: gameState.reward.points,
-            streakBonus: gameState.reward.streakBonus,
-            totalPoints: gameState.reward.totalPoints,
-            streak: gameState.reward.streak,
-            gameName: 'Wordle',
-            extraLine: gameState.reward.definition
-        });
-        // ONLY show the receipt on win/loss
-        personalAttachments.length = 0; 
-        personalAttachments.push(new AttachmentBuilder(toastBuffer, { name: 'success-slip.webp' }));
-    }
+    // 4. Update BOTH views (updateWordleViews handles all rendering and UI logic)
 
     // 5. Update BOTH views
     await updateWordleViews(interaction, gameState, user, { isFreshEnd: true });
@@ -280,7 +233,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
     };
 
     try {
-        // 1. Create Private Row (No View Progress)
+        // 1. Create Private Row
         const privateRow = new ActionRowBuilder();
         if (gameState.status === 'PLAYING') {
             privateRow.addComponents(
@@ -288,41 +241,28 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                 new ButtonBuilder().setCustomId(`wordle_forfeit_${user.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
         } else {
+            // V2: Private console is dismissed/simplified at the end. Only provide a way to check the leaderboard.
             privateRow.addComponents(
-                new ButtonBuilder().setCustomId(`wordle_result_${user.id}`).setLabel('View Result').setStyle(ButtonStyle.Primary).setEmoji('👁️'),
                 new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
             );
         }
 
-        // 2. Create Public Row (Includes View Progress)
-        const publicRow = new ActionRowBuilder();
+        // 2. Create Public Row
+        let publicRow = null; // Default to no row (closed)
         if (gameState.status === 'PLAYING') {
-            publicRow.addComponents(
+            publicRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`wordle_guess_${user.id}`).setLabel('Submit Guess').setStyle(ButtonStyle.Primary).setEmoji('⌨️'),
-                new ButtonBuilder().setCustomId(`wordle_forfeit_${user.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️'),
-                new ButtonBuilder().setCustomId(`wordle_progress_${user.id}`).setLabel('View Progress').setStyle(ButtonStyle.Secondary).setEmoji('🔍')
+                new ButtonBuilder().setCustomId(`wordle_forfeit_${user.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
-        } else {
-            publicRow.addComponents(
-                new ButtonBuilder().setCustomId(`wordle_result_${user.id}`).setLabel('View Result').setStyle(ButtonStyle.Primary).setEmoji('👁️'),
-                new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
-            );
-        }
+        } // V2: If NOT playing, public board closes entirely (no buttons).
 
-        // A. Update Private Response
+        // 3. Update Private Response (Ephemeral)
         const personalAttachments = [];
         let privateContent = null;
 
         if (gameState.status !== 'PLAYING') {
-            // Simplify private console on completion
-            privateContent = `🏁 **Archive Synchronized.** Your decoding session for today has been successfully archived. You may now dismiss this console. ♡`;
-            
-            // Optionally still show the personal board if they click "View Result" button later, 
-            // but for the fresh end, we keep it clean.
-            if (!isFreshEnd) {
-                const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
-                personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
-            }
+            // V2: Protect the private attempt by removing the image entirely at game end.
+            privateContent = `🏁 **Archive Synchronized.** Your decoding session for today has been successfully archived. You may now dismiss this console to protect your attempt data. ♡`;
         } else {
             const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
             personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
@@ -331,63 +271,57 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
         const responseData = { 
             content: privateContent,
             components: [privateRow], 
-            files: personalAttachments 
+            files: personalAttachments,
+            flags: [MessageFlags.Ephemeral]
         };
 
-        if (interaction.isModalSubmit()) {
-            if (interaction.deferred || interaction.replied) await interaction.editReply(responseData);
-            else await interaction.reply({ ...responseData, flags: [MessageFlags.Ephemeral] });
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply(responseData).catch(() => {});
         } else {
-            // Button interactions
-            if (interaction.deferred || interaction.replied) await interaction.editReply(responseData);
-            else await interaction.reply({ ...responseData, flags: [MessageFlags.Ephemeral] });
+            await interaction.reply(responseData).catch(() => {});
         }
 
-                // 4. Update Public Feed
-                if (gameState.publicMessageId && gameState.publicChannelId) {
-                    const channel = await interaction.client.channels.fetch(gameState.publicChannelId).catch(() => null);
-                    if (channel) {
-                        // Optimized: Fetch recent games and resolve users with cache-priority
-                        const others = await wordleService.getRecentGames(user.id, 5);
-                        const otherGames = await Promise.all(others.map(async (g) => {
-                            try {
-                                // Priority: Client Cache -> Global Fetch
-                                let u = interaction.client.users.cache.get(g.userId);
-                                if (!u) u = await interaction.client.users.fetch(g.userId).catch(() => null);
-                                
-                                // Optional: Fetch member for nickname if in the same guild
-                                let dName = u?.username || 'Patron';
-                                if (interaction.guild && u) {
-                                    const member = await interaction.guild.members.fetch(u.id).catch(() => null);
-                                    if (member) dName = member.displayName;
-                                }
+        // 4. Update Public Feed
+        if (gameState.publicMessageId && gameState.publicChannelId) {
+            const channel = await interaction.client.channels.fetch(gameState.publicChannelId).catch(() => null);
+            if (channel) {
+                // Fetch recent games for Minigrid
+                const others = await wordleService.getRecentGames(user.id, 5);
+                const otherGames = await Promise.all(others.map(async (g) => {
+                    try {
+                        let u = interaction.client.users.cache.get(g.userId);
+                        if (!u) u = await interaction.client.users.fetch(g.userId).catch(() => null);
+                        let dName = u?.username || 'Patron';
+                        if (interaction.guild && u) {
+                            const member = await interaction.guild.members.fetch(u.id).catch(() => null);
+                            if (member) dName = member.displayName;
+                        }
+                        return { 
+                            ...g, 
+                            user: { 
+                                username: u?.username || 'Patron',
+                                displayName: dName,
+                                avatarURL: u?.displayAvatarURL({ extension: 'png', size: 64 }) || null 
+                            } 
+                        };
+                    } catch (e) {
+                        return { ...g, user: { username: 'Patron', displayName: 'Patron', avatarURL: null } };
+                    }
+                }));
 
-                                return { 
-                                    ...g, 
-                                    user: { 
-                                        username: u?.username || 'Patron',
-                                        displayName: dName,
-                                        avatarURL: u?.displayAvatarURL({ extension: 'png', size: 64 }) || null 
-                                    } 
-                                };
-                            } catch (e) {
-                                return { ...g, user: { username: 'Patron', displayName: 'Patron', avatarURL: null } };
-                            }
-                        }));
-
-                        const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
-                            anonymize: true, 
-                            user: userData,
-                            otherGames: otherGames
-                        });
+                const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
+                    anonymize: true, 
+                    user: userData,
+                    otherGames: otherGames
+                });
                 
                 await channel.messages.edit(gameState.publicMessageId, {
                     files: [new AttachmentBuilder(bufferAnon, { name: `wordle-anon-${Date.now()}.png` })],
                     attachments: [],
-                    components: [publicRow] 
+                    components: publicRow ? [publicRow] : [] // V2: Remove buttons if publicRow is null
                 }).catch(err => logger.warn(`[Wordle] Failed to edit public message ${gameState.publicMessageId}:`, err));
 
-                // NEW: Broadcast Public Receipt on Fresh Completion
+                // 5. Broadcast Public Receipt on Fresh Completion
                 if (isFreshEnd && gameState.status !== 'PLAYING' && gameState.reward) {
                     const toastBuffer = await toastGenerator.generateSuccessSlip({
                         user: userData,
@@ -396,6 +330,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                         totalPoints: gameState.reward.totalPoints,
                         streak: gameState.reward.streak,
                         gameName: 'Wordle',
+                        attempts: gameState.guesses.length,
                         extraLine: gameState.status === 'WON' ? gameState.reward?.definition : null
                     });
                     

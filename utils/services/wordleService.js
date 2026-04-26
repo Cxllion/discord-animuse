@@ -1,7 +1,7 @@
 const axios = require('axios');
 const logger = require('../core/logger');
 const minigameService = require('./minigameService');
-const { getOfflineWordData } = require('../core/wordDictionary');
+const wordleEngine = require('../core/wordleEngine');
 const supabase = require('../core/supabaseClient');
 
 /**
@@ -12,11 +12,8 @@ class WordleService {
         // Concurrency lock for user submissions (avoids race conditions)
         this.processingLocks = new Set();
         
-        this.DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
-        this.BACKUP_DICT_API = 'https://api.datamuse.com/words?sp='; // Datamuse is extremely reliable
-
-        // Social Feed Cache (30s)
-        this.socialCache = { data: [], lastUpdate: 0 };
+        // Minigrid State Cache (15s)
+        this.minigridCache = { data: [], lastUpdate: 0 };
     }
 
     /**
@@ -30,20 +27,25 @@ class WordleService {
                 throw new Error('You have already completed the decoding protocol for this solar cycle. The archives are currently locked until the next synchronization. ♡');
             }
 
-            // 2. Check for Active Session (Resume Progress) from database directly
-            const persistentSession = await minigameService.getWordleSession(userId);
-            if (persistentSession) {
-                logger.info(`[Wordle] Restored persistent session for user ${userId}.`);
-                return persistentSession;
-            }
-
-            // 3. Get Target Word (Universal Determined Word)
+            // 2. Get Target Word (Universal Determined Word) first to check for stale sessions
             let word = await minigameService.getDailyWord();
             
             // If word is missing (Scheduler missed or first run), generate it once.
             if (!word) {
                 logger.warn(`[Wordle] Target word missing for today. Triggering on-demand synchronization.`);
                 word = await minigameService.generateDailyWord();
+            }
+
+            // 3. Check for Active Session (Resume Progress) from database directly
+            const persistentSession = await minigameService.getWordleSession(userId);
+            if (persistentSession) {
+                if (persistentSession.targetWord === word) {
+                    logger.info(`[Wordle] Restored persistent session for user ${userId}.`);
+                    return persistentSession;
+                } else {
+                    logger.info(`[Wordle] Wiping stale persistent session from a previous day for user ${userId}.`);
+                    await minigameService.clearWordleSession(userId);
+                }
             }
 
             const today = minigameService.getWordleDate();
@@ -72,31 +74,7 @@ class WordleService {
      * Validates if a guess is a real English word.
      */
     async isValidWord(guess) {
-        try {
-            await axios.get(`${this.DICT_API}${guess.toLowerCase()}`, { timeout: 4000 });
-            return true;
-        } catch (error) {
-            // 404 means the word doesn't exist.
-            if (error.response?.status === 404) return false;
-            
-            // BACKUP API: Try Datamuse for verification (no definition, but verifies existence)
-            try {
-                const datamuseRes = await axios.get(`${this.BACKUP_DICT_API}${guess.toLowerCase()}&max=1`, { timeout: 3000 });
-                if (datamuseRes.data.length > 0 && datamuseRes.data[0].word.toUpperCase() === guess.toUpperCase()) {
-                    return true;
-                }
-            } catch (backupError) {
-                logger.warn(`[Wordle] Backup Validation API offline (${backupError.message})`);
-            }
-
-            // FINAL FALLBACK: Check our curated offline dictionary
-            logger.warn(`[Wordle] External APIs offline. Checking offline archives for: ${guess}`);
-            if (getOfflineWordData(guess)) {
-                return true;
-            }
-
-            throw new Error('The Dictionary API is currently unreachable and the word is not in our offline archives. Please try again later.');
-        }
+        return await wordleEngine.isValidWord(guess);
     }
 
     /**
@@ -111,7 +89,7 @@ class WordleService {
             if (!game || game.status !== 'PLAYING') return null;
 
             const target = game.targetWord;
-            const result = this.calculateTileStates(target, guess.toUpperCase());
+            const result = wordleEngine.calculateTileStates(target, guess.toUpperCase());
             
             game.guesses.push({ word: guess.toUpperCase(), result });
 
@@ -157,42 +135,7 @@ class WordleService {
         }
     }
 
-    /**
-     * Internal logic for determining tile colors.
-     * 0 = Gray (Absence), 1 = Yellow (Misplaced), 2 = Green (Correct)
-     */
-    calculateTileStates(target, guess) {
-        const result = new Array(5).fill(0);
-        const targetArr = target.split('');
-        const guessArr = guess.split('');
-        const targetCounts = {};
-
-        // 1. Initial count of letters in target
-        for (const char of targetArr) {
-            targetCounts[char] = (targetCounts[char] || 0) + 1;
-        }
-
-        // 2. Identify Green Tiles (Correct position)
-        for (let i = 0; i < 5; i++) {
-            if (guessArr[i] === targetArr[i]) {
-                result[i] = 2;
-                targetCounts[guessArr[i]]--;
-            }
-        }
-
-        // 3. Identify Yellow Tiles (Wrong position)
-        for (let i = 0; i < 5; i++) {
-            if (result[i] === 2) continue; // Already marked green
-            
-            const char = guessArr[i];
-            if (targetCounts[char] > 0) {
-                result[i] = 1;
-                targetCounts[char]--;
-            }
-        }
-
-        return result;
-    }
+    // calculateTileStates moved to wordleEngine
 
     /**
      * Retrieves a game state, restoring from database.
@@ -283,12 +226,12 @@ class WordleService {
     }
 
     /**
-     * Returns a list of recent active and finished games for the social feed.
+     * Retrieves the recent games for the minigrid, including correct solve orders.
      */
     async getRecentGames(excludeUserId, limit = 5) {
         const now = Date.now();
-        if (now - this.socialCache.lastUpdate < 30000) {
-            return this.socialCache.data.filter(g => g.userId !== excludeUserId).slice(0, limit);
+        if (now - this.minigridCache.lastUpdate < 15000) {
+            return this.minigridCache.data.filter(g => g.userId !== excludeUserId).slice(0, limit);
         }
 
         const games = [];
@@ -299,28 +242,28 @@ class WordleService {
         try {
             const { data: winners } = await supabase
                 .from('wordle_history')
-                .select('user_id, guesses, solved, solved_at, metadata')
+                .select('user_id, metadata, solved_at')
                 .eq('date', today)
                 .eq('solved', true)
                 .order('solved_at', { ascending: true })
                 .limit(limit);
 
             if (winners) {
-                winners.forEach(row => {
-                    if (row.user_id === excludeUserId) return;
-                    
+                winners.forEach((row, index) => {
                     const rawGuesses = row.metadata?.full_guesses || [];
-                    const parsedGuesses = rawGuesses.map(word => ({
-                        word,
-                        result: this.calculateTileStates(targetWord, word)
-                    }));
+                    const parsedGuesses = rawGuesses.map(guessItem => {
+                        if (typeof guessItem === 'string') {
+                            return { word: '-----', result: wordleEngine.calculateTileStates(targetWord, guessItem) };
+                        }
+                        return { word: '-----', result: guessItem.result }; // Minigrid anon
+                    });
 
                     games.push({
                         userId: row.user_id,
-                        guesses: parsedGuesses, // FIXED: Parsed with calculateTileStates
+                        guesses: parsedGuesses,
                         status: 'WON',
                         finishedAt: row.solved_at,
-                        solvedOrder: row.metadata?.solved_order
+                        solvedOrder: index + 1 // Guarantee accurate order for rings
                     });
                 });
             }
@@ -328,23 +271,27 @@ class WordleService {
             logger.error('[Wordle] Failed to fetch winners:', e);
         }
 
-        // 2. Fill remaining slots with Active Games (Database)
+        // 2. Active Games
         if (games.length < limit) {
             try {
-                // Fetch active sessions from DB
                 const { data: activeSessions } = await supabase
                     .from('wordle_sessions')
                     .select('user_id, guesses, status')
-                    .neq('user_id', excludeUserId)
                     .order('updated_at', { ascending: false })
-                    .limit(limit);
+                    .limit(limit * 2); // Fetch extra to filter
 
                 if (activeSessions) {
                     activeSessions.forEach(session => {
                         if (games.some(g => g.userId === session.user_id)) return;
+                        
+                        const parsedGuesses = (session.guesses || []).map(g => ({
+                            word: '-----', // Anonymize
+                            result: g.result
+                        }));
+
                         games.push({
                             userId: session.user_id,
-                            guesses: session.guesses || [],
+                            guesses: parsedGuesses,
                             status: session.status,
                             finishedAt: null,
                             solvedOrder: null
@@ -356,45 +303,44 @@ class WordleService {
             }
         }
 
-        // 3. Last Resort: Recently Finished (Losses)
+        // 3. Failed Games (Losses)
         if (games.length < limit) {
             try {
                 const { data: others } = await supabase
                     .from('wordle_history')
-                    .select('user_id, guesses, solved, solved_at, metadata')
+                    .select('user_id, metadata, solved_at')
                     .eq('date', today)
                     .eq('solved', false)
-                    .neq('user_id', excludeUserId)
-                    .limit(limit - games.length);
+                    .limit(limit);
 
-                    if (others) {
-                        others.forEach(row => {
-                            if (games.some(g => g.userId === row.user_id)) return;
-                            
-                            const rawGuesses = row.metadata?.full_guesses || [];
-                            const parsedGuesses = rawGuesses.map(word => ({
-                                word,
-                                result: this.calculateTileStates(targetWord, word)
-                            }));
+                if (others) {
+                    others.forEach(row => {
+                        if (games.some(g => g.userId === row.user_id)) return;
+                        
+                        const rawGuesses = row.metadata?.full_guesses || [];
+                        const parsedGuesses = rawGuesses.map(word => ({
+                            word: '-----',
+                            result: wordleEngine.calculateTileStates(targetWord, word)
+                        }));
 
-                            games.push({
-                                userId: row.user_id,
-                                guesses: parsedGuesses, 
-                                status: 'LOST',
-                                finishedAt: row.solved_at,
-                                solvedOrder: null
-                            });
+                        games.push({
+                            userId: row.user_id,
+                            guesses: parsedGuesses, 
+                            status: 'LOST',
+                            finishedAt: row.solved_at,
+                            solvedOrder: null
                         });
-                    }
-                } catch (e) {
-                    logger.error('[Wordle] Failed to fetch losses:', e);
+                    });
                 }
+            } catch (e) {
+                logger.error('[Wordle] Failed to fetch losses:', e);
             }
-
-            const result = games.slice(0, limit);
-            this.socialCache = { data: result, lastUpdate: now };
-            return result.filter(g => g.userId !== excludeUserId).slice(0, limit);
         }
+
+        const result = games.slice(0, limit);
+        this.minigridCache = { data: result, lastUpdate: now };
+        return result.filter(g => g.userId !== excludeUserId).slice(0, limit);
+    }
     }
 
 // Singleton instance

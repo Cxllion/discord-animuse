@@ -18,11 +18,42 @@ module.exports = {
         .setDescription('Initialize the Daily Wordle decoding protocol.'),
     
     async execute(interaction) {
-        // Initial reply is public (Patron's Private Board)
-        await interaction.deferReply();
+        const userId = interaction.user.id;
         
         try {
-            const userId = interaction.user.id;
+            // Check play status BEFORE deferring to set correct ephemeral flag
+            const hasPlayed = await minigameService.hasPlayedToday(userId);
+            
+            if (hasPlayed) {
+                await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+                const history = await minigameService.getWordleHistory(userId);
+                
+                if (history) {
+                    const user = {
+                        username: interaction.user.username,
+                        displayName: interaction.member?.displayName || interaction.user.username,
+                        avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
+                    };
+                    const bufferPersonal = await wordleGenerator.generateBoard(history, { anonymize: false, user: user });
+                    const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-result.png' });
+                    
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
+                    );
+
+                    return await interaction.editReply({
+                        content: `🏁 **Protocol Completed.** You have already finished your attempt for this solar cycle.`,
+                        files: [attachmentPersonal],
+                        components: [row]
+                    });
+                } else {
+                    return await interaction.editReply('You have completed today\'s protocol, but your record is syncing. Please try again in a moment. ♡');
+                }
+            }
+            
+            // If they haven't played, we do a public defer for the public board
+            await interaction.deferReply();
+
             const user = {
                 username: interaction.user.username,
                 displayName: interaction.member?.displayName || interaction.user.username,
@@ -40,43 +71,24 @@ module.exports = {
                         content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be initialized in the designated Arcade wing: <#${config.arcade_channel_id}>.`
                     });
                 }
-                // Gentle Nudge for Admins
+                // Gentle Nudge for Admins (Note: followUp since we deferred publicly, though they can see it)
                 await interaction.followUp({
                     content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}> for public synchronization. ♡`,
                     flags: [MessageFlags.Ephemeral]
                 });
-            }
-
-            const hasPlayed = await minigameService.hasPlayedToday(userId);
-            if (hasPlayed) {
-                const history = await minigameService.getWordleHistory(userId);
-                
-                if (history) {
-                    const bufferPersonal = await wordleGenerator.generateBoard(history, { anonymize: false, user: user });
-                    const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-result.png' });
-                    
-                    const row = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
-                    );
-
-                    return await interaction.editReply({
-                        content: `🏁 **Archive Synchronized.** You have already identified the key **${history.targetWord}** for this cycle. ♡`,
-                        files: [attachmentPersonal],
-                        components: [row]
-                    });
-                } else {
-                    // This should theoretically not happen if hasPlayed is true
-                    throw new Error('You have completed today\'s protocol, but your archival record is still synchronizing. Please try again in a moment. ♡');
-                }
             }
             
             // 2. Initialize Game State (Individual)
             const gameState = await wordleService.startNewGame(userId);
             
             // 3. Generate Anonymized Board Card (Public)
+            // Fetch minigrid cache so the very first public board has rings of others
+            const otherGames = await wordleService.getRecentGames(userId, 5);
+            
             const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
                 anonymize: true,
-                user: user
+                user: user,
+                otherGames: otherGames
             });
             const attachmentAnon = new AttachmentBuilder(bufferAnon, { name: 'wordle-archival.png' });
 
@@ -90,13 +102,8 @@ module.exports = {
                     .setCustomId(`wordle_forfeit_${userId}`)
                     .setLabel('Forfeit')
                     .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🏳️'),
-                new ButtonBuilder()
-                    .setCustomId(`wordle_progress_${userId}`)
-                    .setLabel('View Progress')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔍')
-            );
+                    .setEmoji('🏳️')
+            ); // Removed "View Progress" button, it causes confusion in V2
 
             // Respond with the Image Card
             const publicMsg = await interaction.editReply({
@@ -107,31 +114,7 @@ module.exports = {
             // Store IDs for future background updates
             gameState.publicMessageId = publicMsg.id;
             gameState.publicChannelId = publicMsg.channelId;
-
-            // 4. Send Personal Console (Private) - ONLY if they have already started guessing
-            if (gameState.guesses.length > 0) {
-                const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: user });
-                const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' });
-                
-                const privateRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`wordle_guess_${userId}`)
-                        .setLabel('Submit Guess')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('⌨️'),
-                    new ButtonBuilder()
-                        .setCustomId(`wordle_forfeit_${userId}`)
-                        .setLabel('Forfeit')
-                        .setStyle(ButtonStyle.Danger)
-                        .setEmoji('🏳️')
-                );
-
-                await interaction.followUp({
-                    files: [attachmentPersonal],
-                    components: [privateRow],
-                    flags: [MessageFlags.Ephemeral]
-                });
-            }
+            await minigameService.saveWordleSession(userId, gameState);
 
         } catch (error) {
             logger.error('[Wordle] Command Execution Failed:', error);

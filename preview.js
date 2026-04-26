@@ -269,12 +269,37 @@ const generators = {
             { 
                 userId: '123', 
                 guesses: [{ word: 'GHOST', result: [2, 0, 0, 1, 0] }], 
-                user: { username: 'Alex', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' } 
+                user: { username: 'Gold', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' },
+                status: 'WON',
+                solvedOrder: 1
             },
             { 
                 userId: '456', 
                 guesses: [{ word: 'PLANE', result: [0, 1, 2, 0, 0] }, { word: 'MUSIC', result: [1, 0, 0, 0, 2] }], 
-                user: { username: 'Sami', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' } 
+                user: { username: 'Silver', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' },
+                status: 'WON',
+                solvedOrder: 2
+            },
+            {
+                userId: '789',
+                guesses: [{ word: 'TESTA', result: [0,0,0,0,0] }],
+                user: { username: 'Bronze', avatarURL: 'https://cdn.discordapp.com/embed/avatars/2.png' },
+                status: 'WON',
+                solvedOrder: 3
+            },
+            {
+                userId: '101',
+                guesses: [{ word: 'TESTB', result: [1,1,1,1,1] }],
+                user: { username: 'Green', avatarURL: 'https://cdn.discordapp.com/embed/avatars/3.png' },
+                status: 'WON',
+                solvedOrder: 4
+            },
+            {
+                userId: '102',
+                guesses: [{ word: 'TESTC', result: [2,2,2,2,0] }],
+                user: { username: 'Red', avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' },
+                status: 'LOST',
+                solvedOrder: null
             }
         ];
 
@@ -310,6 +335,29 @@ const generators = {
             results.push({ name: role.name.replace(/\s+/g, '_').toLowerCase(), buffer });
         }
         return results;
+    },
+    wordle_toast: async () => {
+        const toastGenerator = require('./utils/generators/toastGenerator');
+        
+        const baseOptions = {
+            user: { username: 'Librarian Cxllion', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' },
+            pointsEarned: 12,
+            streakBonus: 2,
+            totalPoints: 1450,
+            streak: 5,
+            gameName: 'Wordle',
+            extraLine: 'A highly confidential decryption key.'
+        };
+
+        const flawlessBuffer = await toastGenerator.generateSuccessSlip({ ...baseOptions, attempts: 1 });
+        const precisionBuffer = await toastGenerator.generateSuccessSlip({ ...baseOptions, attempts: 2 });
+        const standardBuffer = await toastGenerator.generateSuccessSlip({ ...baseOptions, attempts: 4 });
+
+        return [
+            { name: 'flawless_1st_try', buffer: flawlessBuffer },
+            { name: 'precision_2nd_try', buffer: precisionBuffer },
+            { name: 'standard_4th_try', buffer: standardBuffer }
+        ];
     }
 };
 

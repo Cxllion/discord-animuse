@@ -396,21 +396,25 @@ class WordleGenerator {
                 const x = startX + i * slotW + (slotW / 2) - (avSize / 2); 
                 const y = startY - 15; // Shifted higher
 
-                // 1. Medal Check (Based on Solve Order)
-                let medalColor = null;
-                if (game.status === 'WON' && game.solvedOrder) {
-                    if (game.solvedOrder === 1) medalColor = '#FFD700'; 
-                    else if (game.solvedOrder === 2) medalColor = '#C0C0C0'; 
-                    else if (game.solvedOrder === 3) medalColor = '#CD7F32'; 
+                // 1. Medal/Ring Check (Based on Status & Solve Order)
+                let ringColor = null;
+                if (game.status === 'WON') {
+                    if (game.solvedOrder === 1) ringColor = '#FFD700'; // Gold
+                    else if (game.solvedOrder === 2) ringColor = '#C0C0C0'; // Silver
+                    else if (game.solvedOrder === 3) ringColor = '#CD7F32'; // Bronze
+                    else ringColor = '#22C55E'; // Green (4+ place)
+                } else if (game.status === 'LOST') {
+                    ringColor = '#EF4444'; // Red (Failed)
                 }
+                // PLAYING / Ongoing gets no ring (ringColor remains null)
 
                 // 2. Mini Avatar with Medal Ring
                 if (game.user.avatarURL) {
                     ctx.save();
-                    if (medalColor) {
+                    if (ringColor) {
                         ctx.beginPath();
                         ctx.arc(x + avSize / 2, y + avSize / 2, (avSize / 2) + 3, 0, Math.PI * 2);
-                        ctx.strokeStyle = medalColor;
+                        ctx.strokeStyle = ringColor;
                         ctx.lineWidth = 3;
                         ctx.stroke();
                     }
