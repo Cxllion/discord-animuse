@@ -615,6 +615,17 @@ const checkWordleReset = async (client) => {
     }
 };
 
+/**
+ * Periodically cleans up stale Wordle sessions (2h inactivity).
+ */
+const checkWordleHousekeeping = async () => {
+    try {
+        await wordleService.cleanupStaleSessions();
+    } catch (e) {
+        logger.error('[WordleScheduler] Housekeeping task failed:', e, 'Scheduler');
+    }
+};
+
 const getPulseStatus = () => ({
     airing: lastAiringPulse,
     activity: lastActivityPulse,
@@ -629,5 +640,6 @@ module.exports = {
     sendNotifications, 
     getPulseStatus,
     syncAllUserTrackers,
-    checkWordleReset
+    checkWordleReset,
+    checkWordleHousekeeping
 };

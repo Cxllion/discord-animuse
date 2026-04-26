@@ -110,7 +110,8 @@ class MinigameService {
     /**
      * Record a Wordle result with the new 10/8/6/5/2 Point System and Streak logic.
      */
-    async recordWordleResult(userId, guesses, solved, date = null) {
+    async recordWordleResult(userId, guesses, solved, date = null, options = {}) {
+        const { isTimeout = false } = options;
         if (!supabase) return;
         const today = date || this.getWordleDate();
 
@@ -164,7 +165,8 @@ class MinigameService {
             }
         } else {
             // Participation reward for trying but losing
-            basePoints = 2;
+            // V2: Differentiate between a loss (2 pts) and a timeout/stale session (1 pt)
+            basePoints = isTimeout ? 1 : 2;
         }
 
         // 3. Apply Streak Multiplier (Simplistic fallback)
@@ -185,6 +187,9 @@ class MinigameService {
                 definition = offlineData.definition;
             }
         }
+
+        // Apply narrative wrapper to the definition
+        definition = this.getDecryptedIntel(definition);
 
         const { error: historyError } = await supabase
             .from('wordle_history')
@@ -215,6 +220,31 @@ class MinigameService {
             totalPoints: result.totalPoints,
             definition
         };
+    }
+
+    /**
+     * Narrative Wrapper: Transforms raw dictionary definitions into thematic "Decrypted Intel".
+     * @param {string} definition 
+     * @returns {string}
+     */
+    getDecryptedIntel(definition) {
+        if (!definition) return 'A highly confidential decryption key.';
+        
+        const prefixes = [
+            'FRAGMENT DECRYPTED: ',
+            'INTEL RECOVERED: ',
+            'ARCHIVE INSIGHT: ',
+            'PROTOCOL DECODED: ',
+            'DATA FRAGMENT: '
+        ];
+        
+        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+        
+        // Ensure the definition starts with lowercase if it's following a colon
+        let cleanDef = definition.trim();
+        if (cleanDef.endsWith('.')) cleanDef = cleanDef.slice(0, -1);
+        
+        return `${prefix}${cleanDef}. ♡`;
     }
 
     /**

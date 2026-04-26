@@ -341,7 +341,53 @@ class WordleService {
         this.minigridCache = { data: result, lastUpdate: now };
         return result.filter(g => g.userId !== excludeUserId).slice(0, limit);
     }
+
+    /**
+     * Housekeeping: Archives sessions with no activity for more than 2 hours.
+     * These users get 1 point for participation.
+     */
+    async cleanupStaleSessions() {
+        if (!supabase) return;
+
+        try {
+            // Find sessions that haven't been updated for 2 hours
+            const threshold = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+            
+            const { data: staleSessions, error } = await supabase
+                .from('wordle_sessions')
+                .select('*')
+                .lt('updated_at', threshold)
+                .eq('status', 'PLAYING');
+
+            if (error) throw error;
+            if (!staleSessions || staleSessions.length === 0) return;
+
+            logger.info(`[Wordle] Housekeeping: Found ${staleSessions.length} stale sessions. Archiving...`);
+
+            for (const session of staleSessions) {
+                try {
+                    // Record as FORFEIT with 1 point participation (isTimeout flag)
+                    await minigameService.recordWordleResult(
+                        session.user_id, 
+                        session.guesses, 
+                        false, 
+                        session.date, 
+                        { isTimeout: true }
+                    );
+                    
+                    // Clear the session
+                    await minigameService.clearWordleSession(session.user_id);
+                    
+                    logger.debug(`[Wordle] Stale session archived for user ${session.user_id}. Participation credit awarded.`);
+                } catch (err) {
+                    logger.error(`[Wordle] Failed to archive stale session for ${session.user_id}:`, err);
+                }
+            }
+        } catch (e) {
+            logger.error('[Wordle] Housekeeping failed:', e);
+        }
     }
+}
 
 // Singleton instance
 module.exports = new WordleService();
