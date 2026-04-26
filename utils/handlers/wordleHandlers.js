@@ -330,8 +330,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                         totalPoints: gameState.reward.totalPoints,
                         streak: gameState.reward.streak,
                         gameName: 'Wordle',
-                        attempts: gameState.guesses.length,
-                        extraLine: gameState.status === 'WON' ? gameState.reward?.definition : null
+                        attempts: gameState.guesses.length
                     });
                     
                     const celebration = gameState.status === 'WON' 
@@ -342,6 +341,14 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                         content: celebration,
                         files: [new AttachmentBuilder(toastBuffer, { name: 'success-slip-public.webp' })]
                     }).catch(err => logger.error('[Wordle] Failed to send public receipt:', err));
+
+                    // 6. Send Ephemeral Insight to the user so they still get the definition privately
+                    if (gameState.status === 'WON' && gameState.reward?.definition) {
+                        await interaction.followUp({
+                            content: `🔍 **Word Insight**: *${gameState.reward.definition}*`,
+                            flags: [MessageFlags.Ephemeral]
+                        }).catch(() => {});
+                    }
                 }
             }
         }

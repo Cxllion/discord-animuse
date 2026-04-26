@@ -9,7 +9,7 @@ const logger = require('../core/logger');
 class ToastGenerator {
     constructor() {
         this.WIDTH = 600; 
-        this.HEIGHT = 200;
+        this.HEIGHT = 150;
         this.COLORS = {
             BACKGROUND: '#0A0A0A',
             PANEL: 'rgba(255, 255, 255, 0.03)',
@@ -29,8 +29,7 @@ class ToastGenerator {
             totalPoints = 0,
             streak = 0,
             gameName = 'Minigame',
-            attempts = 0,
-            extraLine = null
+            attempts = 0
         } = options;
 
         const scale = 1.5;
@@ -158,54 +157,6 @@ class ToastGenerator {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.font = `900 36px 'monalqo', sans-serif`;
         ctx.fillText(gameName.toUpperCase(), this.WIDTH - 30, 55);
-
-        // 6. Lower Insight Panel
-        if (extraLine) {
-            const panelH = 52;
-            const panelY = this.HEIGHT - panelH - 15;
-            ctx.fillStyle = this.COLORS.PANEL;
-            ctx.beginPath();
-            ctx.roundRect(20, panelY, this.WIDTH - 40, panelH, 8);
-            ctx.fill();
-
-            ctx.textAlign = 'left';
-            ctx.fillStyle = this.COLORS.ACCENT;
-            ctx.font = `900 10px 'monalqo', sans-serif`;
-            ctx.letterSpacing = '1.8px';
-            ctx.fillText('WORD INSIGHT', 32, panelY + 18);
-
-            ctx.fillStyle = this.COLORS.TEXT_SECONDARY;
-            ctx.font = `italic 500 11px 'monalqo', sans-serif`;
-            ctx.letterSpacing = '0px';
-            
-            const maxWidth = this.WIDTH - 70;
-            const words = extraLine.split(' ');
-            let line = '';
-            let lineY = panelY + 32;
-            let lineCount = 0;
-            const maxLines = 2;
-
-            for (let n = 0; n < words.length; n++) {
-                const testLine = line + words[n] + ' ';
-                const metrics = ctx.measureText(testLine);
-                
-                if (metrics.width > maxWidth && n > 0) {
-                    lineCount++;
-                    if (lineCount >= maxLines) {
-                        ctx.fillText(line.trim() + '...', 32, lineY);
-                        line = '';
-                        break;
-                    } else {
-                        ctx.fillText(line, 32, lineY);
-                        line = words[n] + ' ';
-                        lineY += 14;
-                    }
-                } else {
-                    line = testLine;
-                }
-            }
-            if (line.length > 0) ctx.fillText(line, 32, lineY);
-        }
 
         return canvas.toBuffer('image/webp', { quality: 95 });
     }
