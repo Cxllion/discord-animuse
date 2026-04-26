@@ -47,7 +47,8 @@ const fetchConfig = async (guildId) => {
             welcome_dm_briefing: true,
             boutique_thumbnail: null,
             boutique_footer: null,
-            suggestions_channel_id: null
+            suggestions_channel_id: null,
+            suggestions_box_message_id: null
         };
     }
 

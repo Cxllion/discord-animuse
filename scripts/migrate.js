@@ -66,6 +66,7 @@ const initializeDatabase = async () => {
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS leveling_channels text[] DEFAULT '{}';`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS xp_level_up_message text;`);
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS suggestions_channel_id text;`);
+            await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS suggestions_box_message_id text;`);
             
             // Boutique Persistence
             await client.query(`ALTER TABLE public.guild_configs ADD COLUMN IF NOT EXISTS boutique_channel_id text;`);

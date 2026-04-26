@@ -28,7 +28,11 @@ module.exports = {
         try {
             const botAvatar = interaction.client.user.displayAvatarURL({ dynamic: true });
             const payload = suggestionGenerator.renderSuggestionsBox(botAvatar);
-            await channel.send(payload);
+            const boxMessage = await channel.send(payload);
+
+            // Save for sticky persistence
+            const { upsertConfig } = require('../../utils/services/guildConfigService');
+            await upsertConfig(interaction.guildId, { suggestions_box_message_id: boxMessage.id });
 
             await interaction.editReply(`✅ **Success!** The Suggestions Box has been deployed to ${channel}.`);
         } catch (error) {

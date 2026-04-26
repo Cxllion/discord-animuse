@@ -82,18 +82,23 @@ const handleSuggestionInteraction = async (interaction) => {
             const payload = suggestionGenerator.renderSuggestion(suggestion, user);
             const message = await targetChannel.send(payload);
 
-            // 3. Create Thread
-            const thread = await message.startThread({
-                name: `Discussion: ${title.slice(0, 50)}`,
-                autoArchiveDuration: 10080, // 1 week
-                reason: 'Suggestion Discussion'
-            });
+            // 3. Sticky Logic: Resend the Suggestions Box to the bottom
+            const oldBoxId = config?.suggestions_box_message_id;
+            if (oldBoxId) {
+                const oldBox = await targetChannel.messages.fetch(oldBoxId).catch(() => null);
+                if (oldBox) await oldBox.delete().catch(() => null);
+            }
 
-            // 4. Update DB with message/thread IDs
-            await suggestionService.updateSuggestion(suggestion.id, {
-                message_id: message.id,
-                thread_id: thread.id
-            });
+            const botAvatar = interaction.client.user.displayAvatarURL({ dynamic: true });
+            const boxPayload = suggestionGenerator.renderSuggestionsBox(botAvatar);
+            const newBox = await targetChannel.send(boxPayload);
+
+            // 4. Update DB with message ID and new Box ID
+            const { upsertConfig } = require('../services/guildConfigService');
+            await Promise.all([
+                suggestionService.updateSuggestion(suggestion.id, { message_id: message.id }),
+                upsertConfig(guild.id, { suggestions_box_message_id: newBox.id })
+            ]);
 
             await interaction.editReply(`✅ **Suggestion Submitted!** Your idea has been archived in <#${targetChannelId}>. Thank you for contributing to the library!`);
         } catch (err) {
