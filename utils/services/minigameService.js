@@ -16,6 +16,7 @@ class MinigameService {
         this.cache = new Map(); 
         this.generationPromise = null;
         this.SESSION_FILE = path.join(__dirname, '../../.wordle_sessions.json');
+        this._fileLock = Promise.resolve();
     }
 
     /**
@@ -55,6 +56,8 @@ class MinigameService {
 
                 const newHighScore = Math.max(existingStats?.high_score || 0, score);
                 const newTotalPlays = (existingStats?.total_plays || 0) + 1;
+                const newWins = (existingStats?.wins || 0) + (options.isWin ? 1 : 0);
+                const newMetadata = { ...(existingStats?.metadata || {}), ...metadata };
 
                 await supabase
                     .from('minigame_stats')
@@ -63,6 +66,8 @@ class MinigameService {
                         game_id: gameId,
                         high_score: newHighScore,
                         total_plays: newTotalPlays,
+                        wins: newWins,
+                        metadata: newMetadata,
                         last_played: new Date().toISOString()
                     }, { onConflict: 'user_id,game_id' });
             } catch (statsErr) {
@@ -92,6 +97,10 @@ class MinigameService {
 
             if (scoreError) {
                 logger.error(`[ArcadeProtocol] Score update failed: ${scoreError.message}`);
+                return {
+                    totalPoints: globalStats?.total_points || 0,
+                    isNewHighScore: false
+                };
             } else {
                 logger.info(`[ArcadeProtocol] Awarded ${amount} pts to ${userId} for [${gameId}]. Global: ${newTotalPoints}`);
             }
@@ -120,20 +129,40 @@ class MinigameService {
         try {
             const { data: stats } = await supabase
                 .from('minigame_stats')
-                .select('last_played')
+                .select('last_played, metadata')
                 .eq('user_id', userId)
                 .eq('game_id', 'wordle')
                 .maybeSingle();
 
-            const lastPlayed = stats?.last_played ? stats.last_played.split('T')[0] : null;
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-            if (lastPlayed === yesterday) {
-                streak = 2; // Basic binary streak since we can't store incremental streak in metadata
-            } else if (lastPlayed !== today) {
-                streak = 1;
+            // Convert lastPlayed (UTC) to GMT+5 to match 'today' logic
+            let lastPlayed = null;
+            if (stats?.last_played) {
+                const lpDate = new Date(stats.last_played);
+                const offset = 5 * 60 * 60 * 1000;
+                const lpGmtPlus5 = new Date(lpDate.getTime() + offset);
+                lastPlayed = lpGmtPlus5.toISOString().split('T')[0];
             }
-        } catch (e) {}
+            
+            // Calculate yesterday strictly relative to the GMT+5 'today' string
+            const todayObj = new Date(today); // 'YYYY-MM-DD' parses as midnight UTC
+            const yesterdayObj = new Date(todayObj.getTime() - 86400000);
+            const yesterday = yesterdayObj.toISOString().split('T')[0];
+            const currentStreak = stats?.metadata?.streak || 0;
+
+            if (solved) {
+                if (lastPlayed === yesterday) {
+                    streak = currentStreak + 1;
+                } else if (lastPlayed === today) {
+                    streak = currentStreak; // Already played today
+                } else {
+                    streak = 1;
+                }
+            } else {
+                streak = 0; // Streak resets on loss
+            }
+        } catch (e) {
+            logger.error('[Wordle] Failed to fetch streak context:', e);
+        }
 
         // 2. Base Point Calculation (10/8/6/5/2)
         let basePoints = 2; 
@@ -209,7 +238,9 @@ class MinigameService {
         // Award via Arcade Protocol
         const result = await this.awardPoints(userId, totalEarned, {
             gameId: 'wordle',
-            score: solved ? (100 / (solvedOrder || 1)) : 0
+            isWin: solved,
+            score: solved ? (100 / (solvedOrder || 1)) : 0,
+            metadata: { streak: streak } // Persist the streak!
         });
 
         return { 
@@ -301,6 +332,11 @@ class MinigameService {
         if (this.cache.has(today)) return this.cache.get(today);
         const { data } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
         if (data) {
+            // Unbounded Cache Fix: Keep size small
+            if (this.cache.size > 5) {
+                const firstKey = this.cache.keys().next().value;
+                this.cache.delete(firstKey);
+            }
             this.cache.set(today, data.word);
             return data.word;
         }
@@ -406,8 +442,19 @@ class MinigameService {
         // 3. Final Fail-Safe: If API is completely down, use our robust offline dictionary
         if (!word) {
             logger.info('[Wordle] All external word sources failed. Deploying Offline Decryption Key...');
-            const backup = getRandomOfflineWord();
-            word = backup.word;
+            
+            let offlineAttempts = 0;
+            while (!word && offlineAttempts < 50) {
+                const backup = getRandomOfflineWord();
+                if (!usedWords.has(backup.word)) {
+                    word = backup.word;
+                }
+                offlineAttempts++;
+            }
+            
+            if (!word) {
+                word = getRandomOfflineWord().word; // Absolute last resort
+            }
         }
 
         // 3. Save as Today's Word
@@ -541,11 +588,14 @@ class MinigameService {
     }
 
     async _saveLocalSessions(data) {
-        try {
-            await fs.promises.writeFile(this.SESSION_FILE, JSON.stringify(data), 'utf-8');
-        } catch (e) {
-            logger.error('[ArcadeProtocol] Failed to write local sessions:', e);
-        }
+        this._fileLock = this._fileLock.then(async () => {
+            try {
+                await fs.promises.writeFile(this.SESSION_FILE, JSON.stringify(data), 'utf-8');
+            } catch (e) {
+                logger.error('[ArcadeProtocol] Failed to write local sessions:', e);
+            }
+        }).catch(() => {});
+        return this._fileLock;
     }
 
     /**
@@ -719,6 +769,129 @@ class MinigameService {
             logger.info(`[ArcadeProtocol] Bulk restored ${scores.length} score records.`, 'Arcade');
         } catch (err) {
             logger.error(`[ArcadeProtocol] Bulk import failed:`, err);
+        }
+    }
+
+    /**
+     * Record a Connect4 result with the 3 points per win (max 3 times per opponent per day) system.
+     * Bonus: +5 points for precision wins (<= 10 moves).
+     */
+    async recordConnect4Result(p1Id, p2Id, winnerId, moves = 0) {
+        if (!supabase) return { pointsAwarded: 0 };
+        const today = this.getWordleDate();
+        
+        let pointsAwarded = 0;
+        
+        // Anti-Farm Check: Do not award points for self-play
+        const isSelfPlay = p1Id === p2Id;
+        
+        // Only award points if there is a winner (not a draw) and it's not a self-play game
+        if (winnerId && !isSelfPlay) {
+            const loserId = winnerId === p1Id ? p2Id : p1Id;
+
+            try {
+                // Check how many times winnerId has won against loserId today
+                const { count } = await supabase
+                    .from('connect4_history')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('winner_id', winnerId)
+                    .eq('date', today)
+                    .or(`player1_id.eq.${loserId},player2_id.eq.${loserId}`);
+
+                if (count < 3) {
+                    pointsAwarded = moves <= 10 ? 5 : 3;
+                    await this.awardPoints(winnerId, pointsAwarded, { gameId: 'connect4', isWin: true });
+                } else {
+                    // Still record the game played stat
+                    await this.awardPoints(winnerId, 0, { gameId: 'connect4', isWin: true });
+                }
+                // Always record participation for loser
+                await this.awardPoints(loserId, 0, { gameId: 'connect4' });
+            } catch (err) {
+                // If table doesn't exist yet, we still record but skip the limit check
+                logger.error(`[ArcadeProtocol] Failed to check Connect4 limits: ${err.message}`);
+            }
+        } else {
+            // It's a draw, record participation for both
+            await this.awardPoints(p1Id, 0, { gameId: 'connect4' });
+            await this.awardPoints(p2Id, 0, { gameId: 'connect4' });
+        }
+
+        // Save history (Fire and forget or caught)
+        try {
+            await supabase
+                .from('connect4_history')
+                .insert({
+                    player1_id: p1Id,
+                    player2_id: p2Id,
+                    winner_id: winnerId,
+                    date: today,
+                    points_awarded: pointsAwarded
+                });
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to save Connect4 history: ${err.message}`);
+        }
+
+        return { pointsAwarded };
+    }
+    /**
+     * getArcadeStats: Unified fetch for the Arcade Passport.
+     */
+    async getArcadeStats(userId) {
+        if (!supabase) return null;
+        try {
+            // 1. Global Points & Rank
+            const { data: global } = await supabase
+                .from('minigame_scores')
+                .select('total_points')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            const { count: rank } = await supabase
+                .from('minigame_scores')
+                .select('*', { count: 'exact', head: true })
+                .gt('total_points', global?.total_points || 0);
+
+            // 2. Wordle Stats
+            const { data: wordle } = await supabase
+                .from('minigame_stats')
+                .select('high_score, total_plays, wins, metadata, last_played')
+                .eq('user_id', userId)
+                .eq('game_id', 'wordle')
+                .maybeSingle();
+
+            // 3. Connect4 Stats
+            const { data: connect4 } = await supabase
+                .from('minigame_stats')
+                .select('high_score, total_plays, wins, metadata, last_played')
+                .eq('user_id', userId)
+                .eq('game_id', 'connect4')
+                .maybeSingle();
+
+            
+            const { count: c4Total } = await supabase
+                .from('connect4_history')
+                .select('*', { count: 'exact', head: true })
+                .or(`player1_id.eq.${userId},player2_id.eq.${userId}`);
+
+            return {
+                points: global?.total_points || 0,
+                rank: rank + 1,
+                wordle: {
+                    streak: wordle?.metadata?.streak || 0,
+                    totalSolved: wordle?.wins || 0,
+                    totalPlays: wordle?.total_plays || 0,
+                    lastPlayed: wordle?.last_played
+                },
+                connect4: {
+                    wins: connect4?.wins || 0,
+                    total: connect4?.total_plays || 0,
+                    lastPlayed: connect4?.last_played
+                }
+            };
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to fetch arcade stats for ${userId}:`, err);
+            return null;
         }
     }
 }

@@ -41,13 +41,19 @@ module.exports = {
                         new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
                     );
 
+                    const nextReset = new Date(new Date().getTime() + 5 * 3600000);
+                    nextReset.setUTCDate(nextReset.getUTCDate() + 1);
+                    nextReset.setUTCHours(0, 0, 0, 0);
+                    const unix = Math.floor((nextReset.getTime() - 5 * 3600000) / 1000);
+
                     return await interaction.editReply({
-                        content: `🏁 **Protocol Completed.** You have already finished your attempt for this solar cycle.`,
+                        content: `🏁 **Protocol Completed.** You have already finished your attempt for this solar cycle.\n\n` +
+                                `⏳ **Next Reset**: <t:${unix}:R> (<t:${unix}:t>)`,
                         files: [attachmentPersonal],
                         components: [row]
                     });
                 } else {
-                    return await interaction.editReply('You have completed today\'s protocol, but your record is syncing. Please try again in a moment. ♡');
+                    return await interaction.editReply('⚠️ **Syncing Archives:** You have completed today\'s protocol, but your record is still synchronizing. Please try again in a moment. ♡');
                 }
             }
             

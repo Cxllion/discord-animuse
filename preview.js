@@ -313,6 +313,63 @@ const generators = {
             { name: 'public', buffer: bufferPublic }
         ];
     },
+    connect4: async () => {
+        const connect4Generator = require('./utils/generators/connect4Generator');
+        const connect4Engine = require('./utils/core/connect4Engine');
+        
+        const options = {
+            p1Data: { username: 'Librarian', displayName: 'Librarian Cxllion', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' },
+            p2Data: { username: 'Drone', displayName: 'Rogue Drone', avatarURL: 'https://cdn.discordapp.com/embed/avatars/1.png' }
+        };
+
+        const scenarios = [];
+
+        // 1. Player 1 Turn
+        const board1 = connect4Engine.createBoard();
+        board1[5][3] = 2; // P2 moved
+        scenarios.push({
+            name: 'p1_turn',
+            buffer: await connect4Generator.generateBoard({
+                id: 'c4_p1_turn', board: board1, player1: '111', player2: '222', currentTurn: '111', status: 'PLAYING'
+            }, options)
+        });
+
+        // 2. Player 2 Turn
+        const board2 = connect4Engine.createBoard();
+        board2[5][3] = 1; // P1 moved
+        scenarios.push({
+            name: 'p2_turn',
+            buffer: await connect4Generator.generateBoard({
+                id: 'c4_p2_turn', board: board2, player1: '111', player2: '222', currentTurn: '222', status: 'PLAYING'
+            }, options)
+        });
+
+        // 3. Player 1 Win
+        const board3 = connect4Engine.createBoard();
+        for(let i=0; i<4; i++) board3[5-i][0] = 1;
+        board3[5][1] = 2; board3[4][1] = 2; board3[3][1] = 2;
+        scenarios.push({
+            name: 'p1_win',
+            buffer: await connect4Generator.generateBoard({
+                id: 'c4_p1_win', board: board3, player1: '111', player2: '222', currentTurn: '222', 
+                status: 'WON', winner: '111', winningTiles: [{r:5,c:0},{r:4,c:0},{r:3,c:0},{r:2,c:0}]
+            }, options)
+        });
+
+        // 4. Player 2 Win
+        const board4 = connect4Engine.createBoard();
+        for(let i=0; i<4; i++) board4[5][i+2] = 2;
+        board4[5][0] = 1; board4[4][0] = 1; board4[3][0] = 1;
+        scenarios.push({
+            name: 'p2_win',
+            buffer: await connect4Generator.generateBoard({
+                id: 'c4_p2_win', board: board4, player1: '111', player2: '222', currentTurn: '111', 
+                status: 'WON', winner: '222', winningTiles: [{r:5,c:2},{r:5,c:3},{r:5,c:4},{r:5,c:5}]
+            }, options)
+        });
+
+        return scenarios;
+    },
     mafia_role: async (roleName = null, isBatch = false) => {
         const { generateRoleCard } = require('./utils/generators/mafia/roleGenerator');
         const { Archivist, Revision, TheConservator, TheShredder, TheIndexer, TheHeadCurator, TheGhostwriter, TheScribe, TheCensor, ThePlagiarist, TheCorruptor, TheAnomaly, TheCritic, TheBookburner } = require('./utils/mafia/MafiaRoles');
@@ -357,6 +414,26 @@ const generators = {
             { name: 'flawless_1st_try', buffer: flawlessBuffer },
             { name: 'precision_2nd_try', buffer: precisionBuffer },
             { name: 'standard_4th_try', buffer: standardBuffer }
+        ];
+    },
+    arcade: async () => {
+        const arcadeGenerator = require('./utils/generators/arcadeGenerator');
+        const stats = {
+            rank: 5,
+            points: 1250,
+            wordle: { streak: 12, totalSolved: 45, totalPlays: 50, lastPlayed: new Date() },
+            connect4: { wins: 82, total: 123, lastPlayed: new Date() }
+        };
+        const user = { displayName: 'Librarian Cxllion', avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png' };
+        
+        const summary = await arcadeGenerator.generatePage('summary', stats, user);
+        const wordle = await arcadeGenerator.generatePage('wordle', stats, user);
+        const c4 = await arcadeGenerator.generatePage('connect4', stats, user);
+
+        return [
+            { name: 'summary', buffer: summary },
+            { name: 'wordle', buffer: wordle },
+            { name: 'connect4', buffer: c4 }
         ];
     }
 };

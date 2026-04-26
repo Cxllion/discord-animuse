@@ -82,7 +82,7 @@ const handleWordleInteraction = async (interaction) => {
             await wordleService.getGame(user.id); 
             const gameState = await wordleService.forfeitGame(user.id);
             if (!gameState) {
-                return interaction.followUp({ content: '⚠️ **Invalid State.** Your terminal may have already synced. Please check the public board.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
+                return interaction.followUp({ content: '⚠️ **State Mismatch:** Your terminal may have already synchronized. Please check the public board.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
             }
 
             // Update views to show game over
@@ -98,7 +98,7 @@ const handleWordleInteraction = async (interaction) => {
         try {
             const gameState = await wordleService.getGame(user.id);
             if (!gameState) {
-                return interaction.reply({ content: '❌ **No Active Session.** Use `/wordle` to start a new one.', flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: '❌ **Session Missing:** No active decoding session found. Use `/wordle` to initialize a new terminal.', flags: [MessageFlags.Ephemeral] });
             }
 
             await updateWordleViews(interaction, gameState, user);
@@ -112,7 +112,7 @@ const handleWordleInteraction = async (interaction) => {
     if (action === 'result') {
         try {
             const history = await minigameService.getWordleHistory(user.id);
-            if (!history) return interaction.reply({ content: '❌ No history found for today.', flags: [MessageFlags.Ephemeral] });
+            if (!history) return interaction.reply({ content: '❌ **Archive Empty:** No decoding history found for this solar cycle.', flags: [MessageFlags.Ephemeral] });
 
             const bufferPersonal = await wordleGenerator.generateBoard(history, { anonymize: false, user: { username: user.username, avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 }) } });
             const attachmentPersonal = new AttachmentBuilder(bufferPersonal, { name: 'wordle-result.png' });
@@ -150,7 +150,7 @@ const handleWordleModals = async (interaction) => {
 
     // Basic Validation
     if (!/^[A-Z]{5}$/.test(guess)) {
-        return interaction.reply({ content: '❌ **Invalid Input.** Please enter exactly 5 letters (A-Z).', flags: MessageFlags.Ephemeral });
+        return interaction.reply({ content: '❌ **Input Deviation:** Please enter exactly 5 letters (A-Z) for archive verification.', flags: MessageFlags.Ephemeral });
     }
 
     // 1. Retrieve Private Game
@@ -180,7 +180,7 @@ const handleWordleModals = async (interaction) => {
     // NEW: Duplicate Guess Prevention
     if (game.guesses.some(g => g.word === guess)) {
         return interaction.reply({
-            content: `⚠️ **"${guess}"** has already been attempted on this shared board. Coordinate with your fellow patrons to find the key!`,
+            content: `⚠️ **Protocol Clash:** "${guess}" has already been attempted on this shared terminal. Coordinate with your fellow patrons!`,
             flags: [MessageFlags.Ephemeral]
         });
     }
@@ -198,13 +198,13 @@ const handleWordleModals = async (interaction) => {
         // 2. Validate Word (External API)
         const isValid = await wordleService.isValidWord(guess);
         if (!isValid) {
-            return interaction.followUp({ content: `❌ **"${guess}"** is not a recognized word in our archives.`, flags: MessageFlags.Ephemeral });
+            return interaction.followUp({ content: `❌ **Index Error:** "${guess}" is not a recognized word in our archives.`, flags: MessageFlags.Ephemeral });
         }
 
         // 3. Process Guess
         const gameState = await wordleService.submitGuess(user.id, guess);
         if (!gameState) {
-            return interaction.followUp({ content: '⚠️ **Processing.** Your terminal is already synchronizing a previous input. Please wait.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
+            return interaction.followUp({ content: '⚠️ **Terminal Busy:** Your terminal is currently synchronizing a previous input. Please wait.', flags: [MessageFlags.Ephemeral] }).catch(()=>null);
         }
 
     // 4. Update BOTH views (updateWordleViews handles all rendering and UI logic)
@@ -357,6 +357,12 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                     if (gameState.status === 'WON' && gameState.reward?.definition) {
                         await interaction.followUp({
                             content: `🔍 **Word Insight**: *${gameState.reward.definition}*`,
+                            flags: [MessageFlags.Ephemeral]
+                        }).catch(() => {});
+                    } else if (gameState.status === 'LOST') {
+                        // REVEAL THE WORD PRIVATELY ON FAILURE
+                        await interaction.followUp({
+                            content: `🔐 **Decryption Failure**: The correct cipher was **${gameState.targetWord}**.`,
                             flags: [MessageFlags.Ephemeral]
                         }).catch(() => {});
                     }

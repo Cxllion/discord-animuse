@@ -196,9 +196,53 @@ module.exports = {
                             wordleAttachments.push(new AttachmentBuilder(buffer, { name: `${toast.name}.png` }));
                         }
 
+                        // NEW: Connect4 Diagnostics
+                        const connect4Generator = require('../../utils/generators/connect4Generator');
+                        const connect4Engine = require('../../utils/core/connect4Engine');
+                        const c4Attachments = [];
+                        
+                        const c4Opts = {
+                            p1Data: { username: interaction.user.username, displayName: interaction.member?.displayName || interaction.user.username, avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 }) },
+                            p2Data: { username: 'Rogue Drone', displayName: 'Rogue Drone', avatarURL: 'https://cdn.discordapp.com/embed/avatars/4.png' }
+                        };
+
+                        // 1. Player 1 Turn
+                        const b1 = connect4Engine.createBoard(); b1[5][3] = 2;
+                        const buf1 = await connect4Generator.generateBoard({ id:'t1', board:b1, player1:'1', player2:'2', currentTurn:'1', status:'PLAYING' }, c4Opts);
+                        c4Attachments.push(new AttachmentBuilder(buf1, { name: 'c4-p1-turn.png' }));
+
+                        // 2. Player 2 Turn
+                        const b2 = connect4Engine.createBoard(); b2[5][3] = 1;
+                        const buf2 = await connect4Generator.generateBoard({ id:'t2', board:b2, player1:'1', player2:'2', currentTurn:'2', status:'PLAYING' }, c4Opts);
+                        c4Attachments.push(new AttachmentBuilder(buf2, { name: 'c4-p2-turn.png' }));
+
+                        // 3. Player 1 Win
+                        const b3 = connect4Engine.createBoard(); for(let i=0;i<4;i++) b3[5-i][0]=1;
+                        const buf3 = await connect4Generator.generateBoard({ id:'t3', board:b3, player1:'1', player2:'2', currentTurn:'2', status:'WON', winner:'1', winningTiles:[{r:5,c:0},{r:4,c:0},{r:3,c:0},{r:2,c:0}] }, c4Opts);
+                        c4Attachments.push(new AttachmentBuilder(buf3, { name: 'c4-p1-win.png' }));
+
+                        // 4. Player 2 Win
+                        const b4 = connect4Engine.createBoard(); for(let i=0;i<4;i++) b4[5][i+2]=2;
+                        const buf4 = await connect4Generator.generateBoard({ id:'t4', board:b4, player1:'1', player2:'2', currentTurn:'1', status:'WON', winner:'2', winningTiles:[{r:5,c:2},{r:5,c:3},{r:5,c:4},{r:5,c:5}] }, c4Opts);
+                        c4Attachments.push(new AttachmentBuilder(buf4, { name: 'c4-p2-win.png' }));
+
+                        // Send Wordle + Toasts first
                         await interaction.editReply({
-                            content: `✅ **Arcade Diagnostic Complete**\nGenerated **Wordle Board Matrix** and **Success Slip Archives** (1st Place, Standard, Participation).`,
+                            content: `✅ **Arcade Diagnostic (Part 1/2)**\nGenerated **Wordle Board Matrix** and **Success Slip Archives**.`,
                             files: wordleAttachments
+                        });
+
+                        // Part 2: Connect4 + Arcade Passport
+                        const arcadeGenerator = require('../../utils/generators/arcadeGenerator');
+                        const passportBuf = await arcadeGenerator.generatePage('summary', {
+                            rank: 1, points: 5000, 
+                            wordle: { streak: 5, totalSolved: 20, lastPlayed: new Date() },
+                            connect4: { wins: 15, losses: 5, total: 20, lastPlayed: new Date() }
+                        }, { displayName: 'ARCHIVIST', avatarURL: interaction.user.displayAvatarURL({ extension: 'png' }) });
+
+                        await interaction.followUp({
+                            content: `✅ **Arcade Diagnostic (Part 2/2)**\nGenerated **Connect4 Tactics Matrix** and the **Liquid Passport (V6)**.`,
+                            files: [...c4Attachments, new AttachmentBuilder(passportBuf, { name: 'arcade-passport.png' })]
                         });
 
                     } catch (err) {

@@ -45,8 +45,8 @@ class WordleGenerator {
         }
 
         // Truncate long names to prevent overlap with the 'DAILY ARCHIVE DECODING' title
-        if (finalName.length > 15) {
-            finalName = finalName.substring(0, 13) + '..';
+        if (finalName.length > 12) {
+            finalName = finalName.substring(0, 10) + '..';
         }
 
         return finalName.toUpperCase();
@@ -226,9 +226,9 @@ class WordleGenerator {
 
         // Title
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = `900 24px 'monalqo', sans-serif`;
+        ctx.font = `900 26px 'monalqo', sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText('DAILY ARCHIVE DECODING', 35, 60);
+        ctx.fillText('MUSE DECODER', 35, 60);
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.font = `600 12px 'monalqo', sans-serif`;
@@ -261,7 +261,7 @@ class WordleGenerator {
             const displayName = this.getDisplayName(user);
             ctx.textAlign = 'right';
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = `800 16px 'monalqo', sans-serif`;
+            ctx.font = `800 15px 'monalqo', sans-serif`;
             ctx.fillText(displayName, avatarX - 15, 60);
             
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';

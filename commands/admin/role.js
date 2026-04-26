@@ -29,7 +29,7 @@ module.exports = {
             .setName('create')
             .setDescription('Create a new role and optionally assign it to a category.')
             .addStringOption(option => option.setName('name').setDescription('Name for the new role').setRequired(true))
-            .addStringOption(option => option.setName('category').setDescription('The category to assign this role to').setRequired(false))
+            .addStringOption(option => option.setName('category').setDescription('The category to assign this role to').setRequired(false).setAutocomplete(true))
             .addStringOption(option => option.setName('color').setDescription('Hex color code (e.g. #FF0000)').setRequired(false))
             .addBooleanOption(option => option.setName('hoist').setDescription('Display role separately').setRequired(false))
         )
@@ -38,7 +38,7 @@ module.exports = {
             .setName('register')
             .setDescription('Register an existing role to a category.')
             .addRoleOption(option => option.setName('role').setDescription('The role to register').setRequired(true))
-            .addStringOption(option => option.setName('category_name').setDescription('Name of the category to place it in').setRequired(true))
+            .addStringOption(option => option.setName('category_name').setDescription('Name of the category to place it in').setRequired(true).setAutocomplete(true))
         )
         // delete
         .addSubcommand(sub => sub
@@ -48,6 +48,22 @@ module.exports = {
         ),
     dbRequired: true,
 
+    async autocomplete(interaction) {
+        const focusedValue = interaction.options.getFocused().toLowerCase();
+        
+        try {
+            const categories = await getRoleCategories(interaction.guildId);
+            const filtered = categories
+                .filter(cat => cat.name.toLowerCase().includes(focusedValue))
+                .slice(0, 25);
+            
+            await interaction.respond(
+                filtered.map(cat => ({ name: cat.name, value: cat.name }))
+            );
+        } catch (err) {
+            await interaction.respond([]);
+        }
+    },
     async execute(interaction) {
         const sub = interaction.options.getSubcommand();
         const guild = interaction.guild;
