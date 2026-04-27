@@ -83,22 +83,29 @@ module.exports = {
             }
 
             // 3. Arcade Protocol: Invitation Phase
-            const invitationRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_accept_${challengerId}_${opponent.id}`).setLabel('Accept Link').setStyle(ButtonStyle.Success).setEmoji('⚔️'),
-                new ButtonBuilder().setCustomId(`c4_decline_${challengerId}_${opponent.id}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
+            const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`${prefix}_accept_${challengerId}_${opponent.id}`).setLabel('Accept').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`${prefix}_decline_${challengerId}_${opponent.id}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
-            const inviteHeader = `🎮 **Connect Muse Challenge:** <@${challengerId}> has challenged <@${opponent.id}> to a match!`;
-            
+            const inviteEmbed = new EmbedBuilder()
+                .setTitle('🌸 TACTICAL LINK: INVITATION RECEIVED')
+                .setDescription(`The patron <@${challengerId}> is requesting to establish a **Connect Muse** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
+                .setColor(0xFFB7C5)
+                .setFooter({ text: 'Awaiting biometric authorization...' });
+
             if (interaction.deferred) {
                 await interaction.editReply({
-                    content: inviteHeader,
-                    components: [invitationRow]
+                    content: `👋 <@${opponent.id}>, a new link request has arrived.`,
+                    embeds: [inviteEmbed],
+                    components: [row]
                 });
             } else {
                 await interaction.reply({
-                    content: inviteHeader,
-                    components: [invitationRow]
+                    content: `👋 <@${opponent.id}>, a new link request has arrived.`,
+                    embeds: [inviteEmbed],
+                    components: [row]
                 });
             }
 

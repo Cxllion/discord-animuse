@@ -114,9 +114,10 @@ const handleConnect4Interaction = async (interaction) => {
             await updateConnect4Views(interaction, updatedGame);
         } else if (action === 'forfeit') {
             // [4] Forfeit Confirmation
+            const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
             const confirmRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_forfeitconfirm_${gameId}_${user.id}`).setLabel('Confirm Abandonment').setStyle(ButtonStyle.Danger),
-                new ButtonBuilder().setCustomId(`c4_cancel_${gameId}`).setLabel('Resume Protocol').setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId(`${prefix}_forfeitconfirm_${gameId}_${user.id}`).setLabel('Confirm Abandonment').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId(`${prefix}_cancel_${gameId}`).setLabel('Resume Protocol').setStyle(ButtonStyle.Secondary)
             );
             await interaction.reply({ content: '⚠️ **Protocol Warning:** Are you sure you wish to sever this tactical link? This will count as a forfeit.', components: [confirmRow], flags: [MessageFlags.Ephemeral] });
         } else if (action === 'forfeitconfirm') {
@@ -137,11 +138,13 @@ const handleConnect4Interaction = async (interaction) => {
             // Mock interaction for command re-execution
             const mockInteraction = {
                 ...interaction,
-                user: user, // Keep the challenger the same
+                user: user,
                 options: { getUser: () => ({ id: opponentId }) },
-                deferReply: () => interaction.reply({ content: '🔄 **Protocol Restarting...**', flags: [MessageFlags.Ephemeral] }), // Changed to reply since we can't defer a button as a command directly if we want to send a new message easily
-                editReply: (o) => interaction.channel.send(o), // Fallback to sending in channel since deferring buttons is tricky
-                followUp: (o) => interaction.channel.send(o)
+                // Use the channel to send the new invitation since we can't 're-defer' the button click
+                deferReply: async () => {}, // No-op, we'll handle messaging manually
+                editReply: async (o) => interaction.channel.send(o),
+                followUp: async (o) => interaction.channel.send(o),
+                reply: async (o) => interaction.channel.send(o)
             };
             return await connect4Command.execute(mockInteraction);
         } else if (action === 'accept') {
@@ -247,45 +250,53 @@ const updateConnect4Views = async (interaction, gameState) => {
         const currentTurn = gameState.current_turn || gameState.currentTurn;
         let content = '';
         if (gameState.status === 'PLAYING') {
-            content = `⏳ **Turn Timer:** ${secondsPassed}s | <@${currentTurn}>`;
+            content = `🎮 **Connect Muse:** It is <@${currentTurn}>'s turn! (2m limit)`;
         } else if (gameState.status === 'WON') {
-            content = `🏁 **Connect Muse:** <@${gameState.winner}> wins! ♡`;
+            content = `🎊 **Connect Muse:** <@${gameState.winner}> has achieved total domination!`;
         } else if (gameState.status === 'DRAW') {
-            content = `🏁 **Connect Muse:** It's a draw!`;
+            content = '🤝 **Connect Muse:** Tactical stalemate achieved. Mutual annihilation.';
         } else if (gameState.status === 'FORFEITED') {
-            content = `🏳️ **Connect Muse:** <@${gameState.winner}> wins by forfeit.`;
+            content = `🏳️ **Connect Muse:** <@${gameState.winner === p1Id ? p2Id : p1Id}> severed the link. <@${gameState.winner}> wins by default.`;
         } else if (gameState.status === 'CANCELLED') {
             return await interaction.editReply({
-                content: '🏳️ **Connect Muse:** The challenge was cancelled.',
+                content: '🏳️ **Connect Muse:** The invitation was cancelled by the initiator.',
+                embeds: [],
                 components: [],
                 files: [],
                 attachments: []
             }).catch(() => {});
         }
 
+        const embed = new EmbedBuilder()
+            .setColor(gameState.status === 'PLAYING' ? 0xFFB7C5 : (gameState.status === 'WON' ? 0xFFD700 : 0x71717A))
+            .setImage(`attachment://${attachment.name}`)
+            .setFooter({ text: `Protocol Sequence: ${gameState.moves} moves | 2-minute move limit enforced` });
+
         // Build Interface
         const components = [];
+        const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+
         if (gameState.status === 'PLAYING') {
             // Logic: Disable buttons for columns that are already full
             const board = gameState.board;
             const isColFull = (c) => board[0][c] !== 0;
 
             const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_0`).setLabel('1️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(0)),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_1`).setLabel('2️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(1)),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_2`).setLabel('3️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(2)),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_3`).setLabel('4️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(3)),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_4`).setLabel('5️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(4))
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_0`).setLabel('1️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(0)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_1`).setLabel('2️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(1)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_2`).setLabel('3️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(2)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_3`).setLabel('4️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(3)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_4`).setLabel('5️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(4))
             );
             const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_5`).setLabel('6️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(5)),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_6`).setLabel('7️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(6)),
-                new ButtonBuilder().setCustomId(`c4_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_5`).setLabel('6️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(5)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_6`).setLabel('7️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(6)),
+                new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
             components.push(row1, row2);
         } else {
             const endRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_rematch_${gameState.id}`).setLabel('Quick Rematch').setStyle(ButtonStyle.Success).setEmoji('⚔️'),
+                new ButtonBuilder().setCustomId(`${prefix}_rematch_${gameState.id}`).setLabel('Rematch').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
                 new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
             );
             components.push(endRow);
@@ -294,6 +305,7 @@ const updateConnect4Views = async (interaction, gameState) => {
         // Update the message
         await interaction.editReply({
             content: content,
+            embeds: [embed],
             files: [attachment],
             attachments: [], 
             components: components
@@ -348,10 +360,10 @@ const updateConnect4Views = async (interaction, gameState) => {
 module.exports = {
     handleConnect4Interaction,
     routerConfig: {
-        prefixes: ['c4_'],
+        prefixes: ['c4_', 't4_'],
         handle: async (interaction) => {
             const { customId } = interaction;
-            if (customId.startsWith('c4_cancel')) {
+            if (customId.startsWith('c4_cancel') || customId.startsWith('t4_cancel')) {
                 const parts = customId.split('_');
                 const gameId = parts[2];
                 if (gameId) {

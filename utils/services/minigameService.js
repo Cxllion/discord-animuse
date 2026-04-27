@@ -23,11 +23,12 @@ class MinigameService {
      * getWordleDate: Returns the current date in GMT+5 format.
      */
     getWordleDate() {
-        // GMT+5 is 5 hours ahead of UTC. 
         const offset = 5 * 60 * 60 * 1000;
         const now = new Date();
         const gmtPlus5 = new Date(now.getTime() + offset);
-        return gmtPlus5.toISOString().split('T')[0];
+        const dateStr = gmtPlus5.toISOString().split('T')[0];
+        
+        return process.env.TEST_MODE === 'true' ? `${dateStr}-test` : dateStr;
     }
 
     /**

@@ -18,10 +18,12 @@ class Connect4Service {
         if (!supabase) return null;
 
         // Active Session Blocking: Prevent concurrent games
+        const prefix = process.env.TEST_MODE === 'true' ? 't4-' : 'c4-';
         const { data: activeGames, error: fetchError } = await supabase
             .from('connect4_sessions')
             .select('id')
             .eq('status', 'PLAYING')
+            .like('id', `${prefix}%`)
             .or(`player1.eq.${player1Id},player2.eq.${player1Id},player1.eq.${player2Id},player2.eq.${player2Id}`);
 
         if (fetchError) {
@@ -36,7 +38,7 @@ class Connect4Service {
 
         const startingPlayer = Math.random() < 0.5 ? player1Id : player2Id;
         const gameState = {
-            id: `c4-${Date.now()}-${player1Id.substring(0, 5)}`,
+            id: `${prefix}${Date.now()}-${player1Id.substring(0, 5)}`,
             board: connect4Engine.createBoard(),
             player1: player1Id,
             player2: player2Id,
@@ -69,6 +71,18 @@ class Connect4Service {
             logger.error(`[Connect4Service] Failed to fetch session ${gameId}:`, err);
             return null;
         }
+    }
+
+    async hasActiveSession(userId) {
+        const prefix = process.env.TEST_MODE === 'true' ? 't4-' : 'c4-';
+        const { data } = await supabase
+            .from('connect4_sessions')
+            .select('id')
+            .or(`player1.eq.${userId},player2.eq.${userId}`)
+            .eq('status', 'PLAYING')
+            .like('id', `${prefix}%`)
+            .maybeSingle();
+        return !!data;
     }
 
     /**
@@ -132,9 +146,9 @@ class Connect4Service {
             game.moves = (game.moves || 0) + 1;
             
             // Log move
-            if (!game.history) game.history = [];
             game.history.push({
                 user: userId,
+                row: result.row,
                 col: col,
                 time: new Date().toISOString()
             });
@@ -158,17 +172,6 @@ class Connect4Service {
 
             game.last_move_at = new Date().toISOString();
 
-            /* 
-               TODO LATER:
-               - [7] AI Difficulty (7)
-               - [8] Multi-Theme Support (8)
-               - [9] Custom Token Skins (9)
-               - [11] Time-of-Day Shading (11)
-               - [18] Weekly Tournaments (18)
-            */
-
-            game.last_move_at = new Date().toISOString();
-
             // Optimistic Locking: Use .eq('moves', originalMoves) to prevent race conditions
             const originalMoves = game.moves - 1;
             const { error: updateError } = await supabase
@@ -180,7 +183,7 @@ class Connect4Service {
                     winner: game.winner || null,
                     winning_tiles: game.winningTiles || [],
                     moves: game.moves,
-                    history: game.history.slice(-10), // Cap history to last 10 moves
+                    history: game.history, 
                     last_move_coord: game.last_move_coord,
                     last_move_at: game.last_move_at,
                     updated_at: new Date().toISOString()
@@ -239,28 +242,46 @@ class Connect4Service {
             }
 
             // Revert board
-            const row = game.last_move_coord?.r;
-            const col = game.last_move_coord?.c;
+            const row = lastMove.row;
+            const col = lastMove.col;
             if (row !== undefined && col !== undefined) {
                 game.board[row][col] = 0;
             }
 
             // Revert state
             game.history.pop();
+            const originalMoves = game.moves;
             game.moves -= 1;
             game.current_turn = userId;
             
-            // Recalculate last move coord from history if available
+            // Recalculate last move coord from history
             if (game.history.length > 0) {
                 const prevMove = game.history[game.history.length - 1];
-                // Note: We don't store the row in history currently, which is a flaw.
-                // For now, just clear the indicator or leave it (UX will be slightly messy without row in history).
-                game.last_move_coord = null; 
+                game.last_move_coord = { r: prevMove.row, c: prevMove.col };
             } else {
                 game.last_move_coord = null;
             }
 
-            await this.saveSession(gameId, game);
+            game.last_move_at = new Date().toISOString();
+
+            const { error: updateError } = await supabase
+                .from('connect4_sessions')
+                .update({
+                    board: game.board,
+                    current_turn: game.current_turn,
+                    moves: game.moves,
+                    history: game.history,
+                    last_move_coord: game.last_move_coord,
+                    last_move_at: game.last_move_at,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', gameId)
+                .eq('moves', originalMoves);
+
+            if (updateError) {
+                throw new Error('CONCURRENCY_ERROR: The grid state has shifted. Please re-synchronize.');
+            }
+
             return game;
         } finally {
             this.processingLocks.delete(gameId);
