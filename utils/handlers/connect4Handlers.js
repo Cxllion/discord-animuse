@@ -33,32 +33,34 @@ const handleConnect4Interaction = async (interaction) => {
     rateLimitCache.add(user.id);
     setTimeout(() => rateLimitCache.delete(user.id), 1500);
 
-    // 1. Fetch Game State
-    const game = await connect4Service.getGame(gameId);
-    if (!game) {
-        return interaction.reply({ 
-            content: '❌ **Terminal Link Severed:** This session could not be found in the archives. It may have expired or been purged.', 
-            flags: [MessageFlags.Ephemeral] 
-        });
-    }
+    // Actions that require an existing game session
+    const gameActions = ['drop', 'forfeit', 'forfeitconfirm', 'rematch', 'cancel'];
+    let game = null;
 
-    // 2. Security Check (Only participants can interact)
-    const p1 = game.player1;
-    const p2 = game.player2;
+    if (gameActions.includes(action)) {
+        game = await connect4Service.getGame(gameId);
+        if (!game) {
+            return interaction.reply({ 
+                content: '❌ **Terminal Link Severed:** This session could not be found in the archives. It may have expired or been purged.', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
 
-    if (user.id !== p1 && user.id !== p2) {
-        return interaction.reply({ 
-            content: '🔒 **Unauthorized Access:** This tactical link is restricted to the engaged patrons. Use `/connect4` to initialize your own session.', 
-            flags: [MessageFlags.Ephemeral] 
-        });
-    }
+        // Security Check (Only participants can interact)
+        if (user.id !== game.player1 && user.id !== game.player2) {
+            return interaction.reply({ 
+                content: '🔒 **Unauthorized Access:** This tactical link is restricted to the engaged patrons. Use `/connect4` to initialize your own session.', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
 
-    // 3. Status Verification
-    if (game.status !== 'PLAYING') {
-        return interaction.reply({ 
-            content: '🏁 **Protocol Terminated:** This tactical link has already been finalized and archived.', 
-            flags: [MessageFlags.Ephemeral] 
-        });
+        // Status Verification
+        if (game.status !== 'PLAYING' && action !== 'rematch') {
+            return interaction.reply({ 
+                content: '🏁 **Protocol Terminated:** This tactical link has already been finalized and archived.', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
     }
 
     try {
