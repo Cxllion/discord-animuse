@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { checkAiringAnime, checkUserActivity, syncAllUserTrackers, checkWordleHousekeeping } = require('../utils/services/scheduler');
+const { checkAiringAnime, checkUserActivity, syncAllUserTrackers, checkWordleHousekeeping, checkConnect4Housekeeping } = require('../utils/services/scheduler');
 const { deployCommands } = require('../utils/core/commandDeployer');
 const logger = require('../utils/core/logger');
 const CONFIG = require('../utils/config');
@@ -134,6 +134,9 @@ module.exports = {
 
                 // 6. Wordle Housekeeping (15m)
                 client.scheduler.addTask('Wordle Housekeeping', checkWordleHousekeeping, 15 * 60 * 1000, { immediate: true });
+
+                // 7. Connect4 Housekeeping (5m)
+                client.scheduler.addTask('Connect4 Housekeeping', checkConnect4Housekeeping, 5 * 60 * 1000, { immediate: true });
 
             }, 10000);
         } else {

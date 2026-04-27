@@ -65,11 +65,11 @@ module.exports = {
                     });
                 }
                 // Admin bypass nudge
-                await interaction.reply({
-                    content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}>. ♡`,
-                    flags: [MessageFlags.Ephemeral]
+                await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+                await interaction.editReply({
+                    content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}>. ♡`
                 });
-                // If in valid channel or no arcade channel configured, defer publicly
+            } else {
                 await interaction.deferReply();
             }
 
@@ -88,7 +88,7 @@ module.exports = {
                 new ButtonBuilder().setCustomId(`c4_decline_${challengerId}_${opponent.id}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
-            const inviteHeader = `⚔️ **Tactical Link Invitation:** <@${challengerId}> has requested a grid synchronization with <@${opponent.id}>.`;
+            const inviteHeader = `🎮 **Connect Muse Challenge:** <@${challengerId}> has challenged <@${opponent.id}> to a match!`;
             
             if (interaction.deferred) {
                 await interaction.editReply({

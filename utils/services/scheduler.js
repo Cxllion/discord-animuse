@@ -24,6 +24,7 @@ const logger = require('../core/logger');
 const CONFIG = require('../config');
 const minigameService = require('./minigameService');
 const wordleService = require('./wordleService');
+const connect4Service = require('./connect4Service');
 
 // Batch size for AniList queries to avoid hitting complexity limits
 const BATCH_SIZE = 50;
@@ -626,6 +627,17 @@ const checkWordleHousekeeping = async () => {
     }
 };
 
+/**
+ * Periodically cleans up stale Connect4 sessions (10m move timeout, 5m invite timeout).
+ */
+const checkConnect4Housekeeping = async (client) => {
+    try {
+        await connect4Service.cleanupStaleSessions(client);
+    } catch (e) {
+        logger.error('[Connect4Scheduler] Housekeeping task failed:', e, 'Scheduler');
+    }
+};
+
 const getPulseStatus = () => ({
     airing: lastAiringPulse,
     activity: lastActivityPulse,
@@ -641,5 +653,6 @@ module.exports = {
     getPulseStatus,
     syncAllUserTrackers,
     checkWordleReset,
-    checkWordleHousekeeping
+    checkWordleHousekeeping,
+    checkConnect4Housekeeping
 };

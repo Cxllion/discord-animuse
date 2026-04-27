@@ -48,7 +48,9 @@ const fetchConfig = async (guildId) => {
             boutique_thumbnail: null,
             boutique_footer: null,
             suggestions_channel_id: null,
-            suggestions_box_message_id: null
+            suggestions_box_message_id: null,
+            bingo_channel_id: null,
+            arcade_channel_id: null
         };
     }
 

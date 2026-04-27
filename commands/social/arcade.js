@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const minigameService = require('../../utils/services/minigameService');
 const arcadeGenerator = require('../../utils/generators/arcadeGenerator');
+const { fetchConfig } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
 /**
@@ -18,7 +19,22 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        await interaction.deferReply();
+        const config = await fetchConfig(interaction.guildId);
+        const isAdmin = interaction.member?.permissions.has('Administrator');
+        const isArcadeChannel = config?.arcade_channel_id && interaction.channelId === config.arcade_channel_id;
+
+        if (config?.arcade_channel_id && !isArcadeChannel) {
+            if (!isAdmin) {
+                return await interaction.reply({
+                    content: `❌ **Arcade Protocol Deviation**: The Arcade Terminal can only be accessed in the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+                    flags: [MessageFlags.Ephemeral]
+                });
+            }
+            // Admin bypass
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        } else {
+            await interaction.deferReply();
+        }
 
         const targetUser = interaction.options.getUser('target') || interaction.user;
         const targetMember = interaction.guild ? await interaction.guild.members.fetch(targetUser.id).catch(() => null) : null;

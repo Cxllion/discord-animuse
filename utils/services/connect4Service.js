@@ -18,11 +18,17 @@ class Connect4Service {
         if (!supabase) return null;
 
         // Active Session Blocking: Prevent concurrent games
-        const { data: activeGames } = await supabase
+        const { data: activeGames, error: fetchError } = await supabase
             .from('connect4_sessions')
             .select('id')
             .eq('status', 'PLAYING')
             .or(`player1.eq.${player1Id},player2.eq.${player1Id},player1.eq.${player2Id},player2.eq.${player2Id}`);
+
+        if (fetchError) {
+            logger.error('[Connect4] Failed to check for active sessions:', fetchError);
+            // We proceed if there's an error to avoid blocking users due to DB hiccups, 
+            // but we log it for forensics.
+        }
 
         if (activeGames && activeGames.length > 0) {
             throw new Error('ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link.');
@@ -30,7 +36,7 @@ class Connect4Service {
 
         const startingPlayer = Math.random() < 0.5 ? player1Id : player2Id;
         const gameState = {
-            id: `c4_${Date.now()}_${player1Id.substring(0, 5)}`,
+            id: `c4-${Date.now()}-${player1Id.substring(0, 5)}`,
             board: connect4Engine.createBoard(),
             player1: player1Id,
             player2: player2Id,
@@ -183,7 +189,7 @@ class Connect4Service {
                 .eq('moves', originalMoves);
 
             if (updateError) {
-                throw new Error('CONCURRENCY_ERROR: The grid state has shifted. Please refresh.');
+                throw new Error('CONCURRENCY_ERROR: The grid state has shifted. Please re-synchronize.');
             }
 
             return {
@@ -274,40 +280,73 @@ class Connect4Service {
     }
 
     /**
-     * Housekeeping: Archives sessions with no activity for more than 2 hours.
+     * Housekeeping: Auto-forfeits inactive games and purges expired invitations.
      */
-    async cleanupStaleSessions() {
+    async cleanupStaleSessions(client) {
         if (!supabase) return;
 
         try {
-            const threshold = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+            const now = Date.now();
+            const moveThreshold = new Date(now - 2 * 60 * 1000).toISOString(); // 2 minutes for active games
+            const inviteThreshold = new Date(now - 5 * 60 * 1000).toISOString(); // 5 minutes for invites
             
-            const { data: staleSessions, error } = await supabase
+            // 1. Find stale active games (Move Timeout)
+            const { data: staleActive, error: activeErr } = await supabase
                 .from('connect4_sessions')
                 .select('*')
-                .lt('last_move_at', threshold)
-                .eq('status', 'PLAYING');
+                .lt('last_move_at', moveThreshold)
+                .eq('status', 'PLAYING')
+                .gt('moves', 0);
 
-            if (error) throw error;
-            if (!staleSessions || staleSessions.length === 0) return;
+            if (activeErr) throw activeErr;
 
-            logger.info(`[Connect4] Housekeeping: Found ${staleSessions.length} stale sessions. Archiving...`);
+            // 2. Find expired invitations (No moves made)
+            const { data: expiredInvites, error: inviteErr } = await supabase
+                .from('connect4_sessions')
+                .select('*')
+                .lt('updated_at', inviteThreshold)
+                .eq('status', 'PLAYING')
+                .eq('moves', 0);
 
-            for (const session of staleSessions) {
-                try {
-                    // Mark as FORFEITED, winner is the one whose turn it ISN'T.
-                    const currentTurn = session.current_turn || session.currentTurn;
-                    const winner = session.player1 === currentTurn ? session.player2 : session.player1;
-                    
-                    session.status = 'FORFEITED';
-                    session.winner = winner;
-                    
-                    await this.saveSession(session.id, session);
-                    logger.debug(`[Connect4] Stale session ${session.id} auto-forfeited.`);
-                } catch (err) {
-                    logger.error(`[Connect4] Failed to archive stale session ${session.id}:`, err);
+            if (inviteErr) throw inviteErr;
+
+            // Process Active Timeouts
+            if (staleActive && staleActive.length > 0) {
+                logger.info(`[Connect4] Housekeeping: Found ${staleActive.length} active sessions with move timeouts.`);
+                for (const session of staleActive) {
+                    try {
+                        const currentTurn = session.current_turn || session.currentTurn;
+                        const winner = session.player1 === currentTurn ? session.player2 : session.player1;
+                        
+                        session.status = 'FORFEITED';
+                        session.winner = winner;
+                        session.metadata = { ...(session.metadata || {}), autoForfeit: true };
+                        
+                        await this.saveSession(session.id, session);
+                        
+                        // Try to notify the channel if client is provided
+                        if (client && session.public_channel_id && session.public_message_id) {
+                            const channel = await client.channels.fetch(session.public_channel_id).catch(() => null);
+                            if (channel) {
+                                await channel.send({ 
+                                    content: `🕒 **Connect Muse Timeout:** <@${currentTurn}> failed to respond. Game forfeited to <@${winner}>.` 
+                                }).catch(() => null);
+                            }
+                        }
+                    } catch (err) {
+                        logger.error(`[Connect4] Failed to timeout session ${session.id}:`, err);
+                    }
                 }
             }
+
+            // Process Expired Invites
+            if (expiredInvites && expiredInvites.length > 0) {
+                logger.info(`[Connect4] Housekeeping: Purging ${expiredInvites.length} expired invitations.`);
+                for (const invite of expiredInvites) {
+                    await this.deleteSession(invite.id);
+                }
+            }
+
         } catch (e) {
             logger.error('[Connect4] Housekeeping failed:', e);
         }

@@ -21,9 +21,20 @@ const rateLimitCache = new Set();
 
 const handleConnect4Interaction = async (interaction) => {
     const { customId, user, guildId } = interaction;
-    const parts = customId.split('_'); // c4, action, gameId, index?
+    // Custom ID parsing: c4_{action}_{gameId/challengerId}_{extra}
+    // Since gameId might contain underscores or hyphens, we need a more robust split.
+    const parts = customId.split('_'); 
     const action = parts[1];
-    const gameId = parts[2];
+    
+    // gameId is usually the 3rd part. In 'drop', it's followed by the column.
+    // In 'accept', parts[2] is challengerId and parts[3] is opponentId.
+    let gameId = parts[2];
+    
+    // Reconstruct gameId if it was split incorrectly (though hyphens should solve this)
+    if (parts.length > 4 && action !== 'accept') {
+        // Handle legacy IDs that used underscores
+        gameId = parts.slice(2, -1).join('_');
+    }
 
     // 0. Strict Rate Limiting (1.5 seconds)
     if (rateLimitCache.has(user.id)) {
@@ -41,7 +52,7 @@ const handleConnect4Interaction = async (interaction) => {
         game = await connect4Service.getGame(gameId);
         if (!game) {
             return interaction.reply({ 
-                content: '❌ **Terminal Link Severed:** This session could not be found in the archives. It may have expired or been purged.', 
+                content: '❌ **Connect Muse:** Match not found.', 
                 flags: [MessageFlags.Ephemeral] 
             });
         }
@@ -57,7 +68,7 @@ const handleConnect4Interaction = async (interaction) => {
         // Status Verification
         if (game.status !== 'PLAYING' && action !== 'rematch') {
             return interaction.reply({ 
-                content: '🏁 **Protocol Terminated:** This tactical link has already been finalized and archived.', 
+                content: '🏁 **Connect Muse:** This match has already been finalized.', 
                 flags: [MessageFlags.Ephemeral] 
             });
         }
@@ -65,7 +76,11 @@ const handleConnect4Interaction = async (interaction) => {
 
     try {
         if (action === 'drop') {
-            const col = parseInt(parts[3]);
+            const col = parseInt(parts[parts.length - 1]);
+            
+            if (isNaN(col)) {
+                return interaction.reply({ content: '❌ **Protocol Error:** Invalid navigational coordinates received.', flags: [MessageFlags.Ephemeral] });
+            }
             
             // Validate Turn
             const currentTurn = game.current_turn || game.currentTurn;
@@ -114,6 +129,8 @@ const handleConnect4Interaction = async (interaction) => {
             await updateConnect4Views(interaction, updatedGame);
         } else if (action === 'rematch') {
             // [3] Rematch logic: Challenge original opponent
+            await interaction.deferUpdate(); // Prevent button timeout
+            
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
             const connect4Command = require('../../commands/minigames/connect4');
             
@@ -172,7 +189,7 @@ const handleConnect4Interaction = async (interaction) => {
             if (user.id !== opponentId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** Only the invited patron can decline this tactical link.', flags: [MessageFlags.Ephemeral] });
             }
-            await interaction.update({ content: '🏳️ **Tactical Link Refused:** The invitation has been declined by the opponent.', components: [] });
+            await interaction.update({ content: '🏳️ **Connect Muse:** The invitation was declined.', components: [] });
         }
     } catch (error) {
         logger.error('[Connect4] Interaction failure:', error);
@@ -230,16 +247,16 @@ const updateConnect4Views = async (interaction, gameState) => {
         const currentTurn = gameState.current_turn || gameState.currentTurn;
         let content = '';
         if (gameState.status === 'PLAYING') {
-            content = `⚔️ **Tactical Link Active:** <@${p1Id}> vs <@${p2Id}>\nIt is currently <@${currentTurn}>'s turn.${timerText}`;
+            content = `⏳ **Turn Timer:** ${secondsPassed}s | <@${currentTurn}>`;
         } else if (gameState.status === 'WON') {
-            content = `🏁 **Tactical Link Finalized:** <@${gameState.winner}> has achieved Connect Muse dominance! ♡`;
+            content = `🏁 **Connect Muse:** <@${gameState.winner}> wins! ♡`;
         } else if (gameState.status === 'DRAW') {
-            content = `🏁 **Tactical Link Finalized:** The grid is saturated. A mutual stalemate has been recorded.`;
+            content = `🏁 **Connect Muse:** It's a draw!`;
         } else if (gameState.status === 'FORFEITED') {
-            content = `🏳️ **Tactical Link Severed:** <@${gameState.winner}> wins by forfeit.`;
+            content = `🏳️ **Connect Muse:** <@${gameState.winner}> wins by forfeit.`;
         } else if (gameState.status === 'CANCELLED') {
             return await interaction.editReply({
-                content: '🏳️ **Tactical Link Dissolved:** The session was abandoned before initiation and has been purged from the archives.',
+                content: '🏳️ **Connect Muse:** The challenge was cancelled.',
                 components: [],
                 files: [],
                 attachments: []
@@ -249,16 +266,20 @@ const updateConnect4Views = async (interaction, gameState) => {
         // Build Interface
         const components = [];
         if (gameState.status === 'PLAYING') {
+            // Logic: Disable buttons for columns that are already full
+            const board = gameState.board;
+            const isColFull = (c) => board[0][c] !== 0;
+
             const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_0`).setLabel('1️⃣').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_1`).setLabel('2️⃣').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_2`).setLabel('3️⃣').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_3`).setLabel('4️⃣').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_4`).setLabel('5️⃣').setStyle(ButtonStyle.Primary)
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_0`).setLabel('1️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(0)),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_1`).setLabel('2️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(1)),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_2`).setLabel('3️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(2)),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_3`).setLabel('4️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(3)),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_4`).setLabel('5️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(4))
             );
             const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_5`).setLabel('6️⃣').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_6`).setLabel('7️⃣').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_5`).setLabel('6️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(5)),
+                new ButtonBuilder().setCustomId(`c4_drop_${gameState.id}_6`).setLabel('7️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(6)),
                 new ButtonBuilder().setCustomId(`c4_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
             components.push(row1, row2);
@@ -293,9 +314,9 @@ const updateConnect4Views = async (interaction, gameState) => {
             });
 
             await interaction.channel.send({
-                content: `🎊 **Arcade Protocol Success**: <@${winnerId}> has successfully synchronized the grid in **Connect Muse**! ♡`,
+                content: `🎊 **Connect Muse Success**: <@${winnerId}> won! ♡`,
                 files: [new AttachmentBuilder(toastBuffer, { name: 'victory-slip.webp' })]
-            }).catch(err => logger.error('[Connect4] Failed to send victory slip:', err));
+            }).catch(err => logger.error('[Connect Muse] Failed to send victory slip:', err));
         }
 
         // 📊 Game Summary Embed
@@ -305,9 +326,9 @@ const updateConnect4Views = async (interaction, gameState) => {
             const durationStr = durationSec > 60 ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s` : `${durationSec}s`;
 
             const summaryEmbed = new EmbedBuilder()
-                .setTitle('📊 ARCADE PROTOCOL: SESSION SUMMARY')
+                .setTitle('📊 CONNECT MUSE: SUMMARY')
                 .setColor(gameState.status === 'WON' ? 0x22D3EE : 0xFFB7C5)
-                .setDescription(`The tactical link between <@${gameState.player1}> and <@${gameState.player2}> has been finalized.`)
+                .setDescription(`Match finalized between <@${gameState.player1}> and <@${gameState.player2}>.`)
                 .addFields(
                     { name: '🏁 Result', value: gameState.status === 'WON' ? `Winner: <@${gameState.winner}>` : (gameState.status === 'DRAW' ? 'Stalemate' : 'Forfeit'), inline: true },
                     { name: '⏱️ Duration', value: durationStr, inline: true },

@@ -103,6 +103,20 @@ module.exports = {
             });
         }
 
+        // 0. Archival Protocol: Channel Verification
+        const config = await fetchConfig(interaction.guildId);
+        const isAdmin = interaction.member?.permissions.has('Administrator');
+        const isBingoChannel = config?.bingo_channel_id && interaction.channelId === config.bingo_channel_id;
+
+        if (config?.bingo_channel_id && !isBingoChannel) {
+            if (!isAdmin) {
+                return await interaction.reply({
+                    content: `❌ **Bingo Protocol Deviation**: The Bingo Hall can only be accessed in the designated wing: <#${config.bingo_channel_id}>.`,
+                    flags: [MessageFlags.Ephemeral]
+                });
+            }
+        }
+
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'create') {

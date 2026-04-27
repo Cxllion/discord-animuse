@@ -33,6 +33,8 @@ class Connect4Generator {
             ACCENT: '#C084FC',        // Lavender Accent
             BORDER: 'rgba(255, 255, 255, 0.1)'
         };
+
+        this.avatarCache = new Map();
     }
 
     getDisplayName(name) {
@@ -248,9 +250,18 @@ class Connect4Generator {
         
         try {
             if (user && user.avatarURL) {
-                const avatarPromise = loadImage(user.avatarURL);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Avatar fetch timeout')), 1500));
-                const avatar = await Promise.race([avatarPromise, timeoutPromise]);
+                let avatar;
+                if (this.avatarCache.has(user.avatarURL)) {
+                    avatar = this.avatarCache.get(user.avatarURL);
+                } else {
+                    const avatarPromise = loadImage(user.avatarURL);
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Avatar fetch timeout')), 1500));
+                    avatar = await Promise.race([avatarPromise, timeoutPromise]);
+                    
+                    // Simple LRU-ish: Clear cache if too big
+                    if (this.avatarCache.size > 20) this.avatarCache.clear();
+                    this.avatarCache.set(user.avatarURL, avatar);
+                }
                 ctx.drawImage(avatar, x - avatarSize / 2, y - avatarSize / 2, avatarSize, avatarSize);
             } else {
                 ctx.fillStyle = themeColor;

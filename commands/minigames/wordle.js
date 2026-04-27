@@ -57,15 +57,6 @@ module.exports = {
                 }
             }
             
-            // If they haven't played, we do a public defer for the public board
-            await interaction.deferReply();
-
-            const user = {
-                username: interaction.user.username,
-                displayName: interaction.member?.displayName || interaction.user.username,
-                avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
-            };
-
             // 0. Arcade Protocol: Channel Verification
             const config = await fetchConfig(interaction.guildId);
             const isAdmin = interaction.member?.permissions.has('Administrator');
@@ -73,17 +64,27 @@ module.exports = {
 
             if (config?.arcade_channel_id && !isArcadeChannel) {
                 if (!isAdmin) {
-                    return await interaction.editReply({
-                        content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be initialized in the designated Arcade wing: <#${config.arcade_channel_id}>.`
+                    return await interaction.reply({
+                        content: `❌ **Arcade Protocol Deviation**: The Daily Wordle terminal can only be initialized in the designated Arcade wing: <#${config.arcade_channel_id}>.`,
+                        flags: [MessageFlags.Ephemeral]
                     });
                 }
-                // Gentle Nudge for Admins (Note: followUp since we deferred publicly, though they can see it)
-                await interaction.followUp({
-                    content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}> for public synchronization. ♡`,
-                    flags: [MessageFlags.Ephemeral]
+                // Admin bypass nudge
+                await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+                await interaction.editReply({
+                    content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}> for public synchronization. ♡`
                 });
+            } else {
+                // If they haven't played, we do a public defer for the public board
+                await interaction.deferReply();
             }
             
+            const user = {
+                username: interaction.user.username,
+                displayName: interaction.member?.displayName || interaction.user.username,
+                avatarURL: interaction.user.displayAvatarURL({ extension: 'png', size: 128 })
+            };
+
             // 2. Initialize Game State (Individual)
             const gameState = await wordleService.startNewGame(userId);
             
