@@ -82,17 +82,19 @@ const handleConnect4Interaction = async (interaction) => {
                 return interaction.reply({ content: '❌ **Protocol Error:** Invalid navigational coordinates received.', flags: [MessageFlags.Ephemeral] });
             }
             
+            // [20] Interactive Thinking State
+            // Defer update immediately to prevent 3s timeout
+            await interaction.deferUpdate();
+
             // Validate Turn
             const currentTurn = game.current_turn || game.currentTurn;
             if (user.id !== currentTurn) {
-                return interaction.reply({
+                return interaction.followUp({
                     content: '⚠️ **Protocol Deviation:** It is not your turn in this link sequence. Please wait for your opponent.',
                     flags: [MessageFlags.Ephemeral]
                 });
             }
 
-            // [20] Interactive Thinking State (MOVED AFTER SUBMIT)
-            // Wait to update UI until we know it's a valid move
             const updatedGame = await connect4Service.submitMove(gameId, user.id, col);
             if (!updatedGame) return; 
 
@@ -101,8 +103,9 @@ const handleConnect4Interaction = async (interaction) => {
             const thinkingComponents = originalComponents.map(row => {
                 const newRow = ActionRowBuilder.from(row);
                 newRow.components.forEach(btn => {
-                    if (btn.data.custom_id === customId) {
-                        btn.setLabel('Synchronizing...').setDisabled(true);
+                    const btnData = btn.toJSON();
+                    if (btnData.custom_id === customId) {
+                        btn.setLabel('...').setDisabled(true);
                     } else {
                         btn.setDisabled(true);
                     }
@@ -140,53 +143,71 @@ const handleConnect4Interaction = async (interaction) => {
                 ...interaction,
                 user: user,
                 options: { getUser: () => ({ id: opponentId }) },
-                // Use the channel to send the new invitation since we can't 're-defer' the button click
-                deferReply: async () => {}, // No-op, we'll handle messaging manually
+                // Use the channel to send the new invitation
+                deferReply: async () => {}, 
                 editReply: async (o) => interaction.channel.send(o),
                 followUp: async (o) => interaction.channel.send(o),
-                reply: async (o) => interaction.channel.send(o)
+                reply: async (o) => interaction.channel.send(o),
+                deferred: true,
+                replied: false
             };
             return await connect4Command.execute(mockInteraction);
         } else if (action === 'accept') {
             const challengerId = parts[2];
             const opponentId = parts[3];
             
+            logger.info(`[Connect4] Accept interaction from ${user.id} for challenge by ${challengerId}`);
+
             if (user.id !== opponentId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** Only the invited patron can accept this tactical link.', flags: [MessageFlags.Ephemeral] });
             }
 
             await interaction.deferUpdate();
 
-            // Fetch User Data for Caching
-            const p1User = await interaction.client.users.fetch(challengerId).catch(() => null);
-            const p2User = user; // Current user is opponent
-            const p1Member = await interaction.guild.members.fetch(challengerId).catch(() => null);
-            const p2Member = await interaction.guild.members.fetch(opponentId).catch(() => null);
+            try {
+                // Fetch User Data for Caching
+                logger.info('[Connect4] Fetching user data for caching...');
+                const p1User = await interaction.client.users.fetch(challengerId).catch(() => null);
+                const p2User = user; 
+                const p1Member = interaction.guild ? await interaction.guild.members.fetch(challengerId).catch(() => null) : null;
+                const p2Member = interaction.guild ? await interaction.guild.members.fetch(opponentId).catch(() => null) : null;
 
-            const playerData = {
-                p1: {
-                    id: challengerId,
-                    username: p1User?.username || 'Patron',
-                    displayName: p1Member?.displayName || p1User?.username || 'Patron',
-                    avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
-                },
-                p2: {
-                    id: opponentId,
-                    username: p2User?.username || 'Patron',
-                    displayName: p2Member?.displayName || p2User?.username || 'Patron',
-                    avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
+                const playerData = {
+                    p1: {
+                        id: challengerId,
+                        username: p1User?.username || 'Patron',
+                        displayName: p1Member?.displayName || p1User?.username || 'Patron',
+                        avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
+                    },
+                    p2: {
+                        id: opponentId,
+                        username: p2User?.username || 'Patron',
+                        displayName: p2Member?.displayName || p2User?.username || 'Patron',
+                        avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
+                    }
+                };
+
+                logger.info('[Connect4] Starting new game session in DB...');
+                const gameState = await connect4Service.startNewGame(challengerId, opponentId);
+                
+                if (!gameState) {
+                    throw new Error('FAILED_TO_START: Service returned null session.');
                 }
-            };
 
-            const gameState = await connect4Service.startNewGame(challengerId, opponentId);
-            
-            // Set public message tracking and cached data
-            gameState.publicMessageId = interaction.message.id;
-            gameState.publicChannelId = interaction.channelId;
-            gameState.playerData = playerData;
-            await connect4Service.saveSession(gameState.id, gameState);
+                // Set public message tracking and cached data
+                gameState.publicMessageId = interaction.message.id;
+                gameState.publicChannelId = interaction.channelId;
+                gameState.playerData = playerData;
+                await connect4Service.saveSession(gameState.id, gameState);
 
-            await updateConnect4Views(interaction, gameState);
+                logger.info(`[Connect4] Session created: ${gameState.id}. Updating views...`);
+                await updateConnect4Views(interaction, gameState);
+                logger.info('[Connect4] Update complete.');
+
+            } catch (innerError) {
+                logger.error('[Connect4] Accept Logic Failure:', innerError);
+                await interaction.followUp({ content: `❌ **Protocol Error:** ${innerError.message}`, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+            }
         } else if (action === 'decline') {
             const opponentId = parts[3];
             if (user.id !== opponentId) {
@@ -209,6 +230,7 @@ const handleConnect4Interaction = async (interaction) => {
  */
 const updateConnect4Views = async (interaction, gameState) => {
     try {
+        logger.info(`[Connect4] Rendering frame for session ${gameState.id}...`);
         const guild = interaction.guild;
         const p1Id = gameState.player1;
         const p2Id = gameState.player2;

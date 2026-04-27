@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const connect4Service = require('../../utils/services/connect4Service');
 const connect4Generator = require('../../utils/generators/connect4Generator');
 const { fetchConfig } = require('../../utils/core/database');
