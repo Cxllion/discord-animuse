@@ -333,25 +333,12 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                         attempts: gameState.guesses.length
                     });
                     
-                    let celebration = '';
-                    if (gameState.status === 'WON') {
-                        celebration = `🎊 **Arcade Protocol Alert**: <@${user.id}> has successfully decrypted today's cipher! ♡`;
-                    } else if (gameState.status === 'LOST') {
-                        celebration = `💀 **Protocol Compromised**: <@${user.id}> has failed to decrypt today's cipher. The archival data has been locked. ♡`;
-                    } else {
-                        celebration = `🏁 **Arcade Protocol Alert**: <@${user.id}> has completed today's decryption protocol. ♡`;
-                    }
-
                     // Send the Success/Failure Slip
                     await channel.send({
-                        content: celebration,
                         files: [new AttachmentBuilder(toastBuffer, { name: 'success-slip-public.webp' })]
                     }).catch(err => logger.error('[Wordle] Failed to send public receipt:', err));
 
-                    // V2: Bring the final state of the board to the bottom for visibility
-                    await channel.send({
-                        files: [new AttachmentBuilder(bufferAnon, { name: 'wordle-final-archive.png' })]
-                    }).catch(() => {});
+
 
                     // 6. Send Ephemeral Insight to the user so they still get the definition privately
                     if (gameState.status === 'WON' && gameState.reward?.definition) {

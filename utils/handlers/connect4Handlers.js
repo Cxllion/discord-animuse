@@ -86,8 +86,12 @@ const handleConnect4Interaction = async (interaction) => {
             // Defer update immediately to prevent 3s timeout
             await interaction.deferUpdate();
 
+            // Fetch old state to preserve metadata (like playerData)
+            const oldGame = await connect4Service.getGame(gameId);
+            if (!oldGame) return;
+
             // Validate Turn
-            const currentTurn = game.current_turn || game.currentTurn;
+            const currentTurn = oldGame.current_turn || oldGame.currentTurn;
             if (user.id !== currentTurn) {
                 return interaction.followUp({
                     content: '⚠️ **Protocol Deviation:** It is not your turn in this link sequence. Please wait for your opponent.',
@@ -97,6 +101,11 @@ const handleConnect4Interaction = async (interaction) => {
 
             const updatedGame = await connect4Service.submitMove(gameId, user.id, col);
             if (!updatedGame) return; 
+
+            // Preserve cached player data to avoid re-fetching from Discord API
+            if (oldGame.playerData) {
+                updatedGame.playerData = oldGame.playerData;
+            }
 
             // Disable buttons to show synchronization
             const originalComponents = interaction.message.components;
@@ -342,38 +351,12 @@ const updateConnect4Views = async (interaction, gameState) => {
             const toastBuffer = await toastGenerator.generateSuccessSlip({
                 user: winnerData,
                 pointsEarned: gameState.reward.pointsAwarded,
-                totalPoints: 'CHECK /LEADERBOARD',
-                gameName: 'Connect 4',
-                attempts: gameState.moves
+                totalPoints: gameState.reward.totalPoints
             });
-
             await interaction.channel.send({
-                content: `🎊 **Connect Muse Success**: <@${winnerId}> won! ♡`,
                 files: [new AttachmentBuilder(toastBuffer, { name: 'victory-slip.webp' })]
             }).catch(err => logger.error('[Connect Muse] Failed to send victory slip:', err));
         }
-
-        // 📊 Game Summary Embed
-        if (gameState.status !== 'PLAYING') {
-            const durationMs = Date.now() - new Date(gameState.startedAt).getTime();
-            const durationSec = Math.floor(durationMs / 1000);
-            const durationStr = durationSec > 60 ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s` : `${durationSec}s`;
-
-            const summaryEmbed = new EmbedBuilder()
-                .setTitle('📊 CONNECT MUSE: SUMMARY')
-                .setColor(gameState.status === 'WON' ? 0x22D3EE : 0xFFB7C5)
-                .setDescription(`Match finalized between <@${gameState.player1}> and <@${gameState.player2}>.`)
-                .addFields(
-                    { name: '🏁 Result', value: gameState.status === 'WON' ? `Winner: <@${gameState.winner}>` : (gameState.status === 'DRAW' ? 'Stalemate' : 'Forfeit'), inline: true },
-                    { name: '⏱️ Duration', value: durationStr, inline: true },
-                    { name: '🔢 Total Moves', value: `${gameState.moves}`, inline: true }
-                )
-                .setFooter({ text: `Session ID: ${gameState.id}` })
-                .setTimestamp();
-
-            await interaction.channel.send({ embeds: [summaryEmbed] }).catch(() => {});
-        }
-
     } catch (err) {
         logger.error('[Connect4] View update failure:', err);
     }

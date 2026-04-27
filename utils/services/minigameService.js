@@ -237,20 +237,20 @@ class MinigameService {
         }
 
         // Award via Arcade Protocol
-        const result = await this.awardPoints(userId, totalEarned, {
-            gameId: 'wordle',
-            isWin: solved,
+        // Update DB
+        const result = await this.awardPoints(userId, totalEarned, { 
+            gameId: 'wordle', 
+            isWin: solved, 
             score: solved ? (100 / (solvedOrder || 1)) : 0,
-            metadata: { streak: streak } // Persist the streak!
+            metadata: { streak: streak } 
         });
 
-        return { 
-            points: totalEarned, 
-            basePoints,
+        return {
+            points: totalEarned,
             streakBonus,
             streak,
-            totalPoints: result.totalPoints,
-            definition
+            totalPoints: result?.totalPoints || 0,
+            definition: definition
         };
     }
 
@@ -833,7 +833,17 @@ class MinigameService {
             logger.error(`[ArcadeProtocol] Failed to save Connect4 history: ${err.message}`);
         }
 
-        return { pointsAwarded };
+        // Fetch actual total points for receipt
+        const { data: scoreData } = await supabase
+            .from('minigame_scores')
+            .select('total_points')
+            .eq('user_id', winnerId || p1Id)
+            .maybeSingle();
+
+        return { 
+            pointsAwarded, 
+            totalPoints: scoreData?.total_points || 0 
+        };
     }
     /**
      * getArcadeStats: Unified fetch for the Arcade Passport.

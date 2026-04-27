@@ -35,6 +35,7 @@ class Connect4Generator {
         };
 
         this.avatarCache = new Map();
+        this.envCache = null;
     }
 
     getDisplayName(name) {
@@ -42,7 +43,7 @@ class Connect4Generator {
     }
 
     async generateBoard(gameState, options = {}) {
-        const SCALE = 3; // 3.0x Scaling for Retina/4K displays
+        const SCALE = 2; // Reduced from 3 for better performance (still Retina clear)
         const canvas = createCanvas(this.CARD_WIDTH * SCALE, this.CARD_HEIGHT * SCALE);
         const ctx = canvas.getContext('2d');
         ctx.scale(SCALE, SCALE);
@@ -50,12 +51,19 @@ class Connect4Generator {
         const { p1Data, p2Data } = options;
 
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingQuality = 'medium'; // 'high' is significantly slower
 
-        // 1. Layered Background (Deep Base + Bokeh + Sparkles)
-        this.drawBackground(ctx);
-        this.drawBokeh(ctx);
-        this.drawSparkles(ctx);
+        // 1. Layered Background (Deep Base + Bokeh + Sparkles) - CACHED
+        if (!this.envCache) {
+            const envCanvas = createCanvas(this.CARD_WIDTH * SCALE, this.CARD_HEIGHT * SCALE);
+            const envCtx = envCanvas.getContext('2d');
+            envCtx.scale(SCALE, SCALE);
+            this.drawBackground(envCtx);
+            this.drawBokeh(envCtx);
+            this.drawSparkles(envCtx);
+            this.envCache = envCanvas;
+        }
+        ctx.drawImage(this.envCache, 0, 0, this.CARD_WIDTH, this.CARD_HEIGHT);
 
         // 2. Header
         await this.drawHeader(ctx, gameState, p1Data, p2Data);
@@ -76,7 +84,6 @@ class Connect4Generator {
         this.drawFooter(ctx, gameState);
 
         const buffer = await canvas.encode('webp');
-        ctx.clearRect(0, 0, this.CARD_WIDTH * SCALE, this.CARD_HEIGHT * SCALE);
         return buffer;
     }
 
@@ -333,10 +340,10 @@ class Connect4Generator {
                 ctx.fill();
 
                 if (value > 0) {
+                    // Only draw shadows if it's a winning tile to boost performance
                     this.drawToken(ctx, cx, cy, radius, value, isWinningTile, gameState.status !== 'PLAYING');
                 } else {
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
-                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.01)';
                     ctx.stroke();
                 }
             }
@@ -400,15 +407,15 @@ class Connect4Generator {
 
         ctx.beginPath();
         ctx.arc(cx, cy, radius - 4, 0, Math.PI * 2);
-        
-        if (!isDimmed) {
+
+        if (isWinningTile) {
             ctx.shadowColor = baseColor;
-            ctx.shadowBlur = isWinningTile ? 30 : 15;
+            ctx.shadowBlur = 30;
         }
-        
+
         ctx.fillStyle = grad;
         ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.restore(); // Restore to clear shadow before highlight
 
         // Highlight Sparkle on the token
         if (!isDimmed) {
