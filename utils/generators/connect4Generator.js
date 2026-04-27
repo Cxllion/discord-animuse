@@ -435,17 +435,7 @@ class Connect4Generator {
         const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase();
         ctx.fillText(`ANIMUSE CONNECT 4 | ${dateStr}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 30);
         
-        // --- [6] Move History Log (Text-based overlay) ---
-        if (gameState.history && gameState.history.length > 0) {
-            const lastMoves = gameState.history.slice(-3).reverse();
-            ctx.font = `600 10px 'monalqo', sans-serif`;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.textAlign = 'left';
-            lastMoves.forEach((move, i) => {
-                const time = new Date(move.time).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-                ctx.fillText(`[${time}] P${move.user === gameState.player1 ? '1' : '2'} dropped Col ${move.col + 1}`, 40, this.CARD_HEIGHT - 70 - (i * 15));
-            });
-        }
+
         ctx.restore();
     }
 

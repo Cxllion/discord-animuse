@@ -156,7 +156,7 @@ const handleConnect4Interaction = async (interaction) => {
             const challengerId = parts[2];
             const opponentId = parts[3];
             
-            logger.info(`[Connect4] Accept interaction from ${user.id} for challenge by ${challengerId}`);
+
 
             if (user.id !== opponentId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** Only the invited patron can accept this tactical link.', flags: [MessageFlags.Ephemeral] });
@@ -166,7 +166,7 @@ const handleConnect4Interaction = async (interaction) => {
 
             try {
                 // Fetch User Data for Caching
-                logger.info('[Connect4] Fetching user data for caching...');
+
                 const p1User = await interaction.client.users.fetch(challengerId).catch(() => null);
                 const p2User = user; 
                 const p1Member = interaction.guild ? await interaction.guild.members.fetch(challengerId).catch(() => null) : null;
@@ -187,7 +187,7 @@ const handleConnect4Interaction = async (interaction) => {
                     }
                 };
 
-                logger.info('[Connect4] Starting new game session in DB...');
+
                 const gameState = await connect4Service.startNewGame(challengerId, opponentId);
                 
                 if (!gameState) {
@@ -200,9 +200,9 @@ const handleConnect4Interaction = async (interaction) => {
                 gameState.playerData = playerData;
                 await connect4Service.saveSession(gameState.id, gameState);
 
-                logger.info(`[Connect4] Session created: ${gameState.id}. Updating views...`);
+
                 await updateConnect4Views(interaction, gameState);
-                logger.info('[Connect4] Update complete.');
+
 
             } catch (innerError) {
                 logger.error('[Connect4] Accept Logic Failure:', innerError);
@@ -230,7 +230,7 @@ const handleConnect4Interaction = async (interaction) => {
  */
 const updateConnect4Views = async (interaction, gameState) => {
     try {
-        logger.info(`[Connect4] Rendering frame for session ${gameState.id}...`);
+
         const guild = interaction.guild;
         const p1Id = gameState.player1;
         const p2Id = gameState.player2;
