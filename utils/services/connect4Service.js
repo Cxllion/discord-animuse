@@ -36,12 +36,19 @@ class Connect4Service {
             throw new Error('ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link.');
         }
 
-        const startingPlayer = Math.random() < 0.5 ? player1Id : player2Id;
+        // Shuffle Player Slots (Placement Randomization)
+        const players = Math.random() < 0.5 ? [player1Id, player2Id] : [player2Id, player1Id];
+        const p1 = players[0];
+        const p2 = players[1];
+
+        // Randomize Starting Turn
+        const startingPlayer = Math.random() < 0.5 ? p1 : p2;
+
         const gameState = {
-            id: `${prefix}${Date.now()}-${player1Id.substring(0, 5)}`,
+            id: `${prefix}${Date.now()}-${p1.substring(0, 5)}`,
             board: connect4Engine.createBoard(),
-            player1: player1Id,
-            player2: player2Id,
+            player1: p1,
+            player2: p2,
             current_turn: startingPlayer,
             currentTurn: startingPlayer,
             status: 'PLAYING',

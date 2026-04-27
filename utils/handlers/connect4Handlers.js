@@ -8,6 +8,7 @@ const {
 } = require('discord.js');
 const connect4Service = require('../services/connect4Service');
 const connect4Generator = require('../generators/connect4Generator');
+const { getResolvableName } = require('../core/visualUtils');
 const toastGenerator = require('../generators/toastGenerator');
 const { fetchConfig } = require('../core/database');
 const logger = require('../core/logger');
@@ -145,13 +146,14 @@ const handleConnect4Interaction = async (interaction) => {
             await interaction.deferUpdate(); // Prevent button timeout
             
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
+            const opponent = await interaction.client.users.fetch(opponentId).catch(() => ({ id: opponentId, bot: false }));
             const connect4Command = require('../../commands/minigames/connect4');
             
             // Mock interaction for command re-execution
             const mockInteraction = {
                 ...interaction,
                 user: user,
-                options: { getUser: () => ({ id: opponentId }) },
+                options: { getUser: () => opponent },
                 // Use the channel to send the new invitation
                 deferReply: async () => {}, 
                 editReply: async (o) => interaction.channel.send(o),
@@ -176,39 +178,41 @@ const handleConnect4Interaction = async (interaction) => {
             try {
                 // Fetch User Data for Caching
 
-                const p1User = await interaction.client.users.fetch(challengerId).catch(() => null);
-                const p2User = user; 
-                const p1Member = interaction.guild ? await interaction.guild.members.fetch(challengerId).catch(() => null) : null;
-                const p2Member = interaction.guild ? await interaction.guild.members.fetch(opponentId).catch(() => null) : null;
-
-                const playerData = {
-                    p1: {
-                        id: challengerId,
-                        username: p1User?.username || 'Patron',
-                        displayName: p1Member?.displayName || p1User?.username || 'Patron',
-                        avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
-                    },
-                    p2: {
-                        id: opponentId,
-                        username: p2User?.username || 'Patron',
-                        displayName: p2Member?.displayName || p2User?.username || 'Patron',
-                        avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
-                    }
-                };
-
-
                 const gameState = await connect4Service.startNewGame(challengerId, opponentId);
                 
                 if (!gameState) {
                     throw new Error('FAILED_TO_START: Service returned null session.');
                 }
 
+                // Dynamically fetch and map player data based on the shuffled gameState
+                const p1Id = gameState.player1;
+                const p2Id = gameState.player2;
+
+                const p1User = await interaction.client.users.fetch(p1Id).catch(() => null);
+                const p2User = await interaction.client.users.fetch(p2Id).catch(() => null);
+                const p1Member = interaction.guild ? await interaction.guild.members.fetch(p1Id).catch(() => null) : null;
+                const p2Member = interaction.guild ? await interaction.guild.members.fetch(p2Id).catch(() => null) : null;
+
+                const playerData = {
+                    p1: {
+                        id: p1Id,
+                        username: p1User?.username || 'Patron',
+                        displayName: getResolvableName(p1Member) || p1User?.username || 'Patron',
+                        avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
+                    },
+                    p2: {
+                        id: p2Id,
+                        username: p2User?.username || 'Patron',
+                        displayName: getResolvableName(p2Member) || p2User?.username || 'Patron',
+                        avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
+                    }
+                };
+
                 // Set public message tracking and cached data
                 gameState.publicMessageId = interaction.message.id;
                 gameState.publicChannelId = interaction.channelId;
                 gameState.playerData = playerData;
                 await connect4Service.saveSession(gameState.id, gameState);
-
 
                 await updateConnect4Views(interaction, gameState);
 
@@ -258,21 +262,19 @@ const updateConnect4Views = async (interaction, gameState) => {
 
             p1Data = {
                 username: p1User?.username || 'Patron',
-                displayName: p1Member?.displayName || p1User?.username || 'Patron',
+                displayName: getResolvableName(p1Member) || p1User?.username || 'Patron',
                 avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
             };
             p2Data = {
                 username: p2User?.username || 'Patron',
-                displayName: p2Member?.displayName || p2User?.username || 'Patron',
+                displayName: getResolvableName(p2Member) || p2User?.username || 'Patron',
                 avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
             };
         }
 
-        // [1] Turn Timer Check
+        // [1] Turn Expiry Calculation
         const lastMove = new Date(gameState.last_move_at || gameState.startedAt).getTime();
-        const now = Date.now();
-        const secondsPassed = Math.floor((now - lastMove) / 1000);
-        const timerText = gameState.status === 'PLAYING' ? `\n⏳ **Time since last move:** ${secondsPassed}s` : '';
+        const expiryTimestamp = Math.floor((lastMove + (120 * 1000)) / 1000);
 
         // Generate Frame
         const buffer = await connect4Generator.generateBoard(gameState, { p1Data, p2Data });
@@ -281,7 +283,7 @@ const updateConnect4Views = async (interaction, gameState) => {
         const currentTurn = gameState.current_turn || gameState.currentTurn;
         let content = '';
         if (gameState.status === 'PLAYING') {
-            content = `🎮 **Connect Muse:** It is <@${currentTurn}>'s turn! (2m limit)`;
+            content = `🎮 **Connect Muse:** It is <@${currentTurn}>'s turn! (Expires <t:${expiryTimestamp}:R>)`;
         } else if (gameState.status === 'WON') {
             content = `🎊 **Connect Muse:** <@${gameState.winner}> has achieved total domination!`;
         } else if (gameState.status === 'DRAW') {

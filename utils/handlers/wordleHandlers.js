@@ -14,6 +14,7 @@ const toastGenerator = require('../generators/toastGenerator');
 const baseEmbed = require('../generators/baseEmbed');
 const { fetchConfig } = require('../core/database');
 const minigameService = require('../services/minigameService');
+const { getResolvableName } = require('../core/visualUtils');
 const logger = require('../core/logger');
 
 /**
@@ -228,7 +229,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
     const { isFreshEnd = false } = options;
     const userData = {
         username: user.username,
-        displayName: interaction.member?.displayName || user.username,
+        displayName: getResolvableName(interaction.member) || user.username,
         avatarURL: user.displayAvatarURL({ extension: 'png', size: 128 })
     };
 
