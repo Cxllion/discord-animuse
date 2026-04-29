@@ -778,17 +778,18 @@ class MinigameService {
      * Record a Connect4 result with the 3 points per win (max 3 times per opponent per day) system.
      * Bonus: +5 points for precision wins (<= 10 moves).
      */
-    async recordConnect4Result(p1Id, p2Id, winnerId, moves = 0) {
+    async recordConnect4Result(p1Id, p2Id, winnerId, moves = 0, options = {}) {
         if (!supabase) return { pointsAwarded: 0 };
         const today = this.getWordleDate();
         
         let pointsAwarded = 0;
         
-        // Anti-Farm Check: Do not award points for self-play
+        // Anti-Farm Check: Do not award points for self-play or early abandons (Turn 1 or 2)
         const isSelfPlay = p1Id === p2Id;
+        const isEarlyAbandon = options.isEarly || (moves > 0 && moves < 3);
         
-        // Only award points if there is a winner (not a draw) and it's not a self-play game
-        if (winnerId && !isSelfPlay) {
+        // Only award points if there is a winner (not a draw), it's not a self-play game, and not an early abandon
+        if (winnerId && !isSelfPlay && !isEarlyAbandon) {
             const loserId = winnerId === p1Id ? p2Id : p1Id;
 
             try {
@@ -801,6 +802,7 @@ class MinigameService {
                     .or(`player1_id.eq.${loserId},player2_id.eq.${loserId}`);
 
                 if (count < 3) {
+                    // Standard points for natural win or late forfeit
                     pointsAwarded = moves <= 10 ? 5 : 3;
                     await this.awardPoints(winnerId, pointsAwarded, { gameId: 'connect4', isWin: true });
                 } else {
@@ -813,6 +815,11 @@ class MinigameService {
                 // If table doesn't exist yet, we still record but skip the limit check
                 logger.error(`[ArcadeProtocol] Failed to check Connect4 limits: ${err.message}`);
             }
+        } else if (winnerId && (isSelfPlay || isEarlyAbandon)) {
+            // Record game but with 0 points for winner/loser due to farm protection or early abandon
+            await this.awardPoints(winnerId, 0, { gameId: 'connect4', isWin: true });
+            const loserId = winnerId === p1Id ? p2Id : p1Id;
+            await this.awardPoints(loserId, 0, { gameId: 'connect4' });
         } else {
             // It's a draw, record participation for both
             await this.awardPoints(p1Id, 0, { gameId: 'connect4' });

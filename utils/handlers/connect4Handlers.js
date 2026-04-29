@@ -139,9 +139,20 @@ const handleConnect4Interaction = async (interaction) => {
             if (user.id !== allowedUserId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** You cannot confirm abandonment for another patron.', flags: [MessageFlags.Ephemeral] });
             }
-            await interaction.deferUpdate();
+            
+            await interaction.update({ content: '🏳️ **Sanctuary Protocol:** Tactical link severed.', components: [] });
+            
             const updatedGame = await connect4Service.forfeitGame(gameId, user.id);
-            await updateConnect4Views(interaction, updatedGame);
+            if (!updatedGame) return;
+
+            // Update the main board message
+            const channel = await interaction.client.channels.fetch(updatedGame.publicChannelId).catch(() => null);
+            if (channel) {
+                const mainMsg = await channel.messages.fetch(updatedGame.publicMessageId).catch(() => null);
+                if (mainMsg) {
+                    await updateConnect4Views({ message: mainMsg, client: interaction.client, guild: interaction.guild }, updatedGame);
+                }
+            }
         } else if (action === 'rematch') {
             await interaction.deferUpdate();
 
@@ -344,7 +355,7 @@ const updateConnect4Views = async (interaction, gameState) => {
                 new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
             components.push(row1, row2);
-        } else {
+        } else if (['WON', 'DRAW', 'FORFEITED'].includes(gameState.status)) {
             const endRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`${prefix}_rematch_${gameState.id}`).setLabel('Rematch').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
                 new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
@@ -353,13 +364,19 @@ const updateConnect4Views = async (interaction, gameState) => {
         }
 
         // Update the message
-        await interaction.editReply({
+        const payload = {
             content: content,
             embeds: [embed],
             files: [attachment],
             attachments: [], 
             components: components
-        });
+        };
+
+        if (interaction.editReply) {
+            await interaction.editReply(payload);
+        } else if (interaction.message) {
+            await interaction.message.edit(payload);
+        }
 
 
         // 🏆 Winner Broadcaster (Success Slip)

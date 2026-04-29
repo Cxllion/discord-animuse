@@ -218,14 +218,32 @@ class Connect4Service {
         const game = await this.getGame(gameId);
         if (!game || game.status !== 'PLAYING') return null;
 
+        const p1 = game.player1;
+        const p2 = game.player2;
+        const winnerId = userId === p1 ? p2 : p1;
+        const moveCount = game.moves || 0;
+
         // Early Forfeit Forgiveness: If no moves made, just delete the session
-        if ((game.moves || 0) === 0) {
+        if (moveCount === 0) {
             await this.deleteSession(gameId);
             return { ...game, status: 'CANCELLED' };
         }
 
         game.status = 'FORFEITED';
-        game.winner = userId === game.player1 ? game.player2 : game.player1;
+        game.winner = winnerId;
+        
+        // Award points unless it's an "Early Abandon" (Turn 1 or 2)
+        const isEarlyForfeit = moveCount < 3;
+        
+        const reward = await minigameService.recordConnect4Result(
+            p1, 
+            p2, 
+            winnerId, 
+            isEarlyForfeit ? 0 : moveCount, // Passing 0 moves if early to signal no points logic if needed, or just let recordConnect4Result handle it
+            { isForfeit: true, isEarly: isEarlyForfeit }
+        );
+
+        game.reward = reward;
         
         await this.saveSession(gameId, game);
         return game;

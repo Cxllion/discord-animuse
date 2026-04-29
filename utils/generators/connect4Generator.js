@@ -199,13 +199,24 @@ class Connect4Generator {
 
         // Status
         if (gameState.status !== 'PLAYING') {
-            ctx.fillStyle = gameState.status === 'DRAW' ? '#FFFFFF' : (gameState.winner === gameState.player1 ? this.COLORS.P1_BASE : this.COLORS.P2_BASE);
+            const isWinnerP1 = gameState.winner === gameState.player1;
+            ctx.fillStyle = gameState.status === 'DRAW' ? '#FFFFFF' : (isWinnerP1 ? this.COLORS.P1_BASE : this.COLORS.P2_BASE);
             ctx.shadowColor = ctx.fillStyle;
             ctx.shadowBlur = 15;
             ctx.font = `900 24px 'monalqo', sans-serif`;
             ctx.textAlign = 'center';
             
-            const statusText = gameState.status === 'DRAW' ? 'MUTUAL ANNIHILATION' : `${this.getDisplayName(gameState.winner === gameState.player1 ? p1?.displayName : p2?.displayName)} DOMINATED`;
+            let statusText = '';
+            const winnerName = this.getDisplayName(isWinnerP1 ? p1?.displayName : p2?.displayName);
+
+            if (gameState.status === 'DRAW') {
+                statusText = 'MUTUAL ANNIHILATION';
+            } else if (gameState.status === 'FORFEITED') {
+                statusText = `${winnerName} SECURED VICTORY (FORFEIT)`;
+            } else {
+                statusText = `${winnerName} DOMINATED`;
+            }
+
             ctx.fillText(statusText, this.CARD_WIDTH / 2, 180);
             ctx.shadowBlur = 0;
         }
