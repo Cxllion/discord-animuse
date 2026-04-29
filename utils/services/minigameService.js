@@ -50,7 +50,7 @@ class MinigameService {
                 // Skip if table is known to be missing in this environment
                 const { data: existingStats } = await supabase
                     .from('minigame_stats')
-                    .select('high_score, total_plays')
+                    .select('high_score, total_plays, wins, metadata')
                     .eq('user_id', userId)
                     .eq('game_id', gameId)
                     .maybeSingle();
@@ -126,7 +126,8 @@ class MinigameService {
         const today = date || this.getWordleDate();
 
         // 1. Fetch Streak and Metadata (Resilient Fallback)
-        let streak = 1;
+        // Default: 1 for a win, 0 for a loss — used only if DB fetch fails
+        let streak = solved ? 1 : 0;
         try {
             const { data: stats } = await supabase
                 .from('minigame_stats')
@@ -152,11 +153,11 @@ class MinigameService {
 
             if (solved) {
                 if (lastPlayed === yesterday) {
-                    streak = currentStreak + 1;
+                    streak = currentStreak + 1; // Extend streak
                 } else if (lastPlayed === today) {
-                    streak = currentStreak; // Already played today
+                    streak = currentStreak; // Guard: same-day duplicate call
                 } else {
-                    streak = 1;
+                    streak = 1; // Streak broken or first play
                 }
             } else {
                 streak = 0; // Streak resets on loss
@@ -199,10 +200,10 @@ class MinigameService {
             basePoints = isTimeout ? 1 : 2;
         }
 
-        // 3. Apply Streak Multiplier (Simplistic fallback)
-        const multiplier = streak > 1 ? 1.1 : 1; 
-        const totalEarned = Math.round(basePoints * multiplier);
-        const streakBonus = totalEarned - basePoints;
+        // 3. Apply Streak Bonus (Tiered: +1 per 2 days of streak, max +5)
+        // e.g. streak 2-3 = +1, 4-5 = +2, 6-7 = +3, 8-9 = +4, 10+ = +5
+        const streakBonus = solved && streak >= 2 ? Math.min(Math.floor(streak / 2), 5) : 0;
+        const totalEarned = basePoints + streakBonus;
 
         // 4. Fetch Insight
         const target = await this.getDailyWord();

@@ -129,6 +129,73 @@ class Connect4Engine {
     }
 
     /**
+     * Checks if it's still possible for either player to win.
+     * Used for early draw detection.
+     * @param {number[][]} board - The current board state.
+     * @returns {boolean} True if at least one winning line is still achievable.
+     */
+    canEitherPlayerWin(board) {
+        const rows = this.ROWS;
+        const cols = this.COLS;
+        const win = this.WIN_LENGTH;
+
+        // Check every possible winning line
+        // 1. Horizontal
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c <= cols - win; c++) {
+                let p1Possible = true;
+                let p2Possible = true;
+                for (let k = 0; k < win; k++) {
+                    if (board[r][c + k] === 2) p1Possible = false;
+                    if (board[r][c + k] === 1) p2Possible = false;
+                }
+                if (p1Possible || p2Possible) return true;
+            }
+        }
+
+        // 2. Vertical
+        for (let c = 0; c < cols; c++) {
+            for (let r = 0; r <= rows - win; r++) {
+                let p1Possible = true;
+                let p2Possible = true;
+                for (let k = 0; k < win; k++) {
+                    if (board[r + k][c] === 2) p1Possible = false;
+                    if (board[r + k][c] === 1) p2Possible = false;
+                }
+                if (p1Possible || p2Possible) return true;
+            }
+        }
+
+        // 3. Positive Diagonal
+        for (let r = 0; r <= rows - win; r++) {
+            for (let c = 0; c <= cols - win; c++) {
+                let p1Possible = true;
+                let p2Possible = true;
+                for (let k = 0; k < win; k++) {
+                    if (board[r + k][c + k] === 2) p1Possible = false;
+                    if (board[r + k][c + k] === 1) p2Possible = false;
+                }
+                if (p1Possible || p2Possible) return true;
+            }
+        }
+
+        // 4. Negative Diagonal
+        for (let r = win - 1; r < rows; r++) {
+            for (let c = 0; c <= cols - win; c++) {
+                let p1Possible = true;
+                let p2Possible = true;
+                for (let k = 0; k < win; k++) {
+                    if (board[r - k][c + k] === 2) p1Possible = false;
+                    if (board[r - k][c + k] === 1) p2Possible = false;
+                }
+                if (p1Possible || p2Possible) return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Checks if the board is completely full (resulting in a draw).
      * @param {number[][]} board - The current board state.
      * @returns {boolean} True if there are no empty slots in the top row.

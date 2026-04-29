@@ -9,7 +9,7 @@ const logger = require('../core/logger');
 class Connect4Generator {
     constructor() {
         this.CARD_WIDTH = 800;
-        this.CARD_HEIGHT = 850;
+        this.CARD_HEIGHT = 860;
         
         this.COLS = connect4Engine.COLS;
         this.ROWS = connect4Engine.ROWS;
@@ -18,7 +18,7 @@ class Connect4Generator {
         this.BOARD_WIDTH = (this.COLS * this.SLOT_SIZE) + ((this.COLS + 1) * this.SLOT_GAP);
         this.BOARD_HEIGHT = (this.ROWS * this.SLOT_SIZE) + ((this.ROWS + 1) * this.SLOT_GAP);
         this.BOARD_X = (this.CARD_WIDTH - this.BOARD_WIDTH) / 2;
-        this.BOARD_Y = 220;
+        this.BOARD_Y = 210;
         
         // Sakura Anime Palette
         this.COLORS = {
@@ -300,7 +300,8 @@ class Connect4Generator {
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.font = `600 11px 'monalqo', sans-serif`;
-        ctx.fillText(`PLAYER ${align === 'left' ? '1' : '2'}`, textX, y + 25);
+        const rankText = user?.rank ? ` | RANK #${user.rank}` : '';
+        ctx.fillText(`PLAYER ${align === 'left' ? '1' : '2'}${rankText}`, textX, y + 25);
         ctx.restore();
     }
 
@@ -435,13 +436,46 @@ class Connect4Generator {
 
     drawFooter(ctx, gameState) {
         ctx.save();
+
+        // Column Number Indicators — below the board panel
+        const numY = this.BOARD_Y + this.BOARD_HEIGHT + 18;
+        for (let col = 0; col < this.COLS; col++) {
+            const cx = this.BOARD_X + this.SLOT_GAP + (col * (this.SLOT_SIZE + this.SLOT_GAP)) + (this.SLOT_SIZE / 2);
+
+            // Pill background
+            const pillW = 32;
+            const pillH = 22;
+            const pillTopY = numY - pillH / 2;
+            ctx.beginPath();
+            ctx.roundRect(cx - pillW / 2, pillTopY, pillW, pillH, 6);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.fill();
+
+            // Number — vertically centered in pill
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.font = `900 13px 'monalqo', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.letterSpacing = '0px';
+            ctx.fillText(`${col + 1}`, cx, pillTopY + pillH / 2 + 1);
+            ctx.textBaseline = 'alphabetic'; // Reset to default
+        }
+
+        // Brand Footer
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.font = `700 11px 'monalqo', sans-serif`;
         ctx.letterSpacing = '2px';
         ctx.textAlign = 'center';
+
         const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase();
-        ctx.fillText(`ANIMUSE CONNECT 4 | ${dateStr}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 30);
+        const moveCount = gameState.moves || 0;
+        const shortId = (gameState.id || 'LOCAL').split('-')[0].toUpperCase();
         
+        ctx.fillText(`ANIMUSE CONNECT 4 | ${dateStr}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 35);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.font = `600 10px 'monalqo', sans-serif`;
+        ctx.fillText(`PROTOCOL SEQUENCE: ${moveCount} MOVES | LINK ID: ${shortId}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 15);
 
         ctx.restore();
     }
@@ -495,6 +529,13 @@ class Connect4Generator {
         ctx.setLineDash([5, 5]);
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // 2. "NEW" label
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = `900 8px 'monalqo', sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.letterSpacing = '1px';
+        ctx.fillText('RECENT', x, y - (this.SLOT_SIZE / 2) - 12);
 
         ctx.restore();
     }

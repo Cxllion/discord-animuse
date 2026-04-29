@@ -8,6 +8,7 @@ const {
 } = require('discord.js');
 const connect4Service = require('../services/connect4Service');
 const connect4Generator = require('../generators/connect4Generator');
+const minigameService = require('../services/minigameService');
 const { getResolvableName } = require('../core/visualUtils');
 const toastGenerator = require('../generators/toastGenerator');
 const { fetchConfig } = require('../core/database');
@@ -142,27 +143,33 @@ const handleConnect4Interaction = async (interaction) => {
             const updatedGame = await connect4Service.forfeitGame(gameId, user.id);
             await updateConnect4Views(interaction, updatedGame);
         } else if (action === 'rematch') {
-            // [3] Rematch logic: Challenge original opponent
-            await interaction.deferUpdate(); // Prevent button timeout
-            
+            await interaction.deferUpdate();
+
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
-            const opponent = await interaction.client.users.fetch(opponentId).catch(() => ({ id: opponentId, bot: false }));
-            const connect4Command = require('../../commands/minigames/connect4');
-            
-            // Mock interaction for command re-execution
-            const mockInteraction = {
-                ...interaction,
-                user: user,
-                options: { getUser: () => opponent },
-                // Use the channel to send the new invitation
-                deferReply: async () => {}, 
-                editReply: async (o) => interaction.channel.send(o),
-                followUp: async (o) => interaction.channel.send(o),
-                reply: async (o) => interaction.channel.send(o),
-                deferred: true,
-                replied: false
-            };
-            return await connect4Command.execute(mockInteraction);
+            const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+
+            // Directly build and send the invite — avoids cooldown + mock-interaction bugs
+            const inviteEmbed = new EmbedBuilder()
+                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
+                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
+                .setColor(0xFFB7C5)
+                .setFooter({ text: 'Awaiting biometric authorization...' });
+
+            const rematchRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`${prefix}_decline_${user.id}_${opponentId}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
+            );
+
+            // Clear buttons on old board so it can't be interacted with again
+            await interaction.editReply({ components: [] }).catch(() => {});
+
+            // Send fresh invite to channel
+            await interaction.channel.send({
+                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
+                embeds: [inviteEmbed],
+                components: [rematchRow]
+            });
+
         } else if (action === 'accept') {
             const challengerId = parts[2];
             const opponentId = parts[3];
@@ -193,18 +200,23 @@ const handleConnect4Interaction = async (interaction) => {
                 const p1Member = interaction.guild ? await interaction.guild.members.fetch(p1Id).catch(() => null) : null;
                 const p2Member = interaction.guild ? await interaction.guild.members.fetch(p2Id).catch(() => null) : null;
 
+                const p1Stats = await minigameService.getUserStats(p1Id).catch(() => null);
+                const p2Stats = await minigameService.getUserStats(p2Id).catch(() => null);
+
                 const playerData = {
                     p1: {
                         id: p1Id,
                         username: p1User?.username || 'Patron',
                         displayName: getResolvableName(p1Member) || p1User?.username || 'Patron',
-                        avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
+                        avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 }),
+                        rank: p1Stats?.rank || '?'
                     },
                     p2: {
                         id: p2Id,
                         username: p2User?.username || 'Patron',
                         displayName: getResolvableName(p2Member) || p2User?.username || 'Patron',
-                        avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
+                        avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 }),
+                        rank: p2Stats?.rank || '?'
                     }
                 };
 
@@ -260,15 +272,20 @@ const updateConnect4Views = async (interaction, gameState) => {
             const p1Member = guild ? await guild.members.fetch(p1Id).catch(() => null) : null;
             const p2Member = guild ? await guild.members.fetch(p2Id).catch(() => null) : null;
 
+            const p1Stats = await minigameService.getUserStats(p1Id).catch(() => null);
+            const p2Stats = await minigameService.getUserStats(p2Id).catch(() => null);
+
             p1Data = {
                 username: p1User?.username || 'Patron',
                 displayName: getResolvableName(p1Member) || p1User?.username || 'Patron',
-                avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 })
+                avatarURL: p1User?.displayAvatarURL({ extension: 'png', size: 128 }),
+                rank: p1Stats?.rank || '?'
             };
             p2Data = {
                 username: p2User?.username || 'Patron',
                 displayName: getResolvableName(p2Member) || p2User?.username || 'Patron',
-                avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 })
+                avatarURL: p2User?.displayAvatarURL({ extension: 'png', size: 128 }),
+                rank: p2Stats?.rank || '?'
             };
         }
 
@@ -315,15 +332,15 @@ const updateConnect4Views = async (interaction, gameState) => {
             const isColFull = (c) => board[0][c] !== 0;
 
             const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_0`).setLabel('1️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(0)),
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_1`).setLabel('2️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(1)),
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_2`).setLabel('3️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(2)),
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_3`).setLabel('4️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(3)),
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_4`).setLabel('5️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(4))
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_0`).setLabel('1').setStyle(ButtonStyle.Primary).setDisabled(isColFull(0)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_1`).setLabel('2').setStyle(ButtonStyle.Primary).setDisabled(isColFull(1)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_2`).setLabel('3').setStyle(ButtonStyle.Primary).setDisabled(isColFull(2)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_3`).setLabel('4').setStyle(ButtonStyle.Primary).setDisabled(isColFull(3)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_4`).setLabel('5').setStyle(ButtonStyle.Primary).setDisabled(isColFull(4))
             );
             const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_5`).setLabel('6️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(5)),
-                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_6`).setLabel('7️⃣').setStyle(ButtonStyle.Primary).setDisabled(isColFull(6)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_5`).setLabel('6').setStyle(ButtonStyle.Primary).setDisabled(isColFull(5)),
+                new ButtonBuilder().setCustomId(`${prefix}_drop_${gameState.id}_6`).setLabel('7').setStyle(ButtonStyle.Primary).setDisabled(isColFull(6)),
                 new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
             components.push(row1, row2);

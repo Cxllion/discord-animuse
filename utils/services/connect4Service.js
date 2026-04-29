@@ -169,7 +169,7 @@ class Connect4Service {
                 
                 const reward = await minigameService.recordConnect4Result(p1, p2, userId, game.moves);
                 game.reward = reward;
-            } else if (connect4Engine.isBoardFull(game.board)) {
+            } else if (!connect4Engine.canEitherPlayerWin(game.board)) {
                 game.status = 'DRAW';
                 game.winner = null;
                 await minigameService.recordConnect4Result(p1, p2, null, game.moves);
