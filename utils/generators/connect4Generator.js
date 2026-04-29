@@ -9,7 +9,7 @@ const logger = require('../core/logger');
 class Connect4Generator {
     constructor() {
         this.CARD_WIDTH = 800;
-        this.CARD_HEIGHT = 860;
+        this.CARD_HEIGHT = 880;
         
         this.COLS = connect4Engine.COLS;
         this.ROWS = connect4Engine.ROWS;
@@ -18,7 +18,7 @@ class Connect4Generator {
         this.BOARD_WIDTH = (this.COLS * this.SLOT_SIZE) + ((this.COLS + 1) * this.SLOT_GAP);
         this.BOARD_HEIGHT = (this.ROWS * this.SLOT_SIZE) + ((this.ROWS + 1) * this.SLOT_GAP);
         this.BOARD_X = (this.CARD_WIDTH - this.BOARD_WIDTH) / 2;
-        this.BOARD_Y = 210;
+        this.BOARD_Y = 260;
         
         // Sakura Anime Palette
         this.COLORS = {
@@ -69,6 +69,7 @@ class Connect4Generator {
         await this.drawHeader(ctx, gameState, p1Data, p2Data);
 
         // 3. Board & Slots
+        this.drawColumnNumbers(ctx);
         this.drawBoard(ctx, gameState);
 
         // --- Phase 4: Last Move Indicators ---
@@ -205,7 +206,7 @@ class Connect4Generator {
             ctx.textAlign = 'center';
             
             const statusText = gameState.status === 'DRAW' ? 'MUTUAL ANNIHILATION' : `${this.getDisplayName(gameState.winner === gameState.player1 ? p1?.displayName : p2?.displayName)} DOMINATED`;
-            ctx.fillText(statusText, this.CARD_WIDTH / 2, 185);
+            ctx.fillText(statusText, this.CARD_WIDTH / 2, 180);
             ctx.shadowBlur = 0;
         }
 
@@ -437,30 +438,6 @@ class Connect4Generator {
     drawFooter(ctx, gameState) {
         ctx.save();
 
-        // Column Number Indicators — below the board panel
-        const numY = this.BOARD_Y + this.BOARD_HEIGHT + 18;
-        for (let col = 0; col < this.COLS; col++) {
-            const cx = this.BOARD_X + this.SLOT_GAP + (col * (this.SLOT_SIZE + this.SLOT_GAP)) + (this.SLOT_SIZE / 2);
-
-            // Pill background
-            const pillW = 32;
-            const pillH = 22;
-            const pillTopY = numY - pillH / 2;
-            ctx.beginPath();
-            ctx.roundRect(cx - pillW / 2, pillTopY, pillW, pillH, 6);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.fill();
-
-            // Number — vertically centered in pill
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-            ctx.font = `900 13px 'monalqo', sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.letterSpacing = '0px';
-            ctx.fillText(`${col + 1}`, cx, pillTopY + pillH / 2 + 1);
-            ctx.textBaseline = 'alphabetic'; // Reset to default
-        }
-
         // Brand Footer
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.font = `700 11px 'monalqo', sans-serif`;
@@ -471,12 +448,70 @@ class Connect4Generator {
         const moveCount = gameState.moves || 0;
         const shortId = (gameState.id || 'LOCAL').split('-')[0].toUpperCase();
         
-        ctx.fillText(`ANIMUSE CONNECT 4 | ${dateStr}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 35);
+        ctx.fillText(`ANIMUSE CONNECT 4 | ${dateStr}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 40);
         
         ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.font = `600 10px 'monalqo', sans-serif`;
-        ctx.fillText(`PROTOCOL SEQUENCE: ${moveCount} MOVES | LINK ID: ${shortId}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 15);
+        ctx.fillText(`PROTOCOL SEQUENCE: ${moveCount} MOVES | LINK ID: ${shortId}`, this.CARD_WIDTH / 2, this.CARD_HEIGHT - 20);
 
+        ctx.restore();
+    }
+
+    drawColumnNumbers(ctx) {
+        ctx.save();
+        const numY = this.BOARD_Y - 40;
+        for (let col = 0; col < this.COLS; col++) {
+            const cx = this.BOARD_X + this.SLOT_GAP + (col * (this.SLOT_SIZE + this.SLOT_GAP)) + (this.SLOT_SIZE / 2);
+
+            // 1. Soft Pulse Glow Backing
+            const grad = ctx.createRadialGradient(cx, numY, 0, cx, numY, 30);
+            grad.addColorStop(0, 'rgba(192, 132, 252, 0.12)'); 
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(cx, numY, 30, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. High-End HUD Number
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Subtle offset shadow for depth
+            ctx.fillStyle = 'rgba(192, 132, 252, 0.3)';
+            ctx.font = `900 28px 'monalqo', sans-serif`;
+            ctx.fillText(`${col + 1}`, cx + 1, numY + 1);
+
+            // Top Layer (Sakura Gradient)
+            const textGrad = ctx.createLinearGradient(cx, numY - 15, cx, numY + 15);
+            textGrad.addColorStop(0, '#FFFFFF');
+            textGrad.addColorStop(1, '#FFB7C5');
+            ctx.fillStyle = textGrad;
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+            ctx.shadowBlur = 12;
+            ctx.fillText(`${col + 1}`, cx, numY);
+            
+            // 3. Refined Tactical HUD Brackets
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 1.5;
+            
+            const bW = 24;
+            const bH = 8;
+            const bY = numY + 22;
+            
+            ctx.beginPath();
+            ctx.moveTo(cx - bW, bY - bH);
+            ctx.lineTo(cx - bW, bY);
+            ctx.lineTo(cx + bW, bY);
+            ctx.lineTo(cx + bW, bY - bH);
+            ctx.stroke();
+
+            // Micro-indicator dot
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(cx, bY, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.restore();
     }
 
