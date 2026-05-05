@@ -88,11 +88,12 @@ const getUserAvatarConfig = async (userId, guildId) => {
     };
 };
 
-const updateUserAvatarConfig = async (userId, guildId, source, customUrl = null) => {
+const updateUserAvatarConfig = async (userId, guildId, source, customUrl = undefined) => {
     if (!supabase) return;
     const updates = { avatar_source: source };
     if (customUrl !== undefined) updates.custom_avatar_url = customUrl;
-    await supabase.from('users').update(updates).eq('user_id', userId).eq('guild_id', guildId);
+    
+    await supabase.from('users').upsert({ user_id: userId, guild_id: guildId, ...updates }, { onConflict: 'user_id, guild_id' });
 };
 
 const getBulkUserAvatarConfig = async (guildId, userIds) => {

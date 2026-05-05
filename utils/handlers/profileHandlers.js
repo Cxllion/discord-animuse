@@ -10,6 +10,9 @@ const { handleInteractionError } = require('../core/errorHandler');
 const logger = require('../core/logger');
 const baseEmbed = require('../generators/baseEmbed');
 
+// V4.15: Public Profile Synchronization Map
+const activeProfileMessages = new Map(); // userId -> { channelId, messageId }
+
 const BASIC_COLORS = {
     'Pink': '#FFACD1',
     'Blue': '#3b82f6',
@@ -65,141 +68,26 @@ const safeUpdate = async (interaction, payload) => {
 };
 
 // --- PREVIEW HELPER ---
-const sendProfilePreview = async (interaction, titleOverride = null, colorOverride = null, bannerOverride = undefined, avatarOverride = null) => {
-    try {
-        const userId = interaction.user.id;
-        const guildId = interaction.guild.id;
-        
-        const [
-            dbColor,
-            dbTitle,
-            dbBannerConfig,
-            dbAvatarConfig,
-            rankData,
-            linkedUsername
-        ] = await Promise.all([
-            colorOverride ? Promise.resolve(null) : getUserColor(userId, guildId),
-            titleOverride ? Promise.resolve(null) : getUserTitle(userId, guildId),
-            bannerOverride !== undefined ? Promise.resolve(null) : getUserBannerConfig(userId, guildId),
-            getUserAvatarConfig(userId, guildId),
-            getUserRank(userId, guildId),
-            getLinkedAnilist(userId, guildId)
-        ]);
 
-        const color = colorOverride || dbColor || '#FFACD1';
-        const title = titleOverride || dbTitle || 'Muse Reader';
-        const bannerConfig = bannerOverride !== undefined ? bannerOverride : dbBannerConfig;
-        let avatarConfig = dbAvatarConfig;
-        if (avatarOverride) avatarConfig = { ...avatarConfig, ...avatarOverride };
-
-        // Process Stats
-        const xp = rankData ? parseInt(rankData.xp) : 0;
-        const level = rankData ? parseInt(rankData.level) : 0;
-        const progress = getLevelProgress(xp, level);
-
-        // Calculate Muse Rank (Dynamic based on bound level roles)
-        const { getLevelRoles } = require('../core/database');
-        const levelRoles = await getLevelRoles(guildId);
-        
-        // Find highest earned role
-        const earnedRoles = levelRoles.filter(lr => lr.level <= level);
-        let knowledgeRank = 'Patron'; // Default
-        
-        if (earnedRoles.length > 0) {
-            const highestRole = earnedRoles[earnedRoles.length - 1];
-            const roleObj = interaction.guild.roles.cache.get(highestRole.role_id);
-            let name = roleObj ? roleObj.name : `Level ${highestRole.level} Muse`;
-            // Remove number prefix (e.g., "10 | Scribe Muse" -> "Scribe Muse")
-            knowledgeRank = name.replace(/^\d+\s*\|\s*/, '');
-        }
-
-        // AniList Data (Only if needed)
-        let anilistStats = { completed: 0, days: 0, meanScore: 0 };
-        let anilistAvatar = null;
-        let favorites = [];
-
-        if (linkedUsername) {
-            const { stats, avatar, favorites: favs } = await getAniListProfile(linkedUsername);
-            if (stats) anilistStats = stats;
-            if (avatar) anilistAvatar = avatar;
-            if (favs) favorites = favs;
-        }
-
-        const userData = {
-            xp, level,
-            rank: rankData ? rankData.rank : '?',
-            current: progress.current,
-            required: progress.required,
-            percent: progress.percent,
-            title: title,
-            joinedDate: interaction.member.joinedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-            messages: Math.floor(xp / 20),
-            knowledgeRank,
-            anilist_synced: !!linkedUsername,
-            anilist: anilistStats,
-            avatarConfig: { ...avatarConfig, anilistAvatar },
-            bannerConfig: bannerConfig,
-            guildAvatarUrl: interaction.member.displayAvatarURL({ extension: 'png' })
-        };
-
-        const LoadingManager = require('../ui/LoadingManager');
-        const loader = new LoadingManager(interaction);
-        await loader.startSteps([
-            'Updating your archival record...',
-            'Recalculating rank metadata...',
-            'Materializing new profile design...',
-            'Applying fresh ink to the canvas...'
-        ], 1000);
-
-        const bannerUrl = await resolveBannerUrl(interaction.user, interaction.member, bannerConfig);
-
-        const buffer = await generateProfileCard(
-            interaction.user, 
-            userData, 
-            favorites, 
-            bannerUrl, 
-            color, 
-            interaction.member.displayName,
-            async (failedUrl) => {
-                logger.warn(`Archival Cleanup: Global neutralization of dead banner ${failedUrl} for user ${userId}.`, 'Profile');
-                await clearUserBannerGlobally(userId);
-            }
-        );
-        loader.stop();
-
-        const attachment = new AttachmentBuilder(buffer, { name: 'preview.webp' });
-        const msgs = [
-            "✨ Your digital signature has been recalibrated.",
-            "🎨 A fresh inscription for the archives! How does it look?",
-            "📄 Freshly printed from the Great Library!",
-            "🧐 Your new identity card is ready for inspection, Patron.",
-            "💫 Updates applied! The archives have been updated."
-        ];
-
-        await interaction.followUp({
-            content: msgs[Math.floor(Math.random() * msgs.length)],
-            files: [attachment],
-            flags: MessageFlags.Ephemeral
-        });
-
-    } catch (err) {
-        if (err.code === 10062 || err.code === 40060) return;
-        logger.error('Preview Gen Error:', err, 'ProfileHandlers');
-    }
-};
 
 const showProfileDashboard = async (interaction, isUpdate = false) => {
     const userId = interaction.user.id;
     const guildId = interaction.guild.id;
     const member = interaction.member;
 
-    const [color, title, bannerConfig, ownedTitlesRaw, config] = await Promise.all([
+    const [dbColor, dbTitle, bannerConfig, ownedTitlesRaw, config, rankData, linkedUsername, avatarConfig] = await Promise.all([
         getUserColor(userId, guildId),
         getUserTitle(userId, guildId),
         getUserBannerConfig(userId, guildId),
         getOwnedTitles(userId),
-        fetchConfig(guildId)
+        fetchConfig(guildId),
+        getUserRank(userId, guildId),
+        getLinkedAnilist(userId, guildId),
+        getUserAvatarConfig(userId, guildId)
     ]);
+
+    const color = dbColor || '#3B82F6';
+    const title = dbTitle || 'Muse Reader';
 
     const ownedTitles = [...ownedTitlesRaw]; // Copy to avoid mutation issues if cached
     if (!ownedTitles.includes('Muse Reader')) ownedTitles.unshift('Muse Reader');
@@ -207,32 +95,74 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
     // V4.12: Dynamic Identity Roles (Leveling & Special Titles)
     const { getLevelRoles } = require('../core/database');
     const levelRoles = await getLevelRoles(guildId);
-    const userLevel = (await getUserRank(userId, guildId))?.level || 0;
+    
+    const xp = rankData ? parseInt(rankData.xp) : 0;
+    const level = rankData ? parseInt(rankData.level) : 0;
+    const progress = getLevelProgress(xp, level);
 
     // Filter earned roles and redact numbers
-    const earnedLevelRoles = levelRoles.filter(lr => lr.level <= userLevel);
+    const earnedLevelRoles = levelRoles.filter(lr => lr.level <= level);
+    let knowledgeRank = 'Patron';
+    let rankColor = color;
+
     for (const lr of earnedLevelRoles) {
         const role = member.guild.roles.cache.get(lr.role_id);
         if (role) {
             const redactedName = role.name.replace(/^\d+\s*\|\s*/, '');
             if (!ownedTitles.includes(redactedName)) ownedTitles.push(redactedName);
+            knowledgeRank = redactedName;
+            if (role.color) rankColor = `#${role.color.toString(16).padStart(6, '0')}`;
         }
     }
 
     // Special Designations
-    if (member.premiumSince) {
+    const isPremium = hasPremium(member, config);
+    const isBooster = !!member.premiumSince;
+
+    if (isBooster) {
         if (!ownedTitles.includes('Server Booster')) ownedTitles.push('Server Booster');
+        rankColor = '#A855F7';
     }
-    if (hasPremium(member, config)) {
+    if (isPremium) {
         if (!ownedTitles.includes('Seraphic Muse')) ownedTitles.push('Seraphic Muse');
+        rankColor = '#F5D17E';
     }
 
+    // AniList Data
+    let anilistStats = { completed: 0, days: 0, meanScore: 0 };
+    let favorites = [];
+    if (linkedUsername) {
+        try {
+            const alRes = await getAniListProfile(linkedUsername);
+            anilistStats = alRes.stats;
+            favorites = alRes.favorites;
+            if (avatarConfig && avatarConfig.source === 'ANILIST' && alRes.avatar) {
+                avatarConfig.anilistAvatar = alRes.avatar;
+            }
+        } catch(e) {}
+    }
+
+    const userData = {
+        xp, level, rank: rankData ? rankData.rank : '?',
+        current: progress.current, required: progress.required, percent: progress.percent,
+        joinedDate: member ? member.joinedAt.toLocaleDateString() : 'Unknown',
+        messages: Math.floor(xp / 20), knowledgeRank,
+        is_premium: isPremium, is_booster: isBooster,
+        rankColor, anilist: anilistStats, avatarConfig,
+        guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : interaction.user.displayAvatarURL({ extension: 'png' }),
+        title: (title && !title.includes('Muse')) ? title : knowledgeRank.toUpperCase()
+    };
+
+    const bannerUrl = await resolveBannerUrl(interaction.user, member, bannerConfig);
+    const buffer = await generateProfileCard(interaction.user, userData, favorites, bannerUrl, color, member.displayName);
+    const attachment = new AttachmentBuilder(buffer, { name: 'dashboard-preview.webp' });
+
     const embed = baseEmbed(`Identity Dashboard: ${interaction.user.username}`, 
-        'Manage your official Library Card appearance and details from the Great Archives.',
+        'Manage your official Library Card appearance and details from the Great Archives.\n\n✅ **Live Preview**: This card reflects your current archival signature.',
         interaction.client.user.displayAvatarURL()
     )
         .setColor(color)
-        .setImage('https://dummyimage.com/600x5/2f3136/2f3136.png') // Spacer
+        .setImage('attachment://dashboard-preview.webp')
         .addFields(
             { name: '🎨 Theme Interface', value: `\`${color}\``, inline: true },
             { name: '🏷️ Active Title', value: `\`${title}\``, inline: true },
@@ -272,21 +202,131 @@ const showProfileDashboard = async (interaction, isUpdate = false) => {
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('👤');
 
-    if (!hasPremium(member, config)) {
-        btnBg.setEmoji('🔒');
-    }
-
     const row1 = new ActionRowBuilder().addComponents(titleSelect);
     const row2 = new ActionRowBuilder().addComponents(btnColor, btnBanner, btnAvatar);
 
     const payload = {
         content: '',
         embeds: [embed],
+        files: [attachment],
         components: [row1, row2],
         flags: MessageFlags.Ephemeral
     };
 
     await safeUpdate(interaction, payload);
+};
+
+// --- V4.15: PUBLIC PROFILE SYNCHRONIZATION ---
+const updatePublicProfile = async (interaction) => {
+    const userId = interaction.user.id;
+    const guildId = interaction.guild.id;
+    const session = activeProfileMessages.get(userId);
+    
+    logger.info(`[SYNC_DEBUG] Sync triggered for ${userId}. Session: ${session ? 'EXISTS' : 'MISSING'}`, 'ProfileHandlers');
+    if (!session) return;
+
+    try {
+        const channel = await interaction.client.channels.fetch(session.channelId).catch(e => {
+            logger.error(`[SYNC_DEBUG] Channel fetch failed: ${e.message}`, 'ProfileHandlers');
+            return null;
+        });
+        if (!channel) return;
+
+        const message = await channel.messages.fetch(session.messageId).catch(e => {
+            logger.error(`[SYNC_DEBUG] Message fetch failed: ${e.message} (ID: ${session.messageId})`, 'ProfileHandlers');
+            return null;
+        });
+        if (!message) return;
+
+        logger.info(`[SYNC_DEBUG] Found target message ${message.id} in channel ${channel.id}. Editable: ${message.editable}`, 'ProfileHandlers');
+
+        // Data Fetching (Mirror of profile.js)
+        const [rankData, linkedUsername, bannerConfig, title, color, avatarConfig] = await Promise.all([
+            getUserRank(userId, guildId),
+            getLinkedAnilist(userId, guildId),
+            getUserBannerConfig(userId, guildId),
+            getUserTitle(userId, guildId),
+            getUserColor(userId, guildId),
+            getUserAvatarConfig(userId, guildId)
+        ]);
+
+        let member;
+        try { member = await interaction.guild.members.fetch(userId); } catch (e) { member = null; }
+
+        const xp = rankData ? parseInt(rankData.xp) : 0;
+        const level = rankData ? parseInt(rankData.level) : 0;
+        const progress = getLevelProgress(xp, level);
+
+        const { fetchConfig, getLevelRoles } = require('../core/database');
+        const [config, levelRoles] = await Promise.all([
+            fetchConfig(guildId),
+            getLevelRoles(guildId)
+        ]);
+
+        const isPremium = member ? member.roles.cache.has(config.premium_role_id) : false;
+        const isBooster = member ? member.roles.cache.has(config.booster_role_id) : false;
+
+        const earnedRoles = levelRoles.filter(lr => lr.level <= level);
+        let knowledgeRank = 'Muse Reader';
+        let rankColor = color || '#3B82F6';
+
+        if (earnedRoles.length > 0) {
+            const highestRole = earnedRoles[earnedRoles.length - 1];
+            const roleObj = interaction.guild.roles.cache.get(highestRole.role_id);
+            if (roleObj) {
+                knowledgeRank = roleObj.name.replace(/^\d+\s*[|-]\s*/, '').trim();
+                if (roleObj.color) rankColor = `#${roleObj.color.toString(16).padStart(6, '0')}`;
+            }
+        }
+
+        if (isBooster) rankColor = '#A855F7';
+        else if (isPremium) rankColor = '#F5D17E';
+
+        let anilistStats = { completed: 0, days: 0, meanScore: 0 };
+        let favorites = [];
+        if (linkedUsername) {
+            const alRes = await getAniListProfile(linkedUsername);
+            anilistStats = alRes.stats;
+            favorites = alRes.favorites;
+            if (avatarConfig && avatarConfig.source === 'ANILIST') avatarConfig.anilistAvatar = alRes.avatar;
+        }
+
+        const userData = {
+            xp, level, rank: rankData ? rankData.rank : '?',
+            current: progress.current, required: progress.required, percent: progress.percent,
+            joinedDate: member ? member.joinedAt.toLocaleDateString() : 'Unknown',
+            messages: Math.floor(xp / 20), knowledgeRank,
+            is_premium: isPremium, is_booster: isBooster,
+            rankColor, anilist: anilistStats, avatarConfig,
+            guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : interaction.user.displayAvatarURL({ extension: 'png' })
+        };
+
+        userData.anilist_synced = !!linkedUsername;
+        userData.title = (title && !title.includes('Muse')) ? title : knowledgeRank.toUpperCase();
+
+        const bannerUrl = await resolveBannerUrl(interaction.user, member, bannerConfig);
+        const buffer = await generateProfileCard(interaction.user, userData, favorites, bannerUrl, color, member.displayName);
+        const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.webp' });
+
+        // V4.15: Preserve the Dashboard Button on the public message
+        const dashboardBtn = new ButtonBuilder()
+            .setCustomId(`profile_dashboard_open_${userId}`)
+            .setEmoji('🔍')
+            .setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(dashboardBtn);
+
+        // Update the public message
+        await message.edit({ 
+            content: '', // Explicitly clear any leftover text
+            files: [attachment],
+            components: [row]
+        })
+        .then(() => logger.info(`[SYNC_DEBUG] SUCCESSFULLY EDITED public message ${message.id}`, 'ProfileHandlers'))
+        .catch(err => logger.error(`[SYNC_DEBUG] FAILED TO EDIT public message: ${err.message}`, 'ProfileHandlers'));
+        
+    } catch (err) {
+        logger.error('[SYNC_DEBUG] Unexpected sync error:', err, 'ProfileHandlers');
+    }
 };
 
 // --- V4.3: ENHANCED PROFILE HUD MENU (EPHEMERAL) ---
@@ -645,47 +685,90 @@ const showBasicColorSelect = async (interaction) => {
 };
 
 // --- AVATAR MENU ---
-const showAvatarMenu = async (interaction) => {
+const showAvatarMenu = async (interaction, avatarConfigOverride = null) => {
     const userId = interaction.user.id;
     const guildId = interaction.guild.id;
-    const [config, guildConfig] = await Promise.all([
+    const member = interaction.member;
+
+    const [dbAvatarConfig, dbBannerConfig, dbColor, dbTitle, rankData, linkedUsername, guildConfig] = await Promise.all([
         getUserAvatarConfig(userId, guildId),
+        getUserBannerConfig(userId, guildId),
+        getUserColor(userId, guildId),
+        getUserTitle(userId, guildId),
+        getUserRank(userId, guildId),
+        getLinkedAnilist(userId, guildId),
         fetchConfig(guildId)
     ]);
 
+    const activeAvatarConfig = avatarConfigOverride || dbAvatarConfig;
+    const color = dbColor || '#3B82F6';
+
+    // Generate Verification Card
+    const bannerUrl = await resolveBannerUrl(interaction.user, member, dbBannerConfig);
+    const xp = rankData ? parseInt(rankData.xp) : 0;
+    const level = rankData ? parseInt(rankData.level) : 0;
+    const progress = getLevelProgress(xp, level);
+    
+    let favorites = [];
+    if (linkedUsername) {
+        try {
+            const alRes = await getAniListProfile(linkedUsername);
+            if (alRes.favorites) favorites = alRes.favorites;
+            if (activeAvatarConfig.source === 'ANILIST' && alRes.avatar) {
+                activeAvatarConfig.anilistAvatar = alRes.avatar;
+            }
+        } catch(e) {}
+    }
+
+    const userData = {
+        xp, level, rank: rankData ? rankData.rank : '?',
+        current: progress.current, required: progress.required, percent: progress.percent,
+        title: dbTitle || 'Patron',
+        joinedDate: member ? member.joinedAt.toLocaleDateString() : 'Unknown',
+        messages: Math.floor(xp / 20),
+        anilist_synced: !!linkedUsername,
+        avatarConfig: activeAvatarConfig,
+        guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : interaction.user.displayAvatarURL({ extension: 'png' })
+    };
+
+    const buffer = await generateProfileCard(interaction.user, userData, favorites, bannerUrl, color, member.displayName);
+    const attachment = new AttachmentBuilder(buffer, { name: 'avatar-preview.webp' });
+
     const embed = baseEmbed('👤 Profile Picture Configuration', 
-        `Select your digital signature source.\nCurrent Source: **${config.source.replace('_', ' ')}**`, 
+        `Select your digital signature source.\nCurrent Source: **${activeAvatarConfig.source.replace('_', ' ')}**`, 
         null
-    ).setColor('#2b2d31');
+    )
+        .setColor(color)
+        .setImage('attachment://avatar-preview.webp');
 
     const btnDefault = new ButtonBuilder()
         .setCustomId('profile_pfp_default')
         .setLabel('Default (Global)')
-        .setStyle(config.source === 'DISCORD_GLOBAL' ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setStyle(activeAvatarConfig.source === 'DISCORD_GLOBAL' ? ButtonStyle.Success : ButtonStyle.Secondary)
         .setEmoji('🌐');
 
     const btnServer = new ButtonBuilder()
         .setCustomId('profile_pfp_server')
         .setLabel('Server Profile')
-        .setStyle(config.source === 'DISCORD_GUILD' ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setStyle(activeAvatarConfig.source === 'DISCORD_GUILD' ? ButtonStyle.Success : ButtonStyle.Secondary)
         .setEmoji('🏰');
 
     const btnAniList = new ButtonBuilder()
         .setCustomId('profile_pfp_anilist')
         .setLabel('AniList Avatar')
-        .setStyle(config.source === 'ANILIST' ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setStyle(activeAvatarConfig.source === 'ANILIST' ? ButtonStyle.Success : ButtonStyle.Secondary)
         .setEmoji('🅰️');
 
     const btnUpload = new ButtonBuilder()
         .setCustomId('profile_pfp_upload')
         .setLabel('Send in Chat')
-        .setStyle(config.source === 'CUSTOM' && !config.customUrl?.startsWith('http') ? ButtonStyle.Success : ButtonStyle.Primary)
+        .setStyle(activeAvatarConfig.source === 'CUSTOM' && !activeAvatarConfig.customUrl?.startsWith('http') ? ButtonStyle.Success : ButtonStyle.Primary)
         .setEmoji(hasPremium(interaction.member, guildConfig) ? '📥' : '🔒');
 
     const btnUrl = new ButtonBuilder()
         .setCustomId('profile_pfp_custom')
         .setLabel('URL Upload')
-        .setStyle(config.source === 'CUSTOM' && config.customUrl?.startsWith('http') ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setStyle(activeAvatarConfig.source === 'CUSTOM' && activeAvatarConfig.customUrl?.startsWith('http') ? ButtonStyle.Success : ButtonStyle.Secondary)
         .setEmoji(hasPremium(interaction.member, guildConfig) ? '🔗' : '🔒');
 
     const btnBack = new ButtonBuilder()
@@ -696,7 +779,11 @@ const showAvatarMenu = async (interaction) => {
     const row1 = new ActionRowBuilder().addComponents(btnDefault, btnServer, btnAniList);
     const row2 = new ActionRowBuilder().addComponents(btnUpload, btnUrl, btnBack);
 
-    await safeUpdate(interaction, { embeds: [embed], components: [row1, row2] });
+    await safeUpdate(interaction, { 
+        embeds: [embed], 
+        files: [attachment],
+        components: [row1, row2] 
+    });
 };
 
 // --- HANDLERS ---
@@ -712,6 +799,16 @@ const handleProfileInteraction = async (interaction) => {
     // Profile Dashboard Open (from /profile command) - V4.3: Now opens the HUD Menu
     if (id.startsWith('profile_dashboard_open_')) {
         const targetId = id.split('_').pop();
+        
+        // V4.15: Track the public profile message for live synchronization
+        if (userId === targetId && interaction.message) {
+            activeProfileMessages.set(userId, {
+                channelId: interaction.channelId,
+                messageId: interaction.message.id
+            });
+            logger.info(`Tracking public profile message for user ${userId}: Msg ${interaction.message.id} in Chan ${interaction.channelId}`, 'ProfileHandlers');
+        }
+
         // ENSURE NEW EPHEMERAL WINDOW
         if (!interaction.deferred && !interaction.replied) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -725,6 +822,36 @@ const handleProfileInteraction = async (interaction) => {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         }
         return showProfileHUDMenu(interaction, id.split('_').pop());
+    }
+
+    // --- MODAL TRIGGERS (Must be handled BEFORE safeDefer) ---
+    if (id === 'profile_pfp_custom') {
+        const guildConfig = await fetchConfig(guildId);
+        if (!hasPremium(interaction.member, guildConfig)) {
+            return interaction.reply({ content: '🔒 Custom Avatars are a premium feature.', flags: MessageFlags.Ephemeral });
+        }
+
+        const modal = new ModalBuilder().setCustomId('profile_modal_pfp').setTitle('Custom Avatar Upload');
+        const input = new TextInputBuilder()
+            .setCustomId('url')
+            .setLabel('Image URL')
+            .setPlaceholder('https://example.com/avatar.png')
+            .setStyle(TextInputStyle.Short);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        return interaction.showModal(modal);
+    }
+
+    if (id === 'profile_color_hex') {
+        const modal = new ModalBuilder().setCustomId('profile_modal_hex').setTitle('Custom Theme Encoding');
+        const input = new TextInputBuilder()
+            .setCustomId('hex')
+            .setLabel('Hex Code')
+            .setPlaceholder('#FF0099')
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(4)
+            .setMaxLength(7);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        return interaction.showModal(modal);
     }
 
     // ALL OTHER ACTIONS (Updates)
@@ -760,7 +887,6 @@ const handleProfileInteraction = async (interaction) => {
 
     // Avatar Actions
     if (['profile_pfp_default', 'profile_pfp_server', 'profile_pfp_anilist'].includes(id)) {
-        await safeDefer(interaction);
 
         let source = 'DISCORD_GLOBAL';
         if (id === 'profile_pfp_server') source = 'DISCORD_GUILD';
@@ -773,28 +899,14 @@ const handleProfileInteraction = async (interaction) => {
         }
 
         await updateUserAvatarConfig(userId, guildId, source);
-        await sendProfilePreview(interaction, undefined, undefined, undefined, { source });
-        return showAvatarMenu(interaction); // Refresh buttons
+        return showAvatarMenu(interaction, { source });
     }
 
-    if (id === 'profile_pfp_custom') {
-        const guildConfig = await fetchConfig(guildId);
-        if (!hasPremium(interaction.member, guildConfig)) {
-            return interaction.reply({ content: '🔒 Custom Avatars are a premium feature.', flags: MessageFlags.Ephemeral });
-        }
 
-        const modal = new ModalBuilder().setCustomId('profile_modal_pfp').setTitle('Custom Avatar Upload');
-        const input = new TextInputBuilder()
-            .setCustomId('url')
-            .setLabel('Image URL')
-            .setPlaceholder('https://example.com/avatar.png')
-            .setStyle(TextInputStyle.Short);
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
-        return interaction.showModal(modal);
-    }
 
     if (id === 'profile_pfp_upload') {
         const guildConfig = await fetchConfig(guildId);
+        const filter = m => m.author.id === userId && m.attachments.size > 0;
         await interaction.editReply({ 
             content: '📡 **Profile Picture Uplink Initiated**\nPlease upload your new digital signature (PFP) in this channel. I will capture its essence and secure it within the Great Library archives. ♡\n*Window expires in 60 seconds.*', 
             embeds: [],
@@ -832,11 +944,9 @@ const handleProfileInteraction = async (interaction) => {
 
             await updateUserAvatarConfig(userId, guildId, 'CUSTOM', finalUrl);
             
-            // Re-materialize preview
-            await sendProfilePreview(interaction, undefined, undefined, undefined, { source: 'CUSTOM', customUrl: finalUrl });
             await interaction.followUp({ content: '✅ **Identity Secured**: Your new digital signature has been successfully archived.', flags: MessageFlags.Ephemeral });
             
-            return showAvatarMenu(interaction);
+            return showAvatarMenu(interaction, { source: 'CUSTOM', customUrl: finalUrl });
         });
 
         collector.on('end', collected => {
@@ -852,8 +962,8 @@ const handleProfileInteraction = async (interaction) => {
         await safeDefer(interaction);
         const selected = interaction.values[0];
         await updateUserTitle(userId, guildId, selected);
-        // Preview
-        await sendProfilePreview(interaction, selected);
+        
+        updatePublicProfile(interaction);
         return showProfileDashboard(interaction, true);
     }
 
@@ -878,12 +988,12 @@ const handleProfileInteraction = async (interaction) => {
         }
         if (id === 'profile_banner_reset') {
             await updateUserBannerConfig(userId, guildId, 'PRESET', null);
-            await sendProfilePreview(interaction, undefined, undefined, { source: 'PRESET', customUrl: null });
+            updatePublicProfile(interaction);
             return showBannerMenu(interaction);
         }
 
         await updateUserBannerConfig(userId, guildId, source);
-        await sendProfilePreview(interaction, undefined, undefined, { source });
+        updatePublicProfile(interaction);
         return showBannerMenu(interaction);
     }
 
@@ -930,7 +1040,8 @@ const handleProfileInteraction = async (interaction) => {
             
             // Re-materialize the preview card with the new transmission
             const bannerConfig = await getUserBannerConfig(userId, guildId);
-            await interaction.followUp({ content: '✅ **Archival Transmission Logged**: Your identity background has been secured in the archives.', flags: MessageFlags.Ephemeral });
+            updatePublicProfile(interaction);
+            await interaction.followUp({ content: '✅ **Archival Transmission Logged**: Your identity background has been secured. Check your public profile for the updated view! ♡', flags: MessageFlags.Ephemeral });
             
             // Refresh the HUD Control Menu
             return showBannerMenu(interaction, bannerConfig);
@@ -951,7 +1062,7 @@ const handleProfileInteraction = async (interaction) => {
             const absPath = path.join(__dirname, 'images', 'profile-presets', filename);
             await safeDefer(interaction);
             await updateUserBannerConfig(userId, guildId, 'PRESET', absPath);
-            await sendProfilePreview(interaction, undefined, undefined, { source: 'PRESET', customUrl: absPath });
+            updatePublicProfile(interaction);
             return showBannerMenu(interaction);
         }
     }
@@ -963,7 +1074,7 @@ const handleProfileInteraction = async (interaction) => {
         await safeDefer(interaction);
         const hex = interaction.values[0];
         await updateUserColor(userId, guildId, hex);
-        await sendProfilePreview(interaction, undefined, hex);
+        updatePublicProfile(interaction);
         return showProfileDashboard(interaction, true);
     }
 
@@ -974,22 +1085,11 @@ const handleProfileInteraction = async (interaction) => {
         }
         await safeDefer(interaction);
         await updateUserColor(userId, guildId, roleColor);
-        await sendProfilePreview(interaction, undefined, roleColor);
+        updatePublicProfile(interaction);
         return showProfileDashboard(interaction, true);
     }
 
-    if (id === 'profile_color_hex') {
-        const modal = new ModalBuilder().setCustomId('profile_modal_hex').setTitle('Custom Theme Encoding');
-        const input = new TextInputBuilder()
-            .setCustomId('hex')
-            .setLabel('Hex Code')
-            .setPlaceholder('#FF0099')
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(4)
-            .setMaxLength(7);
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
-        return interaction.showModal(modal);
-    }
+
 
     if (id === 'profile_color_auto') {
         await safeDefer(interaction);
@@ -998,7 +1098,7 @@ const handleProfileInteraction = async (interaction) => {
         if (bannerUrl) {
             const autoColor = await getDominantColor(bannerUrl);
             await updateUserColor(userId, guildId, autoColor);
-            await sendProfilePreview(interaction, undefined, autoColor);
+            updatePublicProfile(interaction);
         }
         return showProfileDashboard(interaction, true);
     }
@@ -1021,7 +1121,7 @@ const handleProfileModals = async (interaction) => {
             await updateUserColor(interaction.user.id, interaction.guild.id, finalColor);
 
             await safeDefer(interaction);
-            await sendProfilePreview(interaction, undefined, finalColor);
+            updatePublicProfile(interaction);
             await showProfileDashboard(interaction, true);
             return;
         }
@@ -1033,7 +1133,7 @@ const handleProfileModals = async (interaction) => {
             await updateUserBackground(interaction.user.id, interaction.guild.id, url);
 
             await safeDefer(interaction);
-            await sendProfilePreview(interaction, undefined, undefined, url);
+            updatePublicProfile(interaction);
             await showProfileDashboard(interaction, true); // Or showBackgroundMenu? User likely wants to go back to dashboard.
             return;
         }
@@ -1044,9 +1144,8 @@ const handleProfileModals = async (interaction) => {
             await updateUserAvatarConfig(interaction.user.id, interaction.guild.id, 'CUSTOM', url);
 
             await safeDefer(interaction);
-            await sendProfilePreview(interaction, undefined, undefined, undefined, { source: 'CUSTOM', customUrl: url });
-            await showAvatarMenu(interaction);
-            return;
+            updatePublicProfile(interaction);
+            return showAvatarMenu(interaction, { source: 'CUSTOM', customUrl: url });
         }
     } catch (err) {
         if (err.code === 10062 || err.code === 40060) return;

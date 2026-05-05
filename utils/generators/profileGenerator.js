@@ -25,7 +25,7 @@ const getCachedLocalImage = async (assetPath) => {
 };
 
 // --- TACTICAL ASSET ACQUISITION ---
-const secureLoadImage = async (url, fallbackPath = null) => {
+const secureLoadImage = async (url, fallbackPath = null, retries = 1) => {
     // 1. Check if we're requesting a local fallback directly
     if (!url && fallbackPath) return await getCachedLocalImage(fallbackPath);
     if (!url) return null;
@@ -35,20 +35,30 @@ const secureLoadImage = async (url, fallbackPath = null) => {
         return await getCachedLocalImage(url);
     }
 
-    // 3. Remote Uplink with Active Timeout (8s)
-    try {
-        const response = await axios.get(url, { 
-            responseType: 'arraybuffer', 
-            timeout: 8000,
-            headers: { 'User-Agent': 'AniMuse-Archivist/1.0' }
-        });
-        if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-        return await loadImage(Buffer.from(response.data));
-    } catch (err) {
-        logger.warn(`Asset Uplink Interrupted: ${url} (${err.message}). Falling back to archives.`, 'Generator');
-        if (fallbackPath) {
-            return await getCachedLocalImage(fallbackPath);
+    // 3. Remote Uplink with Active Timeout (15s) and Retry Logic
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const response = await axios.get(url, { 
+                responseType: 'arraybuffer', 
+                timeout: 15000, // Increased to 15s for stability
+                headers: { 'User-Agent': 'AniMuse-Archivist/1.0' }
+            });
+            if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+            return await loadImage(Buffer.from(response.data));
+        } catch (err) {
+            lastError = err;
+            if (attempt < retries) {
+                // Exponential backoff or small delay could be added here, but simple retry is often enough for timeouts
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+            }
         }
+    }
+
+    logger.warn(`Asset Uplink Interrupted: ${url} (${lastError.message}). Falling back to archives.`, 'Generator');
+    if (fallbackPath) {
+        return await getCachedLocalImage(fallbackPath);
     }
     return null;
 };

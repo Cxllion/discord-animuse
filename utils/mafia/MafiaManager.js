@@ -416,13 +416,11 @@ class MafiaManager {
             
             // --- TEST MODE SAFEGUARD ---
             if (process.env.TEST_MODE === 'true') {
-                logger.info('[Mafia] Test Mode detected: Wiping local and remote archives for a clean slate.', 'Mafia');
-                
                 // 1. Wipe local state file
                 if (fs.existsSync(STATE_FILE)) {
                     try {
                         fs.unlinkSync(STATE_FILE);
-                        logger.info('[Mafia] Local state file erased.', 'Mafia');
+                        logger.info('[Mafia] [Test Mode] Purged stale local Mafia session state for a clean slate.', 'Mafia');
                     } catch (e) {
                         logger.warn(`Failed to erase local state: ${e.message}`, 'Mafia');
                     }
@@ -431,10 +429,12 @@ class MafiaManager {
                 // 2. Wipe DB sessions for CURRENT guilds (to avoid polluting prod)
                 try {
                     const guilds = Array.from(client.guilds.cache.keys());
-                    for (const gid of guilds) {
-                        await mafiaService.deleteSession(gid).catch(() => null);
+                    if (guilds.length > 0) {
+                        for (const gid of guilds) {
+                            await mafiaService.deleteSession(gid).catch(() => null);
+                        }
+                        logger.info(`[Mafia] [Test Mode] Synchronized ${guilds.length} transient Mafia sessions.`, 'Mafia');
                     }
-                    logger.info(`[Mafia] Wiped ${guilds.length} guild sessions from DB.`, 'Mafia');
                     
                     // 3. DEEP SCAVENGE: Purge any orphan threads in these guilds
                     await this.scavengeOrphanThreads(client);
