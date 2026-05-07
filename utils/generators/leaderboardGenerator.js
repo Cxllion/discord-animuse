@@ -1,6 +1,7 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const { lightenColor } = require('../config/colorConfig');
+const { secureLoadImage } = require('../core/visualUtils');
 
 const CARD_WIDTH = 800;
 const CARD_HEIGHT = 480;
@@ -441,8 +442,9 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.clip();
         try {
             if (user && user.avatarUrl) {
-                const img = await loadImage(user.avatarUrl);
-                ctx.drawImage(img, rowX + 27, y - 8, 16, 16);
+                const img = await secureLoadImage(user.avatarUrl);
+                if (img) ctx.drawImage(img, rowX + 27, y - 8, 16, 16);
+                else { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill(); }
             } else {
                 ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
             }

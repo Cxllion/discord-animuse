@@ -1,3 +1,9 @@
+const { loadImage } = require('@napi-rs/canvas');
+const axios = require('axios');
+const path = require('path');
+const { refreshDiscordUrls } = require('../services/storageService');
+const logger = require('./logger');
+
 /**
  * Centralized Visual Utilities for Card Generators
  */
@@ -255,6 +261,71 @@ const safeDefer = async (i, ephemeral = true) => {
     }
 };
 
+// --- PREMIUM ASSET CACHE ---
+const staticAssetCache = new Map();
+
+/**
+ * Loads and caches local assets to prevent redundant I/O.
+ */
+const getCachedLocalImage = async (assetPath) => {
+    if (!assetPath) return null;
+    if (staticAssetCache.has(assetPath)) return staticAssetCache.get(assetPath);
+
+    try {
+        const img = await loadImage(assetPath);
+        staticAssetCache.set(assetPath, img);
+        return img;
+    } catch (e) {
+        logger.error(`Archival Cache Failed: Could not load ${assetPath}`, e, 'VisualUtils');
+        return null;
+    }
+};
+
+/**
+ * Robust image loader with Discord URL refreshing, retries, and local caching.
+ */
+const secureLoadImage = async (urls, fallbackPath = null, retries = 1) => {
+    let img = null;
+    let urlList = Array.isArray(urls) ? urls : [urls];
+
+    urlList = await refreshDiscordUrls(urlList);
+
+    for (const url of urlList) {
+        if (!url) continue;
+
+        if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
+            img = await getCachedLocalImage(url);
+            if (img) return img;
+        } else if (typeof url === 'string' && url.startsWith('http')) {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const response = await axios.get(url, {
+                        responseType: 'arraybuffer',
+                        timeout: 10000,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        }
+                    });
+                    if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+                    img = await loadImage(Buffer.from(response.data));
+                    if (img) return img;
+                } catch (err) {
+                    if (attempt === retries) {
+                        logger.warn(`Remote Load Failed: ${url} - ${err.message}`, 'VisualUtils');
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+            }
+        }
+    }
+
+    if (!img && fallbackPath) {
+        img = await getCachedLocalImage(fallbackPath);
+    }
+    return img;
+};
+
 module.exports = {
     normalizeColor,
     generateColorTokens,
@@ -264,5 +335,7 @@ module.exports = {
     isFontSafe,
     getResolvableName,
     safeUpdate,
-    safeDefer
+    safeDefer,
+    secureLoadImage,
+    getCachedLocalImage
 };

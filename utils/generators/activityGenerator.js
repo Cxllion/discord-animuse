@@ -1,5 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
+const { generateColorTokens, parseMetadata, secureLoadImage } = require('../core/visualUtils');
 const CONFIG = require('../config');
 
 /**
@@ -64,7 +64,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     try {
         const bgUrl = media.bannerImage || media.coverImage?.extraLarge;
         if (bgUrl) {
-            const bgImg = await loadImage(bgUrl);
+            const bgImg = await secureLoadImage(bgUrl);
             ctx.save();
             const scale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
             const bx = (baseW - bgImg.width * scale) / 2;
@@ -114,7 +114,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     try {
         const coverUrl = media.coverImage?.extraLarge || media.coverImage?.large;
         if (coverUrl) {
-            const cImg = await loadImage(coverUrl);
+            const cImg = await secureLoadImage(coverUrl);
             ctx.save();
             ctx.shadowColor = 'rgba(0,0,0,0.85)';
             ctx.shadowBlur = 40;
@@ -244,7 +244,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // ─── BLOCK A: User Identity (Avatar + Name + Status Pill) ────────────────
     try {
         if (userMeta.avatarUrl) {
-            const aImg = await loadImage(userMeta.avatarUrl);
+            const aImg = await secureLoadImage(userMeta.avatarUrl);
             ctx.save();
             ctx.beginPath();
             ctx.arc(cX + avatarSize / 2, curY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);

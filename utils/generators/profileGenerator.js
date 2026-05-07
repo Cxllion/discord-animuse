@@ -1,68 +1,10 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
-const axios = require('axios');
 const { refreshDiscordUrls } = require('../services/storageService');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
+const { secureLoadImage } = require('../core/visualUtils');
 
-// --- PREMIUM ASSET CACHE ---
-const staticAssetCache = new Map();
-
-const getCachedLocalImage = async (assetPath) => {
-    if (!assetPath) return null;
-    if (staticAssetCache.has(assetPath)) return staticAssetCache.get(assetPath);
-
-    try {
-        const img = await loadImage(assetPath);
-        staticAssetCache.set(assetPath, img);
-        return img;
-    } catch (e) {
-        logger.error(`Archival Cache Failed: Could not load ${assetPath}`, e, 'Generator');
-        return null;
-    }
-};
-
-const secureLoadImage = async (urls, fallbackPath = null, retries = 1) => {
-    let img = null;
-    let urlList = Array.isArray(urls) ? urls : [urls];
-
-    urlList = await refreshDiscordUrls(urlList);
-
-    for (const url of urlList) {
-        if (!url) continue;
-
-        if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
-            img = await getCachedLocalImage(url);
-            if (img) return img;
-        } else if (typeof url === 'string' && url.startsWith('http')) {
-            for (let attempt = 0; attempt <= retries; attempt++) {
-                try {
-                    const response = await axios.get(url, {
-                        responseType: 'arraybuffer',
-                        timeout: 10000,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        }
-                    });
-                    if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-                    img = await loadImage(Buffer.from(response.data));
-                    if (img) return img;
-                } catch (err) {
-                    if (attempt === retries) {
-                        logger.warn(`Remote Load Failed: ${url} - ${err.message}`, 'Generator');
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                }
-            }
-        }
-    }
-
-    if (!img && fallbackPath) {
-        img = await getCachedLocalImage(fallbackPath);
-    }
-    return img;
-};
 
 // --- COLOR MIXING ARCHITECTURE ---
 const hexToRgbArr = (hex) => {
@@ -194,8 +136,11 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
     const COLOR_HIGHLIGHT = mixColors('#ffffff', THEME_ACCENT, 0.8);
     const COLOR_SHADOW = mixColors('#000000', THEME_ACCENT, 0.4);
 
-    // Deep, un-muddied ink for text
-    const COLOR_INK = mixColors('#0a0a0a', THEME_ACCENT, 0.3);
+    // Deep, un-muddied ink for text - Guaranteed contrast on parchment
+    const COLOR_INK = mixColors('#1a1a1a', THEME_ACCENT, 0.35);
+    
+    // High-contrast version of theme color for icons/decors
+    const COLOR_DECOR = mixColors('#111111', THEME_ACCENT, 0.65);
 
     // True Leather Mixed with Theme Accent
     const COLOR_LEATHER_DARK = mixColors('#110905', THEME_ACCENT, 0.15);
@@ -523,13 +468,13 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
             const drawRow = (centerY, label, value, iconType) => {
                 const ix = alignX + 10;
                 ctx.beginPath(); ctx.arc(ix, centerY, 13, 0, Math.PI * 2);
-                ctx.fillStyle = hexToRgba(THEME_ACCENT, 0.12);
+                ctx.fillStyle = hexToRgba(COLOR_DECOR, 0.1);
                 ctx.fill();
 
-                // Vibrant Theme Icons
-                ctx.strokeStyle = THEME_ACCENT;
+                // Vibrant Theme Icons - Adaptive Contrast
+                ctx.strokeStyle = COLOR_DECOR;
                 ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-                ctx.fillStyle = THEME_ACCENT;
+                ctx.fillStyle = COLOR_DECOR;
 
                 if (iconType === 'anime') {
                     ctx.beginPath();
@@ -566,7 +511,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
                 ctx.textBaseline = 'middle';
                 const labelX = alignX + 34;
 
-                ctx.fillStyle = mixColors('#1a1a1a', THEME_ACCENT, 0.4);
+                ctx.fillStyle = mixColors('#333333', THEME_ACCENT, 0.4);
                 ctx.font = `16px 'monalqo', ${FONT_STACK}`;
                 ctx.fillText(label, labelX, centerY + 1);
 
@@ -586,7 +531,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
                 const dotEndX = valX - valW - 12;
 
                 if (dotEndX > dotStartX) {
-                    ctx.strokeStyle = hexToRgba(THEME_ACCENT, 0.35);
+                    ctx.strokeStyle = hexToRgba(COLOR_DECOR, 0.4);
                     ctx.lineWidth = 1.5;
                     ctx.setLineDash([2, 5]);
                     ctx.beginPath();
@@ -694,7 +639,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         ctx.font = `bold 13px 'monalqo', ${FONT_STACK}`;
         ctx.fillText(curText, boxX + padH + (curW / 2), boxY + (boxH / 2) + 1);
 
-        ctx.fillStyle = THEME_ACCENT;
+        ctx.fillStyle = COLOR_DECOR;
         ctx.font = `11px 'monalqo', ${FONT_STACK}`;
         ctx.fillText(reqText, boxX + boxW - padH - (reqW / 2), boxY + (boxH / 2) + 1);
 
@@ -887,9 +832,9 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
 
         drawSealPath(sealR);
         const waxGrad = ctx.createRadialGradient(sealX - 8, sealY - 8, 4, sealX, sealY, sealR);
-        waxGrad.addColorStop(0, mixColors('#ffffff', THEME_ACCENT, 0.7));
-        waxGrad.addColorStop(0.6, THEME_ACCENT);
-        waxGrad.addColorStop(1, mixColors('#000000', THEME_ACCENT, 0.6));
+        waxGrad.addColorStop(0, mixColors('#ffffff', THEME_ACCENT, 0.9)); // Luminous core
+        waxGrad.addColorStop(0.6, mixColors('#ffffff', THEME_ACCENT, 0.8)); // Lightened body
+        waxGrad.addColorStop(1, THEME_ACCENT); // Theme-tinted edge
         ctx.fillStyle = waxGrad;
         ctx.fill();
         ctx.shadowColor = 'transparent';
@@ -927,7 +872,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         ctx.shadowOffsetY = 1;
 
         ctx.font = `bold 8px 'monalqo', ${FONT_STACK}`;
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillStyle = hexToRgba(COLOR_INK, 0.65);
         ctx.fillText('LVL', sealX, sealY - 8);
 
         const lvlStr = levelNum.toString();
@@ -936,11 +881,10 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         else if (lvlStr.length >= 4) lvlFontSize = 12;
 
         ctx.font = `bold ${lvlFontSize}px 'monalqo', ${FONT_STACK}`;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = COLOR_DECOR;
         ctx.fillText(lvlStr, sealX, sealY + 3);
 
-        ctx.fillStyle = 'rgba(255,255,255,0.4)';
-        ctx.beginPath(); ctx.arc(sealX - 4, sealY - 2, 1, 0, Math.PI * 2); ctx.fill();
+
 
         ctx.restore();
         ctx.textBaseline = 'alphabetic';

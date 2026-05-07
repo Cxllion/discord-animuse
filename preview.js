@@ -122,6 +122,7 @@ const generators = {
         // Batch Mode: Scenario Matrix with varying Theme Colors
         const scenarios = [
             { name: 'standard_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
+            { name: 'white_linked', color: '#FFFFFF', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
             { name: 'premium_linked', color: '#3B82F6', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: true } },
             { name: 'booster_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: true } },
             { name: 'standard_compact', color: '#10b981', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: false } },
