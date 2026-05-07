@@ -118,17 +118,34 @@ const fitText = (ctx, text, fontFamilies, baseSize, baseWeight, maxWidth) => {
 
 const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = null, displayName = null, onBannerFailure = null) => {
     const isCompact = !userData.anilist_synced;
-    const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
+    let CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
+
+    // --- 1. RESOLVE BANNER PRIORITY & DYNAMIC DIMENSIONS ---
+    let bannerPriority = [];
+    if (bannerUrl && typeof bannerUrl === 'object') {
+        bannerPriority.push(bannerUrl.customUrl || bannerUrl.anilistBanner || bannerUrl.url);
+    } else if (bannerUrl) {
+        bannerPriority.push(bannerUrl);
+    }
+    if (userData.discordBannerUrl) bannerPriority.push(userData.discordBannerUrl);
+
+    // Filter out invalid sources
+    bannerPriority = bannerPriority.filter(url => url && typeof url === 'string');
+    const hasBanner = bannerPriority.length > 0;
+    const Y_OFFSET = hasBanner ? 0 : 86; // Collapse top if no banner exists
 
     const SCALE = 2.5;
-    const canvas = createCanvas(Math.floor(CARD_WIDTH * SCALE), Math.floor(CARD_HEIGHT * SCALE));
+    const canvas = createCanvas(Math.floor(CARD_WIDTH * SCALE), Math.floor((CARD_HEIGHT - Y_OFFSET) * SCALE));
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
+
+    // Shift coordinate system for no-banner mode
+    if (!hasBanner) ctx.translate(0, -Y_OFFSET);
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // --- DYNAMIC COLOR PALETTE SYSTEM (Zero Muddy Brown Edition) ---
+    // --- 2. DYNAMIC COLOR PALETTE SYSTEM ---
     const THEME_ACCENT = primaryColor || '#FFACD1';
     const COLOR_BG = '#21232a';
 
@@ -147,20 +164,11 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
     const COLOR_LEATHER_MID = mixColors('#3e2418', THEME_ACCENT, 0.15);
     const COLOR_LEATHER_LIGHT = mixColors('#5c3523', THEME_ACCENT, 0.15);
 
-    ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+    ctx.clearRect(0, Y_OFFSET, CARD_WIDTH, CARD_HEIGHT);
 
     try {
         const defaultBg = path.join(__dirname, 'images', 'profile_background_default.png');
         const defaultAv = path.join(__dirname, 'images', 'unnamed.jpg');
-
-        // --- 1. RESOLVE ASSET PRIORITIES ---
-        let bannerPriority = [];
-        if (bannerUrl && typeof bannerUrl === 'object') {
-            bannerPriority.push(bannerUrl.customUrl || bannerUrl.anilistBanner || bannerUrl.url);
-        } else if (bannerUrl) {
-            bannerPriority.push(bannerUrl);
-        }
-        if (userData.discordBannerUrl) bannerPriority.push(userData.discordBannerUrl);
 
         let avatarPriority = [];
         const discordAvatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 512 });
@@ -175,24 +183,24 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         }
         if (!avatarPriority.includes(discordAvatarUrl)) avatarPriority.push(discordAvatarUrl);
 
-        // --- 2. PARALLEL NETWORK ARCHIVE FETCH ---
+        // --- 3. PARALLEL NETWORK ARCHIVE FETCH ---
         const [bgImg, avatar] = await Promise.all([
-            secureLoadImage(bannerPriority, defaultBg),
+            hasBanner ? secureLoadImage(bannerPriority, defaultBg) : Promise.resolve(null),
             secureLoadImage(avatarPriority, defaultAv)
         ]);
 
-        // --- 3. BASE CARD ---
+        // --- 4. BASE CARD ---
         ctx.save();
-        ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, CARD_HEIGHT, 16);
+        ctx.beginPath(); ctx.roundRect(0, Y_OFFSET, CARD_WIDTH, CARD_HEIGHT - Y_OFFSET, 16);
         ctx.fillStyle = COLOR_BG;
         ctx.fill();
         ctx.clip();
         drawSeigaihaPattern(ctx, CARD_WIDTH, CARD_HEIGHT, THEME_ACCENT);
         ctx.restore();
 
-        // --- 4. VINTAGE TOP BANNER ---
+        // --- 5. VINTAGE TOP BANNER (Optional) ---
         const bannerH = 135;
-        if (bgImg) {
+        if (hasBanner && bgImg) {
             ctx.save();
             ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, bannerH, [16, 16, 0, 0]); ctx.clip();
             const ratio = Math.max(CARD_WIDTH / bgImg.width, bannerH / bgImg.height);
@@ -209,7 +217,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
             ctx.restore();
         }
 
-        // --- 5. CLASSIC PORTRAIT ---
+        // --- 6. CLASSIC PORTRAIT ---
         const avX = 85, avY = 148, avR = 42;
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 5;
@@ -234,7 +242,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         }
         ctx.restore();
 
-        // --- 6. LITERARY IDENTITY ---
+        // --- 7. LITERARY IDENTITY ---
         const avatarBottomY = avY + avR + 4.5;
         const titleY = avatarBottomY - 1;
         const nameY = titleY - 24;

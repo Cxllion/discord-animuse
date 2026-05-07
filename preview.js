@@ -122,6 +122,8 @@ const generators = {
         // Batch Mode: Scenario Matrix with varying Theme Colors
         const scenarios = [
             { name: 'standard_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
+            { name: 'standard_nobanner', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true, discordBannerUrl: null }, banner: null },
+            { name: 'standard_compact_nobanner', color: '#10b981', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: false, discordBannerUrl: null }, banner: null },
             { name: 'white_linked', color: '#FFFFFF', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
             { name: 'premium_linked', color: '#3B82F6', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: true } },
             { name: 'booster_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: true } },
@@ -132,7 +134,8 @@ const generators = {
  
         const results = [];
         for (const s of scenarios) {
-            const buffer = await generateProfileCard(discordUser, s.data, favorites, banner, s.color);
+            const currentBanner = s.hasOwnProperty('banner') ? s.banner : banner;
+            const buffer = await generateProfileCard(discordUser, s.data, favorites, currentBanner, s.color);
             results.push({ name: s.name, buffer });
         }
         return results;
