@@ -129,7 +129,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
     }
     if (userData.discordBannerUrl) bannerPriority.push(userData.discordBannerUrl);
 
-    const isPremium = userData.is_premium || userData.is_booster;
+    const isPremium = userData.isPremium || userData.is_premium || userData.isBooster || userData.is_booster;
     if (!isPremium) bannerPriority = [];
 
     // Filter out invalid sources

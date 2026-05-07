@@ -1,5 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { generateColorTokens, parseMetadata } = require('../core/visualUtils');
+const { generateColorTokens, parseMetadata, secureLoadImage } = require('../core/visualUtils');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
 
@@ -36,8 +36,9 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
     try {
         if (bgUrl) {
-            const bgImg = await loadImage(bgUrl);
-            ctx.save();
+            const bgImg = await secureLoadImage(bgUrl);
+            if (bgImg) {
+                ctx.save();
             const scale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
             const x = (baseW - bgImg.width * scale) / 2;
             const y = (baseH - bgImg.height * scale) / 2;
@@ -57,6 +58,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
             ctx.globalAlpha = 1.0;
             ctx.fillRect(0, 0, baseW, baseH);
             ctx.restore();
+            }
         }
     } catch (e) {
         logger.warn('AiringGen BG Load Failed: ' + e.message, 'AiringGenerator');
@@ -96,8 +98,9 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
 
     try {
         if (coverUrl) {
-            const coverImg = await loadImage(coverUrl);
-            ctx.save();
+            const coverImg = await secureLoadImage(coverUrl);
+            if (coverImg) {
+                ctx.save();
             
             // Poster Shadow (Deep Cinematic)
             ctx.shadowColor = 'rgba(0,0,0,0.8)';
@@ -153,6 +156,7 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
             ctx.lineWidth = 1.5;
             ctx.stroke();
             ctx.restore();
+            }
         }
     } catch (e) {
         logger.error('AiringGen Poster Load/Draw Error:', e, 'AiringGenerator');
@@ -356,20 +360,27 @@ const generateAiringCard = async (media, episode = {}, trackers = [], userColor 
             const py = ty + (outerH - pfpSize) / 2;
 
             try {
-                const avatarImg = await loadImage(tracker.avatarURL || 'https://cdn.discordapp.com/embed/avatars/0.png');
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
-                ctx.clip();
-                ctx.drawImage(avatarImg, px, py, pfpSize, pfpSize);
-                ctx.restore();
+                const avatarImg = await secureLoadImage(tracker.avatarURL || 'https://cdn.discordapp.com/embed/avatars/0.png');
+                if (avatarImg) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                    ctx.clip();
+                    ctx.drawImage(avatarImg, px, py, pfpSize, pfpSize);
+                    ctx.restore();
 
-                // High-End Border for PFPs
-                ctx.beginPath();
-                ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                    // High-End Border for PFPs
+                    ctx.beginPath();
+                    ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = tokens.primary;
+                    ctx.beginPath();
+                    ctx.arc(px + pfpSize/2, py + pfpSize/2, pfpSize/2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             } catch (err) {
                 ctx.fillStyle = tokens.primary;
                 ctx.beginPath();

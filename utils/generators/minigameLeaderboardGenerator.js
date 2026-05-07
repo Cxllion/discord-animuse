@@ -1,4 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { secureLoadImage } = require('../core/visualUtils');
 
 const CARD_WIDTH = 620;
 const CARD_HEIGHT = 780;
@@ -59,6 +60,33 @@ const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor 
     const TEXT_DIM = 'rgba(200, 210, 255, 0.6)';
 
     const maxPoints = topPlayers[0]?.total_points || 1;
+
+    // ============================
+    // 0. PRE-LOAD ALL IMAGES
+    // ============================
+    const imageMap = new Map();
+    const urlsToLoad = [];
+    
+    if (challenger.avatarUrl) urlsToLoad.push(challenger.avatarUrl);
+    topPlayers.forEach(p => {
+        if (p && p.avatarUrl) urlsToLoad.push(p.avatarUrl);
+    });
+
+    const uniqueUrls = [...new Set(urlsToLoad.filter(u => u))];
+    const loadedImages = await Promise.all(uniqueUrls.map(async url => {
+        try {
+            const img = await secureLoadImage(url);
+            return { url, img };
+        } catch (e) {
+            return { url, img: null };
+        }
+    }));
+
+    loadedImages.forEach(({ url, img }) => {
+        if (img) imageMap.set(url, img);
+    });
+
+    const getImg = (url) => imageMap.get(url) || null;
 
     // ============================
     // 1. BACKGROUND: CRT CABINET
@@ -210,10 +238,9 @@ const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor 
 
         ctx.save();
         ctx.beginPath(); ctx.arc(cfg.x, avatarY, cfg.size, 0, Math.PI * 2); ctx.clip();
-        try {
-            const avatarImg = await loadImage(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
-            ctx.drawImage(avatarImg, cfg.x - cfg.size, avatarY - cfg.size, cfg.size * 2, cfg.size * 2);
-        } catch (e) { ctx.fillStyle = '#0a0a1a'; ctx.fill(); }
+        const avatarImg = getImg(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
+        if (avatarImg) ctx.drawImage(avatarImg, cfg.x - cfg.size, avatarY - cfg.size, cfg.size * 2, cfg.size * 2);
+        else { ctx.fillStyle = '#0a0a1a'; ctx.fill(); }
         ctx.strokeStyle = BG_DARK; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(cfg.x, avatarY, cfg.size, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
@@ -338,10 +365,9 @@ const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor 
         const miniX = listX + 66; const miniY = y + rowHeight / 2;
         ctx.save();
         ctx.beginPath(); ctx.arc(miniX, miniY, 14, 0, Math.PI * 2); ctx.clip();
-        try {
-            const mImg = await loadImage(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
-            ctx.drawImage(mImg, miniX - 14, miniY - 14, 28, 28);
-        } catch (e) { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill(); }
+        const mImg = getImg(player.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
+        if (mImg) ctx.drawImage(mImg, miniX - 14, miniY - 14, 28, 28);
+        else { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill(); }
         ctx.restore();
         ctx.strokeStyle = mainColor; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(miniX, miniY, 15, 0, Math.PI * 2); ctx.stroke();
 
@@ -397,10 +423,9 @@ const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor 
     const cAvX = fX + 16 + 44 + 12 + 15; const cAvY = footerY + fH / 2;
     ctx.save();
     ctx.beginPath(); ctx.arc(cAvX, cAvY, 14, 0, Math.PI * 2); ctx.clip();
-    try {
-        const cImg = await loadImage(challenger.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
-        ctx.drawImage(cImg, cAvX - 14, cAvY - 14, 28, 28);
-    } catch (e) { ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill(); }
+    const cImg = getImg(challenger.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png');
+    if (cImg) ctx.drawImage(cImg, cAvX - 14, cAvY - 14, 28, 28);
+    else { ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill(); }
     ctx.restore();
     ctx.strokeStyle = NEON_CYAN; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(cAvX, cAvY, 15, 0, Math.PI * 2); ctx.stroke();

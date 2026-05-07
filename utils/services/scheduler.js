@@ -403,10 +403,24 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
             displayName = member.user.username;
         }
 
+        let priorityUrl = userAvatar.customUrl;
+        if (userAvatar.source === 'ANILIST' && userAvatar.anilistUsername) {
+            const { getAniListProfile } = require('./anilistService');
+            const alProfile = await getAniListProfile(userAvatar.anilistUsername).catch(() => null);
+            if (alProfile) priorityUrl = alProfile.avatar;
+        } else if (userAvatar.source === 'DISCORD_GUILD' && member) {
+            priorityUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
+        }
+
+        const avatarPriority = [
+            priorityUrl,
+            member ? member.user.displayAvatarURL({ extension: 'png', size: 256 }) : null
+        ].filter(u => u);
+
         const userMeta = {
             username: displayName.toUpperCase(),
             themeColor: userColor,
-            avatarUrl: userAvatar.customUrl || (member ? member.user.displayAvatarURL({ extension: 'png' }) : null)
+            avatarUrl: avatarPriority
         };
 
         const prog = String(finalProgress || '');

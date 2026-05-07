@@ -43,8 +43,8 @@ module.exports = {
 
                 // 1. Resolve Avatars & Names for top players
                 const topWithDetails = [];
-                const members = await interaction.guild.members.fetch({ user: topPlayers.map(u => u.user_id) }).catch(() => new Map());
-                const avatarConfigs = await getBulkUserAvatarConfig(guildId, topPlayers.map(u => u.user_id));
+                const members = await interaction.guild.members.fetch({ user: [...topPlayers.map(u => u.user_id), interaction.user.id] }).catch(() => new Map());
+                const avatarConfigs = await getBulkUserAvatarConfig(guildId, [...topPlayers.map(u => u.user_id), interaction.user.id]);
 
                 // 2. Fetch AniList Avatars if needed
                 const anilistMap = {};
@@ -57,31 +57,26 @@ module.exports = {
 
                 const resolveAvatar = (userId, member) => {
                     const config = avatarConfigs[userId];
-                    let url = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
-                    if (config) {
-                        if (config.source === 'CUSTOM' && config.customUrl) url = config.customUrl;
-                        else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) url = anilistMap[config.anilistUsername];
-                        else if (config.source === 'DISCORD_GUILD' && member) url = member.displayAvatarURL({ extension: 'png', size: 512 });
-                    }
-                    return url;
+                    const discordUrl = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
+                    
+                    if (!config) return [discordUrl];
+
+                    let priorityUrl = null;
+                    if (config.source === 'CUSTOM') priorityUrl = config.customUrl;
+                    else if (config.source === 'ANILIST') priorityUrl = anilistMap[config.anilistUsername];
+                    else if (config.source === 'DISCORD_GUILD' && member) priorityUrl = member.displayAvatarURL({ extension: 'png', size: 512 });
+
+                    return [priorityUrl, discordUrl].filter(u => u);
                 };
 
                 for (const player of topPlayers) {
 
                     const member = members.get(player.user_id);
-                    const config = avatarConfigs[player.user_id];
-                    let avatarUrl = member ? member.user.displayAvatarURL({ extension: 'png', size: 256 }) : null;
-
-                    if (config) {
-                        if (config.source === 'CUSTOM' && config.customUrl) avatarUrl = config.customUrl;
-                        else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) avatarUrl = anilistMap[config.anilistUsername];
-                        else if (config.source === 'DISCORD_GUILD' && member) avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
-                    }
 
                     topWithDetails.push({
                         ...player,
                         username: member ? getResolvableName(member) : 'Unknown Archivist',
-                        avatarUrl
+                        avatarUrl: resolveAvatar(player.user_id, member)
                     });
                 }
 
@@ -127,13 +122,16 @@ module.exports = {
 
         const resolveAvatar = (userId, member) => {
             const config = avatarConfigs[userId];
-            let url = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
-            if (config) {
-                if (config.source === 'CUSTOM' && config.customUrl) url = config.customUrl;
-                else if (config.source === 'ANILIST' && anilistMap[config.anilistUsername]) url = anilistMap[config.anilistUsername];
-                else if (config.source === 'DISCORD_GUILD' && member) url = member.displayAvatarURL({ extension: 'png', size: 512 });
-            }
-            return url;
+            const discordUrl = member ? member.user.displayAvatarURL({ extension: 'png', size: 512 }) : null;
+            
+            if (!config) return [discordUrl];
+
+            let priorityUrl = null;
+            if (config.source === 'CUSTOM') priorityUrl = config.customUrl;
+            else if (config.source === 'ANILIST') priorityUrl = anilistMap[config.anilistUsername];
+            else if (config.source === 'DISCORD_GUILD' && member) priorityUrl = member.displayAvatarURL({ extension: 'png', size: 512 });
+
+            return [priorityUrl, discordUrl].filter(u => u);
         };
 
         for (const raw of topRaw) {

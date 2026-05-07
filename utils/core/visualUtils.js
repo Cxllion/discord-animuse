@@ -302,12 +302,13 @@ const secureLoadImage = async (urls, fallbackPath = null) => {
     }
 
     // 3. Intelligent Priority Fetch
+    logger.debug(`Initiating Archival Wave for ${urlList.length} assets...`, 'VisualUtils');
     for (let i = 0; i < urlList.length; i++) {
         const url = urlList[i];
         try {
             // Speed optimization: Don't stall on slow custom URLs
-            // Give the last available remote URL more time, others get 2.5s
-            const timeout = (i === urlList.length - 1) ? 8000 : 2500;
+            // Give the last available remote URL more time (8s), others get 5s
+            const timeout = (i === urlList.length - 1) ? 8000 : 5000;
 
             const response = await axios.get(url, {
                 responseType: 'arraybuffer',
@@ -319,7 +320,7 @@ const secureLoadImage = async (urls, fallbackPath = null) => {
             staticAssetCache.set(url, image);
             return image;
         } catch (e) {
-            logger.warn(`Archival Wave Failed [Priority ${i}]: ${e.message}`, 'VisualUtils');
+            logger.warn(`Archival Wave Failed [Priority ${i}] (${url.substring(0, 30)}...): ${e.message}`, 'VisualUtils');
         }
     }
 
