@@ -22,7 +22,9 @@ const anilistCache = new Map();
  */
 const getProfileContext = async (userId, guildId, client, forceAniList = false) => {
     try {
-        // 1. Parallel Archival Fetch (Core DB Data)
+        const guild = await client.guilds.fetch(guildId);
+        
+        // 1. Unified Parallel Fetch (DB + Discord API)
         const [
             dbColor, 
             dbTitle, 
@@ -32,7 +34,9 @@ const getProfileContext = async (userId, guildId, client, forceAniList = false) 
             rankData, 
             linkedUsername, 
             avatarConfig,
-            levelRoles
+            levelRoles,
+            member,
+            user
         ] = await Promise.all([
             getUserColor(userId, guildId),
             getUserTitle(userId, guildId),
@@ -42,19 +46,10 @@ const getProfileContext = async (userId, guildId, client, forceAniList = false) 
             getUserRank(userId, guildId),
             getLinkedAnilist(userId, guildId),
             getUserAvatarConfig(userId, guildId),
-            getLevelRoles(guildId)
+            getLevelRoles(guildId),
+            guild.members.fetch(userId).catch(() => null),
+            client.users.fetch(userId, { force: true }).catch(() => client.users.cache.get(userId))
         ]);
-
-        // 2. Member Reconstruction
-        let member = null;
-        try {
-            const guild = await client.guilds.fetch(guildId);
-            member = await guild.members.fetch(userId);
-        } catch (e) {
-            // Member might not be in the guild, fallback to user object later
-        }
-
-        const user = member ? member.user : await client.users.fetch(userId);
 
         // 3. Leveling & Identity Meta
         const xp = rankData ? parseInt(rankData.xp) : 0;
@@ -70,17 +65,12 @@ const getProfileContext = async (userId, guildId, client, forceAniList = false) 
         if (!ownedTitles.includes('Muse Reader')) ownedTitles.unshift('Muse Reader');
 
         for (const lr of earnedLevelRoles) {
-            try {
-                const guild = await client.guilds.fetch(guildId);
-                const role = guild.roles.cache.get(lr.role_id);
-                if (role) {
-                    const redactedName = role.name.replace(/^\d+\s*\|\s*/, '');
-                    if (!ownedTitles.includes(redactedName)) ownedTitles.push(redactedName);
-                    knowledgeRank = redactedName;
-                    if (role.color) rankColor = `#${role.color.toString(16).padStart(6, '0')}`;
-                }
-            } catch (e) {
-                // Guild or role fetch failed
+            const role = guild.roles.cache.get(lr.role_id);
+            if (role) {
+                const redactedName = role.name.replace(/^\d+\s*\|\s*/, '');
+                if (!ownedTitles.includes(redactedName)) ownedTitles.push(redactedName);
+                knowledgeRank = redactedName;
+                if (role.color) rankColor = `#${role.color.toString(16).padStart(6, '0')}`;
             }
         }
 
@@ -103,11 +93,6 @@ const getProfileContext = async (userId, guildId, client, forceAniList = false) 
 
         // Final Title Resolution: Custom > Topmost Earned
         const finalTitle = dbTitle || knowledgeRank;
-
-        // 4. Force Fetch for Banner Data (Discord cache doesn't always have .banner)
-        if (!user.banner) {
-            try { await user.fetch(true); } catch (e) { /* ignore */ }
-        }
 
         // 5. AniList Telemetry (With Session Caching)
         let anilistStats = { completed: 0, days: 0, meanScore: 0 };
@@ -172,7 +157,7 @@ const getProfileContext = async (userId, guildId, client, forceAniList = false) 
             },
             visuals: {
                 bannerUrl,
-                discordBannerUrl: user.bannerURL({ size: 1024, extension: 'png' }) || (member ? member.displayAvatarURL({ extension: 'png' }) : null), // Fallback to avatar-based colors if no banner
+                discordBannerUrl: user.bannerURL({ size: 1024, extension: 'png' }),
                 guildAvatarUrl: member ? member.displayAvatarURL({ extension: 'png' }) : user.displayAvatarURL({ extension: 'png' })
             }
         };

@@ -76,10 +76,27 @@ if (PORT) {
         logger.debug(`Starting ${envName}...`, 'System');
         
         loadCoreResources(client);
-        await initializeDatabase(client);
         
-        logger.debug('Initiating Handshake with Discord Gateway...', 'System');
-        await client.login(CONFIG.DISCORD_TOKEN);
+        const loginWithRetry = async (token, maxRetries = 5) => {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    logger.debug(`Initiating Handshake with Discord Gateway... (Attempt ${i + 1}/${maxRetries})`, 'System');
+                    return await client.login(token);
+                } catch (e) {
+                    if (i === maxRetries - 1) throw e;
+                    const wait = Math.min(Math.pow(2, i) * 1000, 30000);
+                    logger.warn(`Gateway Connection Failed: ${e.message}. Retrying in ${wait / 1000}s...`, 'System');
+                    await new Promise(r => setTimeout(r, wait));
+                }
+            }
+        };
+
+        // --- 4. PARALLEL ARCHIVAL WAKEUP ---
+        // Verify records while initiating Discord handshake for maximum startup velocity
+        await Promise.all([
+            initializeDatabase(client),
+            loginWithRetry(CONFIG.DISCORD_TOKEN)
+        ]);
 
         // --- Graceful Shutdown Sequence ---
         const handleShutdown = async (signal) => {

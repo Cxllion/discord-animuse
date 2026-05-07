@@ -129,10 +129,13 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
     }
     if (userData.discordBannerUrl) bannerPriority.push(userData.discordBannerUrl);
 
+    const isPremium = userData.is_premium || userData.is_booster;
+    if (!isPremium) bannerPriority = [];
+
     // Filter out invalid sources
     bannerPriority = bannerPriority.filter(url => url && typeof url === 'string');
     const hasBanner = bannerPriority.length > 0;
-    const Y_OFFSET = hasBanner ? 0 : 86; // Collapse top if no banner exists
+    const Y_OFFSET = hasBanner ? 0 : 86; // Collapse top if no banner exists or user is non-premium
 
     const SCALE = 2.5;
     const canvas = createCanvas(Math.floor(CARD_WIDTH * SCALE), Math.floor((CARD_HEIGHT - Y_OFFSET) * SCALE));

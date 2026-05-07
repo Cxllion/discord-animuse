@@ -284,46 +284,50 @@ const getCachedLocalImage = async (assetPath) => {
 /**
  * Robust image loader with Discord URL refreshing, retries, and local caching.
  */
-const secureLoadImage = async (urls, fallbackPath = null, retries = 1) => {
-    let img = null;
+const secureLoadImage = async (urls, fallbackPath = null) => {
     let urlList = Array.isArray(urls) ? urls : [urls];
+    urlList = urlList.filter(u => u && typeof u === 'string');
 
-    urlList = await refreshDiscordUrls(urlList);
-
+    // 1. Priority Cache Check
     for (const url of urlList) {
-        if (!url) continue;
+        if (staticAssetCache.has(url)) return staticAssetCache.get(url);
+    }
 
-        if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
-            img = await getCachedLocalImage(url);
-            if (img) return img;
-        } else if (typeof url === 'string' && url.startsWith('http')) {
-            for (let attempt = 0; attempt <= retries; attempt++) {
-                try {
-                    const response = await axios.get(url, {
-                        responseType: 'arraybuffer',
-                        timeout: 10000,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        }
-                    });
-                    if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-                    img = await loadImage(Buffer.from(response.data));
-                    if (img) return img;
-                } catch (err) {
-                    if (attempt === retries) {
-                        logger.warn(`Remote Load Failed: ${url} - ${err.message}`, 'VisualUtils');
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                }
-            }
+    // 2. Archival URL Refresh
+    try {
+        const { refreshDiscordUrls } = require('../services/storageService');
+        urlList = await refreshDiscordUrls(urlList);
+    } catch (e) {
+        // Fallback to original URLs
+    }
+
+    // 3. Intelligent Priority Fetch
+    for (let i = 0; i < urlList.length; i++) {
+        const url = urlList[i];
+        try {
+            // Speed optimization: Don't stall on slow custom URLs
+            // Give the last available remote URL more time, others get 2.5s
+            const timeout = (i === urlList.length - 1) ? 8000 : 2500;
+
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer',
+                timeout,
+                headers: { 'User-Agent': 'AniMuse/5.0' }
+            });
+            
+            const image = await loadImage(Buffer.from(response.data));
+            staticAssetCache.set(url, image);
+            return image;
+        } catch (e) {
+            logger.warn(`Archival Wave Failed [Priority ${i}]: ${e.message}`, 'VisualUtils');
         }
     }
 
-    if (!img && fallbackPath) {
-        img = await getCachedLocalImage(fallbackPath);
+    // 4. Ground-Truth Fallback
+    if (fallbackPath) {
+        return await getCachedLocalImage(fallbackPath);
     }
-    return img;
+    return null;
 };
 
 module.exports = {
