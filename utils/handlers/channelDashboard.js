@@ -12,15 +12,7 @@ const renderProgressBar = (progress, total) => {
     return `\`${bar}\` **${percent}%** (${progress}/${total})`;
 };
 
-const safeUpdate = async (i, options) => {
-    try {
-        if (i.deferred || i.replied) return await i.editReply(options);
-        return await i.update(options);
-    } catch (err) {
-        if (err.code === 10062 || err.code === 40060) return;
-        console.error('[ChannelDashboard] safeUpdate Error:', err);
-    }
-};
+const { safeUpdate } = require('../core/visualUtils');
 
 const displayChannelDashboard = async (interaction, isUpdate = false) => {
     const { getNavigationRow } = require('./roleDashboard');

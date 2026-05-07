@@ -597,29 +597,46 @@ module.exports = {
                     const displayName = member ? member.displayName : targetUser.username;
                     const isBooster = member ? member.roles.cache.some(r => r.name.toLowerCase().includes('sacred muse')) : false;
 
-                    // Generate Hexa-View Scenario Matrix
+                    // Generate Hexa-View Scenario Matrix (Now respecting theme colors for all tiers)
                     const tasks = [
                         { label: 'Standard Linked', data: { ...baseUser, is_premium: false, is_booster: false, anilist_synced: !!linkedUsername }, name: 'standard' },
                         { label: 'Premium Linked', data: { ...baseUser, is_premium: true, is_booster: false, anilist_synced: !!linkedUsername }, name: 'premium' },
-                        { label: 'Booster Linked', data: { ...baseUser, is_premium: false, is_booster: true, anilist_synced: !!linkedUsername, rankColor: '#A855F7' }, name: 'booster' },
+                        { label: 'Booster Linked', data: { ...baseUser, is_premium: false, is_booster: true, anilist_synced: !!linkedUsername }, name: 'booster' },
                         { label: 'Standard Compact', data: { ...baseUser, is_premium: false, is_booster: false, anilist_synced: false }, name: 'standard-compact' },
                         { label: 'Premium Compact', data: { ...baseUser, is_premium: true, is_booster: false, anilist_synced: false }, name: 'premium-compact' },
-                        { label: 'Booster Compact', data: { ...baseUser, is_premium: false, is_booster: true, anilist_synced: false, rankColor: '#A855F7' }, name: 'booster-compact' }
+                        { label: 'Booster Compact', data: { ...baseUser, is_premium: false, is_booster: true, anilist_synced: false }, name: 'booster-compact' }
                     ];
 
                     const attachments = [];
                     for (const task of tasks) {
-                        const buffer = await generateProfileCard(
-                            targetUser, task.data, favorites, backgroundUrl, color || CONFIG.COLORS.PRIMARY, displayName,
-                            async () => await clearUserBannerGlobally(targetUser.id)
-                        );
-                        attachments.push(new AttachmentBuilder(buffer, { name: `profile-${task.name}-${targetUser.id}.webp` }));
+                        try {
+                            const buffer = await generateProfileCard(
+                                targetUser, task.data, favorites, backgroundUrl, color || CONFIG.COLORS.PRIMARY, displayName,
+                                async () => await clearUserBannerGlobally(targetUser.id)
+                            );
+                            attachments.push(new AttachmentBuilder(buffer, { name: `profile-${task.name}-${targetUser.id}.webp` }));
+                        } catch (err) {
+                            logger.error(`Diagnostic Generation Failure [${task.label}]:`, err, 'FeatureCommand');
+                        }
                     }
 
-                    await interaction.editReply({
-                        content: `✅ **Profile Diagnostic Complete**\nGenerated **Full Tier Matrix** (Standard, Premium, Booster) for ${targetUser}.`,
-                        files: attachments
+                    const { safeUpdate } = require('../../utils/core/visualUtils');
+                    
+                    // Split into two updates to avoid AbortError (REST timeout) on heavy uploads
+                    const chunk1 = attachments.slice(0, 3);
+                    const chunk2 = attachments.slice(3);
+
+                    await safeUpdate(interaction, {
+                        content: `✅ **Profile Diagnostic (Part 1/2)**\nGenerated **Linked Tier Matrix** for ${targetUser}.`,
+                        files: chunk1
                     });
+
+                    if (chunk2.length > 0) {
+                        await interaction.followUp({
+                            content: `✅ **Profile Diagnostic (Part 2/2)**\nGenerated **Compact Tier Matrix** for ${targetUser}.`,
+                            files: chunk2
+                        });
+                    }
                 }
 
                 // --- MAFIA VISUAL DIAGNOSTIC ---

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { checkAiringAnime, checkUserActivity, syncAllUserTrackers, checkWordleHousekeeping, checkConnect4Housekeeping } = require('../utils/services/scheduler');
 const { deployCommands } = require('../utils/core/commandDeployer');
+const { initializeStorage } = require('../utils/services/storageService');
 const logger = require('../utils/core/logger');
 const CONFIG = require('../utils/config');
 
@@ -32,6 +33,9 @@ module.exports = {
         const { clearConfigCache } = require('../utils/services/guildConfigService');
         flushAniListCache();
         clearConfigCache();
+        
+        // Initialize Storage
+        await initializeStorage();
 
         // ── Dynamic Presence Rotation ─────────────────────────────────────────
         const activities = [

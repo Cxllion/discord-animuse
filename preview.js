@@ -69,10 +69,26 @@ const generators = {
         const { generateProfileCard } = require('./utils/generators/profileGenerator');
         const { getAniListProfile } = require('./utils/services/anilistService');
         
-        let discordUser = { id: '2829283727372', username: 'Librarian Cxllion', displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' };
-        let userData = { anilist_synced: true, current: 840, required: 1000, level: 25, title: 'CHART LIBRARIAN', is_booster: false, is_premium: false, anilist: { completed: 840, manga_completed: 120, days: 124.5 }, avatarConfig: { source: 'DISCORD_GLOBAL' } };
+        let discordUser = { 
+            id: '2829283727372', 
+            username: 'Librarian Cxllion', 
+            displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png',
+            bannerURL: () => 'https://cdn.discordapp.com/attachments/1389956408145084537/1501265930582495232/1d15f13ca41fbd506b98a7ea0cd0cbe1.jpg' // A known valid banner for preview
+        };
+        let userData = { 
+            anilist_synced: true, 
+            current: 840, 
+            required: 1000, 
+            level: 25, 
+            title: 'CHART LIBRARIAN', 
+            is_booster: false, 
+            is_premium: false, 
+            anilist: { completed: 840, manga_completed: 120, days: 124.5 }, 
+            avatarConfig: { source: 'DISCORD_GLOBAL' },
+            discordBannerUrl: 'https://cdn.discordapp.com/attachments/1389956408145084537/1501265930582495232/1d15f13ca41fbd506b98a7ea0cd0cbe1.jpg'
+        };
         let favorites = [];
-        let banner = 'https://i.imgur.com/r9S6BfB.png';
+        let banner = path.join(__dirname, 'utils', 'generators', 'images', 'profile_background_default.png');
         let themeColor = '#8B5CF6';
 
         if (userId) {
@@ -90,6 +106,7 @@ const generators = {
                         userData.anilist = alRes.stats;
                         favorites = alRes.favorites;
                         if (alRes.banner) banner = alRes.banner;
+                        if (alRes.avatar) userData.anilistAvatar = alRes.avatar;
                         userData.anilist_synced = true;
                     } else {
                         userData.anilist_synced = false;
@@ -102,19 +119,19 @@ const generators = {
             return await generateProfileCard(discordUser, userData, favorites, banner, themeColor);
         }
 
-        // Batch Mode: Scenario Matrix
+        // Batch Mode: Scenario Matrix with varying Theme Colors
         const scenarios = [
-            { name: 'standard_linked', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
-            { name: 'premium_linked', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: true } },
-            { name: 'booster_linked', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: true } },
-            { name: 'standard_compact', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: false } },
-            { name: 'premium_compact', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: false } },
-            { name: 'booster_compact', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: false } }
+            { name: 'standard_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: true } },
+            { name: 'premium_linked', color: '#3B82F6', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: true } },
+            { name: 'booster_linked', color: '#3B82F6', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: true } },
+            { name: 'standard_compact', color: '#10b981', data: { ...userData, is_premium: false, is_booster: false, anilist_synced: false } },
+            { name: 'premium_compact', color: '#06b6d4', data: { ...userData, is_premium: true, is_booster: false, anilist_synced: false } },
+            { name: 'booster_compact', color: '#f43f5e', data: { ...userData, is_premium: false, is_booster: true, anilist_synced: false } }
         ];
-
+ 
         const results = [];
         for (const s of scenarios) {
-            const buffer = await generateProfileCard(discordUser, s.data, favorites, banner, themeColor);
+            const buffer = await generateProfileCard(discordUser, s.data, favorites, banner, s.color);
             results.push({ name: s.name, buffer });
         }
         return results;

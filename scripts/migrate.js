@@ -405,6 +405,17 @@ const initializeDatabase = async () => {
                 total_points integer DEFAULT 0,
                 last_updated timestamp with time zone DEFAULT now()
             );
+
+            CREATE TABLE IF NOT EXISTS public.minigame_stats (
+                id BIGSERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                high_score BIGINT DEFAULT 0,
+                total_plays INTEGER DEFAULT 1,
+                metadata JSONB DEFAULT '{}'::jsonb,
+                last_played TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(user_id, game_id)
+            );
             
             CREATE TABLE IF NOT EXISTS public.wordle_daily (
                 date date PRIMARY KEY,
@@ -433,9 +444,61 @@ const initializeDatabase = async () => {
                 updated_at timestamp with time zone DEFAULT now()
             );
 
-            ALTER TABLE public.wordle_history ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+            ALTER TABLE public.minigame_scores ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE public.minigame_stats ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE public.wordle_daily ENABLE ROW LEVEL SECURITY;
             ALTER TABLE public.wordle_history ENABLE ROW LEVEL SECURITY;
             ALTER TABLE public.wordle_sessions ENABLE ROW LEVEL SECURITY;
+
+            DROP POLICY IF EXISTS "Enable all access for service role on minigame_scores" ON public.minigame_scores;
+            CREATE POLICY "Enable all access for service role on minigame_scores" ON public.minigame_scores FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on minigame_stats" ON public.minigame_stats;
+            CREATE POLICY "Enable all access for service role on minigame_stats" ON public.minigame_stats FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on wordle_daily" ON public.wordle_daily;
+            CREATE POLICY "Enable all access for service role on wordle_daily" ON public.wordle_daily FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on wordle_history" ON public.wordle_history;
+            CREATE POLICY "Enable all access for service role on wordle_history" ON public.wordle_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on wordle_sessions" ON public.wordle_sessions;
+            CREATE POLICY "Enable all access for service role on wordle_sessions" ON public.wordle_sessions FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            -- 15b. Connect4 Tables
+            CREATE TABLE IF NOT EXISTS public.connect4_sessions (
+                id TEXT PRIMARY KEY,
+                player1 TEXT NOT NULL,
+                player2 TEXT NOT NULL,
+                board JSONB NOT NULL,
+                current_turn TEXT,
+                status TEXT DEFAULT 'PLAYING',
+                winner TEXT,
+                winning_tiles JSONB DEFAULT '[]'::jsonb,
+                moves INTEGER DEFAULT 0,
+                public_message_id TEXT,
+                public_channel_id TEXT,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.connect4_history (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                player1_id TEXT NOT NULL,
+                player2_id TEXT NOT NULL,
+                winner_id TEXT,
+                date DATE NOT NULL,
+                points_awarded INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE public.connect4_sessions ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE public.connect4_history ENABLE ROW LEVEL SECURITY;
+
+            DROP POLICY IF EXISTS "Enable all access for service role on connect4_sessions" ON public.connect4_sessions;
+            CREATE POLICY "Enable all access for service role on connect4_sessions" ON public.connect4_sessions FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on connect4_history" ON public.connect4_history;
+            CREATE POLICY "Enable all access for service role on connect4_history" ON public.connect4_history FOR ALL TO service_role USING (true) WITH CHECK (true);
         `);
 
         // 16. Suggestions Table
@@ -478,7 +541,7 @@ const initializeDatabase = async () => {
                 p_guild_id text,
                 p_user_id text,
                 p_xp_to_add integer
-            ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+            ) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
             DECLARE
                 v_old_level integer;
                 v_new_level integer;
@@ -512,6 +575,11 @@ const initializeDatabase = async () => {
                 );
             END;
             $$;
+
+            -- Security Hardening: Revoke public execution to satisfy Supabase Linter (0028, 0029)
+            REVOKE EXECUTE ON FUNCTION public.add_xp_to_user(text, text, integer) FROM PUBLIC;
+            GRANT EXECUTE ON FUNCTION public.add_xp_to_user(text, text, integer) TO service_role;
+            GRANT EXECUTE ON FUNCTION public.add_xp_to_user(text, text, integer) TO postgres;
         `);
 
         // 16. PERFORMANCE INDICES

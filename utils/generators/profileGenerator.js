@@ -1,19 +1,17 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const path = require('path');
 const axios = require('axios');
+const { refreshDiscordUrls } = require('../services/storageService');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
 
 // --- PREMIUM ASSET CACHE ---
 const staticAssetCache = new Map();
 
-/**
- * Loads a local asset with in-memory caching to prevent disk thrashing.
- */
 const getCachedLocalImage = async (assetPath) => {
     if (!assetPath) return null;
     if (staticAssetCache.has(assetPath)) return staticAssetCache.get(assetPath);
-    
+
     try {
         const img = await loadImage(assetPath);
         staticAssetCache.set(assetPath, img);
@@ -24,68 +22,148 @@ const getCachedLocalImage = async (assetPath) => {
     }
 };
 
-// --- TACTICAL ASSET ACQUISITION ---
-const secureLoadImage = async (url, fallbackPath = null, retries = 1) => {
-    // 1. Check if we're requesting a local fallback directly
-    if (!url && fallbackPath) return await getCachedLocalImage(fallbackPath);
-    if (!url) return null;
-    
-    // 2. Local File Optimization (Skip remote uplink)
-    if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
-        return await getCachedLocalImage(url);
-    }
+const secureLoadImage = async (urls, fallbackPath = null, retries = 1) => {
+    let img = null;
+    let urlList = Array.isArray(urls) ? urls : [urls];
 
-    // 3. Remote Uplink with Active Timeout (15s) and Retry Logic
-    let lastError;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const response = await axios.get(url, { 
-                responseType: 'arraybuffer', 
-                timeout: 15000, // Increased to 15s for stability
-                headers: { 'User-Agent': 'AniMuse-Archivist/1.0' }
-            });
-            if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-            return await loadImage(Buffer.from(response.data));
-        } catch (err) {
-            lastError = err;
-            if (attempt < retries) {
-                // Exponential backoff or small delay could be added here, but simple retry is often enough for timeouts
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                continue;
+    urlList = await refreshDiscordUrls(urlList);
+
+    for (const url of urlList) {
+        if (!url) continue;
+
+        if (typeof url === 'string' && (url.startsWith('/') || url.includes(':\\'))) {
+            img = await getCachedLocalImage(url);
+            if (img) return img;
+        } else if (typeof url === 'string' && url.startsWith('http')) {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const response = await axios.get(url, {
+                        responseType: 'arraybuffer',
+                        timeout: 10000,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        }
+                    });
+                    if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+                    img = await loadImage(Buffer.from(response.data));
+                    if (img) return img;
+                } catch (err) {
+                    if (attempt === retries) {
+                        logger.warn(`Remote Load Failed: ${url} - ${err.message}`, 'Generator');
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
             }
         }
     }
 
-    logger.warn(`Asset Uplink Interrupted: ${url} (${lastError.message}). Falling back to archives.`, 'Generator');
-    if (fallbackPath) {
-        return await getCachedLocalImage(fallbackPath);
+    if (!img && fallbackPath) {
+        img = await getCachedLocalImage(fallbackPath);
     }
-    return null;
+    return img;
 };
 
-// --- VERTICAL WIDGET ARCHITECTURE (V5: The Premium Polish) ---
-const CARD_WIDTH = 400;
-const CARD_HEIGHT_LINKED = 495;
-const CARD_HEIGHT_UNLINKED = 355;
+// --- COLOR MIXING ARCHITECTURE ---
+const hexToRgbArr = (hex) => {
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+        r = parseInt(hex.substring(1, 3), 16);
+        g = parseInt(hex.substring(3, 5), 16);
+        b = parseInt(hex.substring(5, 7), 16);
+    }
+    return [r, g, b];
+};
 
-// Universal premium font stack
-const FONT_STACK = "'-apple-system', 'Helvetica Neue', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const rgbToHex = (r, g, b) => {
+    return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+};
+
+const mixColors = (hex1, hex2, weight) => {
+    const [r1, g1, b1] = hexToRgbArr(hex1);
+    const [r2, g2, b2] = hexToRgbArr(hex2);
+    const w = Math.max(0, Math.min(1, weight));
+    const w1 = 1 - w;
+    const r = Math.round(r1 * w1 + r2 * w);
+    const g = Math.round(g1 * w1 + g2 * w);
+    const b = Math.round(b1 * w1 + b2 * w);
+    return rgbToHex(r, g, b);
+};
+
+const hexToRgba = (hex, opacity) => {
+    const [r, g, b] = hexToRgbArr(hex);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+// --- VERTICAL WIDGET ARCHITECTURE ---
+const CARD_WIDTH = 400;
+const CARD_HEIGHT_LINKED = 500;
+const CARD_HEIGHT_UNLINKED = 320;
+const FONT_STACK = "'monalqo', 'Times New Roman', serif";
+
+// --- CACHING & PERFORMANCE ARCHITECTURE ---
+const patternCache = new Map();
+let noiseTile = null;
+
+const getNoiseTile = () => {
+    if (noiseTile) return noiseTile;
+    const tileW = 400, tileH = 500; // Large enough for all modes
+    const canvas = createCanvas(tileW, tileH);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#826e5a';
+    for (let i = 0; i < (tileW * tileH * 0.15); i++) {
+        const x = Math.random() * tileW;
+        const y = Math.random() * tileH;
+        ctx.fillRect(x, y, 1, 1);
+    }
+    noiseTile = canvas;
+    return noiseTile;
+};
+
+const drawNoise = (ctx, w, h, opacity = 0.03) => {
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(getNoiseTile(), 0, 0, w, h);
+    ctx.restore();
+};
+
+const drawSeigaihaPattern = (ctx, width, height, themeColor) => {
+    const cacheKey = `${themeColor}_${width}_${height}`;
+    if (patternCache.has(cacheKey)) {
+        ctx.drawImage(patternCache.get(cacheKey), 0, 0);
+        return;
+    }
+
+    const offscreen = createCanvas(width, height);
+    const octx = offscreen.getContext('2d');
+    octx.strokeStyle = themeColor ? hexToRgba(themeColor, 0.06) : 'rgba(255, 255, 255, 0.015)';
+    octx.lineWidth = 1;
+    const radius = 18;
+    for (let y = 0; y < height + radius * 2; y += radius) {
+        for (let x = 0; x < width + radius * 2; x += radius * 2) {
+            const offsetX = (y / radius) % 2 === 0 ? 0 : radius;
+            const cx = x + offsetX;
+            [radius, radius - 4, radius - 8].forEach(r => {
+                octx.beginPath(); octx.arc(cx, y, r, Math.PI, 0); octx.stroke();
+            });
+        }
+    }
+    patternCache.set(cacheKey, offscreen);
+    ctx.drawImage(offscreen, 0, 0);
+};
 
 const formatStat = (num) => {
     const n = parseFloat(num) || 0;
     if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    if (n % 1 !== 0) return n.toFixed(1);
     return n.toLocaleString();
 };
 
-const hexToRgba = (hex, alpha) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
-// --- TECHNICAL UTILITY: AUTO-FIT PRECISION SCALING ---
 const fitText = (ctx, text, fontFamilies, baseSize, baseWeight, maxWidth) => {
     let size = baseSize;
     ctx.font = `${baseWeight} ${size}px ${fontFamilies}`;
@@ -96,464 +174,785 @@ const fitText = (ctx, text, fontFamilies, baseSize, baseWeight, maxWidth) => {
     return ctx.font;
 };
 
-const drawScanlines = (ctx, w, h) => {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-    ctx.lineWidth = 0.5;
-    for (let y = 0; y < h; y += 4) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-    }
-    ctx.restore();
-};
-
-const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = CONFIG.COLORS.PRIMARY, displayName = null, onBannerFailure = null) => {
+const generateProfileCard = async (discordUser, userData, favorites, bannerUrl = null, primaryColor = null, displayName = null, onBannerFailure = null) => {
     const isCompact = !userData.anilist_synced;
     const CARD_HEIGHT = isCompact ? CARD_HEIGHT_UNLINKED : CARD_HEIGHT_LINKED;
 
-    const SCALE = 3; // Ultra High-Definition Rendering
+    const SCALE = 2.5;
     const canvas = createCanvas(Math.floor(CARD_WIDTH * SCALE), Math.floor(CARD_HEIGHT * SCALE));
     const ctx = canvas.getContext('2d');
     ctx.scale(SCALE, SCALE);
 
-    // Premium Rendering Settings
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const TEXT_MAIN = '#FFFFFF';
-    const TEXT_SUB = '#A1A1AA';
-    const THEME_COLOR = primaryColor || CONFIG.COLORS.PRIMARY;
+    // --- DYNAMIC COLOR PALETTE SYSTEM (Zero Muddy Brown Edition) ---
+    const THEME_ACCENT = primaryColor || '#FFACD1';
+    const COLOR_BG = '#21232a';
+
+    // UI Elements 
+    const COLOR_HIGHLIGHT = mixColors('#ffffff', THEME_ACCENT, 0.8);
+    const COLOR_SHADOW = mixColors('#000000', THEME_ACCENT, 0.4);
+
+    // Deep, un-muddied ink for text
+    const COLOR_INK = mixColors('#0a0a0a', THEME_ACCENT, 0.3);
+
+    // True Leather Mixed with Theme Accent
+    const COLOR_LEATHER_DARK = mixColors('#110905', THEME_ACCENT, 0.15);
+    const COLOR_LEATHER_MID = mixColors('#3e2418', THEME_ACCENT, 0.15);
+    const COLOR_LEATHER_LIGHT = mixColors('#5c3523', THEME_ACCENT, 0.15);
 
     ctx.clearRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
     try {
-        // --- 1. AMBIENT BACKGROUND SYSTEM ---
         const defaultBg = path.join(__dirname, 'images', 'profile_background_default.png');
-        
-        // Handle bannerUrl as both string or config object { source, customUrl }
-        const finalBannerUrl = (bannerUrl && typeof bannerUrl === 'object') ? bannerUrl.customUrl : bannerUrl;
-        const bgImg = await secureLoadImage(finalBannerUrl, defaultBg);
+        const defaultAv = path.join(__dirname, 'images', 'unnamed.jpg');
 
-        ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 20;
-        ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, CARD_HEIGHT, 40);
-        ctx.fillStyle = '#09090B'; ctx.fill();
-        ctx.shadowColor = 'transparent'; ctx.clip();
-
-        if (bgImg) {
-            ctx.filter = 'blur(60px) brightness(0.35) saturate(1.5)';
-            ctx.drawImage(bgImg, -100, -100, CARD_WIDTH + 200, CARD_HEIGHT + 200);
-            ctx.filter = 'none';
+        // --- 1. RESOLVE ASSET PRIORITIES ---
+        let bannerPriority = [];
+        if (bannerUrl && typeof bannerUrl === 'object') {
+            bannerPriority.push(bannerUrl.customUrl || bannerUrl.anilistBanner || bannerUrl.url);
+        } else if (bannerUrl) {
+            bannerPriority.push(bannerUrl);
         }
+        if (userData.discordBannerUrl) bannerPriority.push(userData.discordBannerUrl);
 
-        const vignette = ctx.createLinearGradient(0, 0, 0, CARD_HEIGHT);
-        vignette.addColorStop(0, 'rgba(0, 0, 0, 0.1)'); vignette.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
-        ctx.fillStyle = vignette; ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+        let avatarPriority = [];
+        const discordAvatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 512 });
+        const avConfig = userData.avatarConfig || { source: 'DISCORD_GLOBAL' };
 
-        const cardBorderGrad = ctx.createLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT);
-        cardBorderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-        cardBorderGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
-        cardBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.15));
-        ctx.strokeStyle = cardBorderGrad; ctx.lineWidth = 1.5; ctx.strokeRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
-        
-        // V4: GROUNDING GRID (Scanlines)
-        drawScanlines(ctx, CARD_WIDTH, CARD_HEIGHT);
-        
+        if (avConfig.source === 'DISCORD_GUILD' && userData.guildAvatarUrl) {
+            avatarPriority.push(userData.guildAvatarUrl);
+        } else if (avConfig.source === 'ANILIST') {
+            avatarPriority.push(avConfig.anilistAvatar || userData.anilistAvatar);
+        } else if (avConfig.source === 'CUSTOM') {
+            avatarPriority.push(avConfig.customUrl || userData.customAvatarUrl);
+        }
+        if (!avatarPriority.includes(discordAvatarUrl)) avatarPriority.push(discordAvatarUrl);
+
+        // --- 2. PARALLEL NETWORK ARCHIVE FETCH ---
+        const [bgImg, avatar] = await Promise.all([
+            secureLoadImage(bannerPriority, defaultBg),
+            secureLoadImage(avatarPriority, defaultAv)
+        ]);
+
+        // --- 3. BASE CARD ---
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, CARD_HEIGHT, 16);
+        ctx.fillStyle = COLOR_BG;
+        ctx.fill();
+        ctx.clip();
+        drawSeigaihaPattern(ctx, CARD_WIDTH, CARD_HEIGHT, THEME_ACCENT);
         ctx.restore();
 
-        // --- 2. CRISP TOP BANNER (High Immersion) ---
-        const bannerX = 10, bannerY = 10, bannerW = 380, bannerH = 160, bannerR = 28;
+        // --- 4. VINTAGE TOP BANNER ---
+        const bannerH = 135;
         if (bgImg) {
-            ctx.save(); ctx.beginPath(); ctx.roundRect(bannerX, bannerY, bannerW, bannerH, bannerR); ctx.clip();
-            const ratio = Math.max(bannerW / bgImg.width, bannerH / bgImg.height);
+            ctx.save();
+            ctx.beginPath(); ctx.roundRect(0, 0, CARD_WIDTH, bannerH, [16, 16, 0, 0]); ctx.clip();
+            const ratio = Math.max(CARD_WIDTH / bgImg.width, bannerH / bgImg.height);
             const bgW = bgImg.width * ratio, bgH = bgImg.height * ratio;
-            ctx.drawImage(bgImg, bannerX + (bannerW - bgW) / 2, bannerY + (bannerH - bgH) / 2, bgW, bgH);
+            ctx.drawImage(bgImg, (CARD_WIDTH - bgW) / 2, (bannerH - bgH) / 2, bgW, bgH);
+            ctx.restore();
 
-            const fade = ctx.createLinearGradient(0, bannerY + bannerH - 40, 0, bannerY + bannerH);
-            fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,0.6)');
-            ctx.fillStyle = fade; ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetY = 3;
+            ctx.beginPath(); ctx.moveTo(0, bannerH); ctx.lineTo(CARD_WIDTH, bannerH);
+            ctx.strokeStyle = THEME_ACCENT; ctx.lineWidth = 2.5; ctx.stroke();
             ctx.restore();
         }
 
-        // --- 3. NEON AVATAR CLUSTER (V4: IDENTITY SHELF) ---
-        const avX = 64, avY = 150, avR = 36; 
-        
-        // V4: Identity Shelf (Glass Platform) - Grounded to the left edge
+        // --- 5. CLASSIC PORTRAIT ---
+        const avX = 85, avY = 148, avR = 42;
         ctx.save();
-        ctx.beginPath(); ctx.roundRect(10, avY - 20, 260, 110, 24);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.025)'; ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'; ctx.lineWidth = 1; ctx.stroke();
-        
-        // Technical Corner Accent (Cyber Detail)
-        ctx.strokeStyle = hexToRgba(THEME_COLOR, 0.4); ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(20, avY - 20); ctx.lineTo(10, avY - 20); ctx.lineTo(10, avY - 10); ctx.stroke();
-        
-        // V4.2: Technical HEX Meta-Tag (Microscopic)
-        ctx.fillStyle = hexToRgba(TEXT_SUB, 0.4); ctx.font = `700 6.5px 'exton'`; ctx.textAlign = 'right';
-        ctx.fillText(`UID_NODE [0x${discordUser.id.slice(-4).toUpperCase()}]`, 260, avY + 84);
-        ctx.restore();
-        ctx.textAlign = 'left'; // Reset
+        ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 5;
 
-        ctx.beginPath(); ctx.arc(avX, avY, avR + 2, 0, Math.PI * 2);
-        ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 25; ctx.fillStyle = THEME_COLOR; ctx.fill();
+        const bezelGrad = ctx.createLinearGradient(avX - avR, avY - avR, avX + avR, avY + avR);
+        bezelGrad.addColorStop(0, COLOR_HIGHLIGHT);
+        bezelGrad.addColorStop(0.5, THEME_ACCENT);
+        bezelGrad.addColorStop(1, COLOR_SHADOW);
+
+        ctx.beginPath(); ctx.arc(avX, avY, avR + 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = bezelGrad; ctx.fill();
+
         ctx.shadowColor = 'transparent';
-        ctx.beginPath(); ctx.arc(avX, avY, avR + 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(15, 15, 20, 0.9)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(avX, avY, avR + 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = COLOR_BG; ctx.fill();
 
-        // V4.10: Precision Avatar Resolution
-        let avatarUrl = discordUser.displayAvatarURL({ extension: 'png', size: 1024 });
-        
-        const avConfig = userData.avatarConfig || { source: 'DISCORD_GLOBAL' };
-        if (avConfig.source === 'DISCORD_GUILD' && userData.guildAvatarUrl) {
-            avatarUrl = userData.guildAvatarUrl;
-        } else if (avConfig.source === 'ANILIST' && avConfig.anilistAvatar) {
-            avatarUrl = avConfig.anilistAvatar;
-        } else if (avConfig.source === 'CUSTOM' && avConfig.customUrl) {
-            avatarUrl = avConfig.customUrl;
-        }
-
-        const avatar = await secureLoadImage(avatarUrl);
         if (avatar) {
-            ctx.save(); ctx.beginPath(); ctx.arc(avX, avY, avR, 0, Math.PI * 2); ctx.clip();
-            ctx.drawImage(avatar, avX - avR, avY - avR, avR * 2, avR * 2); ctx.restore();
+            ctx.save();
+            ctx.beginPath(); ctx.arc(avX, avY, avR, 0, Math.PI * 2); ctx.clip();
+            ctx.drawImage(avatar, avX - avR, avY - avR, avR * 2, avR * 2);
+            ctx.restore();
         }
+        ctx.restore();
 
-        // --- 4. IDENTITY CLUSTER (Left) ---
-        const nameY = 225;
+        // --- 6. LITERARY IDENTITY ---
+        const avatarBottomY = avY + avR + 4.5;
+        const titleY = avatarBottomY - 1;
+        const nameY = titleY - 24;
+        const nameX = 145;
+
         const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
 
-        ctx.fillStyle = TEXT_MAIN;
-        // Dynamic Username Scaling (Priority: Digital Galaxy)
-        ctx.font = fitText(ctx, nameText, `'digitalgalaxy', 'exton', ${FONT_STACK}`, 34, '900', 250); 
-        const nameWidth = ctx.measureText(nameText).width;
-        ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
-        ctx.fillText(nameText, 20, nameY); 
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 2;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = fitText(ctx, nameText, `'monalqo', 'monalqo', ${FONT_STACK}`, 34, 'normal', 240);
+        ctx.textAlign = 'left';
+        ctx.fillText(nameText, nameX, nameY);
+
         ctx.shadowColor = 'transparent';
 
-        // Refined Title Badge (Adaptive Alignment)
-        const titleText = (userData.title || 'MUSE READER').toUpperCase();
-        // Dynamic Title Scaling (Priority: Exton)
-        ctx.font = fitText(ctx, titleText, `'exton', ${FONT_STACK}`, 11, '700', 120); 
-        ctx.letterSpacing = '1px';
-        
-        const tagW = ctx.measureText(titleText).width + 24, tagH = 24;
-        const tagX = 20;
-        const tagY = nameY + 12;
-
-        ctx.beginPath(); ctx.roundRect(tagX, tagY, tagW, tagH, tagH / 2);
-        // Deep Theme-Tinted Glass
-        ctx.fillStyle = hexToRgba(THEME_COLOR, 0.1); ctx.fill(); 
-        
-        const tagBorderGrad = ctx.createLinearGradient(tagX, tagY, tagX + tagW, tagY);
-        tagBorderGrad.addColorStop(0, hexToRgba(THEME_COLOR, 0.4));
-        tagBorderGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
-        tagBorderGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.4));
-        
-        ctx.strokeStyle = tagBorderGrad; ctx.lineWidth = 1.2; ctx.stroke();
-        
-        // Subtle Inner Glow
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.roundRect(tagX + 1, tagY + 1, tagW - 2, tagH - 2, (tagH - 2) / 2); ctx.stroke();
-
-        ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center';
-        ctx.shadowColor = hexToRgba(THEME_COLOR, 0.3); ctx.shadowBlur = 4;
-        ctx.fillText(titleText, tagX + tagW / 2, tagY + 16.5);
-        ctx.shadowBlur = 0;
-        ctx.letterSpacing = '0px';
-
-        // --- 5. DYNAMIC MEMBERSHIP BADGE (Right) ---
-        const pillR = 21, pillX = 380 - pillR * 2, pillY = nameY - 36;
-        const isBooster = userData.is_booster || false;
-        const isPremium = (userData.is_premium || userData.premium || false) && !isBooster;
-
-        ctx.save();
-        ctx.beginPath(); ctx.arc(pillX + pillR, pillY + pillR, pillR, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'; ctx.fill(); // Glass base
-        
-        const pillGrad = ctx.createLinearGradient(pillX, pillY, pillX, pillY + pillR * 2);
-        if (isBooster) {
-            pillGrad.addColorStop(0, '#C084FC'); pillGrad.addColorStop(1, '#7C3AED'); // Sacred Purple
-            ctx.strokeStyle = pillGrad; ctx.lineWidth = 2.2; ctx.stroke();
-            ctx.shadowColor = 'rgba(124, 58, 237, 0.8)'; ctx.shadowBlur = 16;
-        } else if (isPremium) {
-            pillGrad.addColorStop(0, '#F5D17E'); pillGrad.addColorStop(1, '#AA812A'); // Premium Gold
-            ctx.strokeStyle = pillGrad; ctx.lineWidth = 1.8; ctx.stroke();
-            ctx.shadowColor = 'rgba(170, 129, 42, 0.6)'; ctx.shadowBlur = 12;
-        } else {
-            pillGrad.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); pillGrad.addColorStop(1, hexToRgba(THEME_COLOR, 0.1));
-            ctx.strokeStyle = pillGrad; ctx.lineWidth = 1.2; ctx.stroke();
-        }
-
-        // Draw Dynamic Book Icon
-        const bx = pillX + pillR - 10, by = pillY + pillR - 8.5, bw = 20, bh = 17;
-        const iconColor = isBooster ? '#E9D5FF' : (isPremium ? '#F5D17E' : THEME_COLOR);
-        
-        ctx.strokeStyle = iconColor;
-        ctx.lineWidth = (isBooster || isPremium) ? 2.2 : 1.8;
-        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-
-        // Base Book Geometry
-        ctx.beginPath();
-        ctx.moveTo(bx + bw / 2, by); ctx.lineTo(bx + bw / 2, by + bh); // Spine
-        ctx.moveTo(bx + bw / 2, by); 
-        ctx.quadraticCurveTo(bx + bw * 0.75, by - 2, bx + bw, by + 1.5); ctx.lineTo(bx + bw, by + bh - 3.5); ctx.quadraticCurveTo(bx + bw * 0.75, by + bh - 7, bx + bw / 2, by + bh);
-        ctx.moveTo(bx + bw / 2, by);
-        ctx.quadraticCurveTo(bx + bw * 0.25, by - 2, bx, by + 1.5); ctx.lineTo(bx, by + bh - 3.5); ctx.quadraticCurveTo(bx + bw * 0.25, by + bh - 7, bx + bw / 2, by + bh);
-        ctx.stroke();
-
-        if (isBooster || isPremium) {
-            // Extra "Detailed" pages
-            ctx.lineWidth = 1.0;
-            ctx.beginPath();
-            ctx.moveTo(bx + bw * 0.7, by + 4); ctx.lineTo(bx + bw * 0.9, by + 4);
-            ctx.moveTo(bx + bw * 0.7, by + 7.5); ctx.lineTo(bx + bw * 0.9, by + 7.5);
-            ctx.moveTo(bx + bw * 0.3, by + 4); ctx.lineTo(bx + bw * 0.1, by + 4);
-            ctx.moveTo(bx + bw * 0.3, by + 7.5); ctx.lineTo(bx + bw * 0.1, by + 7.5);
-            
-            if (isBooster) {
-                // Tier 3: Sacred Muse Ultra-Details
-                ctx.moveTo(bx + bw * 0.7, by + 11); ctx.lineTo(bx + bw * 0.9, by + 11);
-                ctx.moveTo(bx + bw * 0.3, by + 11); ctx.lineTo(bx + bw * 0.1, by + 11);
-                
-                // 1. Mystical Bookmark
-                ctx.moveTo(bx + bw * 0.6, by + bh - 1);
-                ctx.quadraticCurveTo(bx + bw * 0.65, by + bh + 4, bx + bw * 0.55, by + bh + 6);
-                
-                // 2. Cover "Spark" Symbol
-                ctx.stroke();
-                ctx.beginPath(); ctx.arc(bx + bw * 0.25, by + bh / 2, 0.8, 0, Math.PI * 2);
-                ctx.arc(bx + bw * 0.75, by + bh / 2, 0.8, 0, Math.PI * 2);
-                ctx.fillStyle = '#FFF'; ctx.fill();
-
-                // 3. Crystalline Aura Ring (Inner)
-                ctx.beginPath(); ctx.arc(pillX + pillR, pillY + pillR, pillR - 4, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
-                
-                // Glowing Spine dot
-                ctx.beginPath(); ctx.arc(bx + bw/2, by + 2, 1.2, 0, Math.PI * 2);
-                ctx.fillStyle = '#FFF'; ctx.fill();
-            } else {
-                ctx.stroke();
-            }
-        }
+        const titleText = userData.title || 'Chart Librarian';
+        ctx.fillStyle = THEME_ACCENT;
+        ctx.font = fitText(ctx, titleText, `'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 28, 'normal', 240);
+        ctx.fillText(titleText, nameX, titleY);
         ctx.restore();
 
-        // --- 6. V5 WIDGETS: REFINED APP NODES ---
-        const statY = 285; // Shifted down for vertical header stack
-        const statW = 110, statH = 88, statGap = 15;
-        const stats = userData.anilist || {};
+        // --- 5. FADING DIVIDER ---
+        const panelX = 30, panelW = CARD_WIDTH - 60;
+        const ribbonY = 215;
 
-        const drawStatNode = (x, hexColor, value, label, drawIconLogic) => {
-            const r = 24; // Precision-cut corners
-            ctx.save();
-            
-            // 1. BASE: DEEP CYBER-GLASS (Tactical Contrast)
-            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, r);
-            const cardGrad = ctx.createLinearGradient(x, statY, x, statY + statH);
-            cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.02)');
-            cardGrad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
-            ctx.fillStyle = cardGrad; ctx.fill();
+        const lineGrad = ctx.createLinearGradient(panelX, ribbonY, panelX + panelW, ribbonY);
+        lineGrad.addColorStop(0, hexToRgba(THEME_ACCENT, 0));
+        lineGrad.addColorStop(0.15, THEME_ACCENT);
+        lineGrad.addColorStop(0.85, THEME_ACCENT);
+        lineGrad.addColorStop(1, hexToRgba(THEME_ACCENT, 0));
 
-            // Surgical Shell Outlining
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(panelX, ribbonY); ctx.lineTo(panelX + panelW, ribbonY);
+        ctx.strokeStyle = lineGrad; ctx.lineWidth = 1; ctx.stroke();
 
-            // 2. TEXTURE: TECHNICAL GRID SUB-DECK
-            ctx.save();
-            ctx.beginPath(); ctx.roundRect(x, statY, statW, statH, r); ctx.clip();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)'; ctx.lineWidth = 0.5;
-            const gridSize = 14;
-            for (let gl = x; gl <= x + statW; gl += gridSize) {
-                ctx.beginPath(); ctx.moveTo(gl, statY); ctx.lineTo(gl, statY + statH); ctx.stroke();
-            }
-            for (let gh = statY; gh <= statY + statH; gh += gridSize) {
-                ctx.beginPath(); ctx.moveTo(x, gh); ctx.lineTo(x + statW, gh); ctx.stroke();
-            }
-            ctx.restore();
-
-            // 3. ACCENTS: ILLUMINATED TACTICAL BRACKETS
-            const bS = 8, bL = 1.8; ctx.strokeStyle = hexToRgba(hexColor, 0.45); ctx.lineWidth = bL;
-            ctx.lineCap = 'butt';
-            // Top-Left Frame
-            ctx.beginPath(); ctx.moveTo(x + bS, statY + 2.5); ctx.lineTo(x + 2.5, statY + 2.5); ctx.lineTo(x + 2.5, statY + bS); ctx.stroke();
-            // Bottom-Right Frame
-            ctx.beginPath(); ctx.moveTo(x + statW - bS, statY + statH - 2.5); ctx.lineTo(x + statW - 2.5, statY + statH - 2.5); ctx.lineTo(x + statW - 2.5, statY + statH - bS); ctx.stroke();
-
-            // 4. HEADER: UNIFIED COMMAND POD (Integrated [Icon | Label])
-            const hW = statW - 24, hH = 22, hX = x + 12, hY = statY + 12;
-            ctx.beginPath(); ctx.roundRect(hX, hY, hW, hH, hH / 2);
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.fill();
-            const hubBorder = ctx.createLinearGradient(hX, hY, hX + hW, hY);
-            hubBorder.addColorStop(0, hexToRgba(hexColor, 0.4));
-            hubBorder.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
-            ctx.strokeStyle = hubBorder; ctx.lineWidth = 1; ctx.stroke();
-
-            // Dynamic Icon Hub
-            const iSize = 14, iX = hX + 8, iY = hY + (hH - iSize) / 2;
-            ctx.save();
-            ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
-            ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            drawIconLogic(iX, iY, iSize);
-            ctx.restore();
-
-            // Command Label (Integrated Metadata)
-            ctx.fillStyle = TEXT_SUB;
-            // Dynamic Scaling for Tactical Headers (Priority: Exton)
-            ctx.font = fitText(ctx, label.toUpperCase(), `'exton', ${FONT_STACK}`, 8.5, '700', hW - 32); 
-            ctx.textAlign = 'right';
-            ctx.letterSpacing = '1.5px';
-            ctx.fillText(label.toUpperCase(), hX + hW - 10, hY + 14);
-            ctx.letterSpacing = '0px';
-
-            // 5. DATA BODY: HIGH-POWER NUMERICAL DISPLAY (Dynamic Scaling)
-            ctx.fillStyle = '#FFFFFF';
-            // Scale dynamically (Priority: Neo-Externo)
-            ctx.font = fitText(ctx, value, `'neo', 'exomoon', 'orbitron', ${FONT_STACK}`, 32, '900', statW - 24);
-            ctx.textAlign = 'center';
-            ctx.shadowColor = hexToRgba(hexColor, 0.4); ctx.shadowBlur = 12;
-            ctx.fillText(value, x + statW / 2, statY + statH - 18);
-            ctx.shadowBlur = 0;
-
-            // 6. ENERGY FOOTER: LINEAR DATA PULSE
-            const pulseY = statY + statH - 10, pulseW = statW - 32;
-            ctx.beginPath(); ctx.moveTo(x + 16, pulseY); ctx.lineTo(x + 16 + pulseW, pulseY);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'; ctx.lineWidth = 1; ctx.stroke();
-            
-            // Real-time Pulse Point (Surgical Detail)
-            const pPos = x + 16 + (pulseW * 0.75);
-            ctx.beginPath(); ctx.arc(pPos, pulseY, 1.5, 0, Math.PI * 2);
-            ctx.fillStyle = hexColor; ctx.shadowColor = hexColor; ctx.shadowBlur = 8; ctx.fill();
-            
-            ctx.restore();
-        };
-
-        const drawAnimeIcon = (ix, iy, size) => {
-            const ox = ix + size / 2 - 8, oy = iy + size / 2 - 6;
-            ctx.beginPath(); ctx.roundRect(ox, oy, 16, 12, 3); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ox + 6, oy + 3); ctx.lineTo(ox + 11, oy + 6); ctx.lineTo(ox + 6, oy + 9); ctx.fill();
-        };
-
-        const drawMangaIcon = (ix, iy, size) => {
-            const ox = ix + size / 2 - 7, oy = iy + size / 2 - 6.5;
-            for (let i = 0; i < 3; i++) {
-                const offY = oy + i * 4.2;
-                ctx.beginPath(); ctx.roundRect(ox, offY, 14, 3.8, 0.5); ctx.stroke();
-            }
-        };
-
-        const drawDaysIcon = (ix, iy, size) => {
-            const ox = ix + size / 2, oy = iy + size / 2;
-            ctx.beginPath(); ctx.arc(ox, oy, 6.5, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(ox, oy - 4); ctx.lineTo(ox, oy); ctx.lineTo(ox + 3, oy + 2); ctx.stroke();
-        };
-
+        // --- 6. LIBRARY RECORD PANEL ---
+        let panelBottomY = ribbonY;
         if (userData.anilist_synced) {
-            drawStatNode(20, THEME_COLOR, formatStat(stats.completed || 0), 'Anime', drawAnimeIcon);
-            drawStatNode(20 + statW + statGap, THEME_COLOR, formatStat(stats.manga_completed || 0), 'Manga', drawMangaIcon);
-            drawStatNode(20 + (statW + statGap) * 2, THEME_COLOR, formatStat(stats.days || 0), 'Days', drawDaysIcon);
+            const panelY = 232;
+            const panelH = 168;
+            const panelR = 8;
+            const stats = userData.anilist || {};
+
+            ctx.save();
+
+            ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 15; ctx.shadowOffsetY = 8;
+            ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, panelR);
+            ctx.fillStyle = '#f8f4e6';
+            ctx.fill();
+
+            ctx.shadowColor = 'transparent';
+            ctx.save();
+            ctx.clip();
+
+            const vignette = ctx.createRadialGradient(panelX + panelW / 2, panelY + panelH / 2, panelH * 0.2, panelX + panelW / 2, panelY + panelH / 2, panelW * 0.7);
+            vignette.addColorStop(0, 'rgba(0,0,0,0)');
+            vignette.addColorStop(1, hexToRgba(THEME_ACCENT, 0.12));
+            ctx.fillStyle = vignette;
+            ctx.fill();
+
+            drawNoise(ctx, CARD_WIDTH, CARD_HEIGHT, 0.04);
+            ctx.restore();
+
+            // Inner Engraved Frames
+            ctx.strokeStyle = hexToRgba(THEME_ACCENT, 0.6);
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(panelX + 6, panelY + 6, panelW - 12, panelH - 12, panelR - 2); ctx.stroke();
+            ctx.strokeStyle = hexToRgba(THEME_ACCENT, 0.2);
+            ctx.beginPath(); ctx.roundRect(panelX + 9, panelY + 9, panelW - 18, panelH - 18, panelR - 4); ctx.stroke();
+
+            // --- DYNAMIC ARCHIVAL TIER BOOKMARK ---
+            const isPremium = userData.is_premium;
+            const isBooster = userData.is_booster;
             
-            // Maintenance Guard Overlay (Clinical UI)
-            if (userData.anilist_maintenance) {
-                const hudX = 20, hudY = statY, hudW = CARD_WIDTH - 40, hudH = statH;
+            const bookmarkX = panelX + panelW - 55, bookmarkW = 34, bookmarkH = 58; // Slightly longer
+            const bookmarkTopY = panelY - 4;
+
+            ctx.save();
+            
+            // Tier-Specific Colors & Effects
+            let bmColor = THEME_ACCENT;
+            if (isPremium) bmColor = '#D4AF37'; // Antique Gold
+            if (isBooster) bmColor = '#A855F7'; // Royal Booster Purple
+
+            if (isBooster || isPremium) {
+                ctx.shadowColor = hexToRgba(bmColor, 0.6);
+                ctx.shadowBlur = 12;
+            } else {
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 8;
+            }
+            ctx.shadowOffsetY = 5;
+
+            ctx.beginPath();
+            ctx.moveTo(bookmarkX, bookmarkTopY);
+            ctx.lineTo(bookmarkX + bookmarkW, bookmarkTopY);
+            ctx.lineTo(bookmarkX + bookmarkW, bookmarkTopY + bookmarkH);
+            ctx.lineTo(bookmarkX + bookmarkW / 2, bookmarkTopY + bookmarkH - 14);
+            ctx.lineTo(bookmarkX, bookmarkTopY + bookmarkH);
+            ctx.closePath();
+
+            // 1. Solid Base
+            ctx.fillStyle = bmColor;
+            ctx.fill();
+
+            // 2. High-Fidelity Satin Shading
+            const bmRoll = ctx.createLinearGradient(bookmarkX, 0, bookmarkX + bookmarkW, 0);
+            bmRoll.addColorStop(0, 'rgba(0,0,0,0.4)');
+            bmRoll.addColorStop(0.2, 'rgba(0,0,0,0.1)');
+            bmRoll.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+            bmRoll.addColorStop(0.8, 'rgba(0,0,0,0.2)');
+            bmRoll.addColorStop(1, 'rgba(0,0,0,0.4)');
+            ctx.fillStyle = bmRoll;
+            ctx.fill();
+
+            // 3. Gold/Silver Thread for Premium/Booster
+            if (isPremium || isBooster) {
                 ctx.save();
-                ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 20); ctx.clip();
-                
-                // Frosted Dark Filter
-                ctx.fillStyle = 'rgba(9, 9, 11, 0.75)'; ctx.fillRect(hudX, hudY, hudW, hudH);
-                
-                // Warning Notification
-                ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF';
-                ctx.font = `800 13px ${FONT_STACK}`; ctx.letterSpacing = '1px';
-                ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
-                ctx.fillText('ANILIST API CURRENTLY OFFLINE', hudX + hudW / 2, hudY + hudH / 2 + 5);
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                for(let i=0; i<15; i++) {
+                    ctx.fillRect(bookmarkX + (Math.random()*bookmarkW), bookmarkTopY, 1, bookmarkH);
+                }
                 ctx.restore();
             }
+
+            ctx.shadowColor = 'transparent';
+
+            // Top Fold Detail
+            ctx.save();
+            ctx.clip();
+            const bmFold = ctx.createLinearGradient(0, bookmarkTopY, 0, bookmarkTopY + 14);
+            bmFold.addColorStop(0, 'rgba(0,0,0,0.6)');
+            bmFold.addColorStop(0.4, 'rgba(0,0,0,0.1)');
+            bmFold.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = bmFold;
+            ctx.fill();
+            ctx.restore();
+
+            // Outer Stroke
+            ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 4. Tier Emblems
+            const emblemX = bookmarkX + bookmarkW / 2;
+            const emblemY = bookmarkTopY + bookmarkH - 30;
+
+            if (isBooster) {
+                // Ethereal Crystal Emblem
+                ctx.save();
+                ctx.translate(emblemX, emblemY);
+                ctx.beginPath();
+                ctx.moveTo(0, -8); ctx.lineTo(5, 0); ctx.lineTo(0, 8); ctx.lineTo(-5, 0); ctx.closePath();
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                
+                // Cross Glint
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 10); ctx.stroke();
+                ctx.restore();
+            } else if (isPremium) {
+                // Golden Star Emblem
+                ctx.save();
+                ctx.translate(emblemX, emblemY);
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    ctx.lineTo(Math.cos((18 + i * 72) / 180 * Math.PI) * 7, -Math.sin((18 + i * 72) / 180 * Math.PI) * 7);
+                    ctx.lineTo(Math.cos((54 + i * 72) / 180 * Math.PI) * 3, -Math.sin((54 + i * 72) / 180 * Math.PI) * 3);
+                }
+                ctx.closePath();
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 5. Decorative Stitching
+            const st = 4;
+            const drawStitchPath = () => {
+                ctx.beginPath();
+                ctx.moveTo(bookmarkX + st, bookmarkTopY + 2);
+                ctx.lineTo(bookmarkX + st, bookmarkTopY + bookmarkH - st - 4);
+                ctx.lineTo(bookmarkX + bookmarkW / 2, bookmarkTopY + bookmarkH - 14 - st + 2);
+                ctx.lineTo(bookmarkX + bookmarkW - st, bookmarkTopY + bookmarkH - st - 4);
+                ctx.lineTo(bookmarkX + bookmarkW - st, bookmarkTopY + 2);
+            };
+
+            drawStitchPath();
+            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+
+            ctx.translate(0, -0.5);
+            drawStitchPath();
+            ctx.strokeStyle = (isPremium || isBooster) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            // Record Panel Data
+            const alignX = panelX + 26;
+            const titleRowY = panelY + 32;
+
+            ctx.fillStyle = COLOR_INK;
+            ctx.font = `24px 'gunty', ${FONT_STACK}`;
+            ctx.fillText('Library Record', alignX, titleRowY);
+
+            ctx.save();
+            const headUnderline = ctx.createLinearGradient(alignX, 0, alignX + 150, 0);
+            headUnderline.addColorStop(0, hexToRgba(THEME_ACCENT, 0.6));
+            headUnderline.addColorStop(1, hexToRgba(THEME_ACCENT, 0));
+            ctx.strokeStyle = headUnderline;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(alignX, panelY + 42); ctx.lineTo(alignX + 150, panelY + 42); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(alignX, panelY + 45); ctx.lineTo(alignX + 120, panelY + 45); ctx.stroke();
+
+            const rowStartY = panelY + 74;
+            const rowSpacing = 32;
+
+            const drawRow = (centerY, label, value, iconType) => {
+                const ix = alignX + 10;
+                ctx.beginPath(); ctx.arc(ix, centerY, 13, 0, Math.PI * 2);
+                ctx.fillStyle = hexToRgba(THEME_ACCENT, 0.12);
+                ctx.fill();
+
+                // Vibrant Theme Icons
+                ctx.strokeStyle = THEME_ACCENT;
+                ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.fillStyle = THEME_ACCENT;
+
+                if (iconType === 'anime') {
+                    ctx.beginPath();
+                    ctx.roundRect(ix - 7, centerY - 5.5, 14, 11, 2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(ix - 1.5, centerY - 2.5);
+                    ctx.lineTo(ix + 3.5, centerY);
+                    ctx.lineTo(ix - 1.5, centerY + 2.5);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (iconType === 'manga') {
+                    ctx.beginPath();
+                    ctx.moveTo(ix - 7, centerY - 4); ctx.lineTo(ix - 7, centerY + 5);
+                    ctx.moveTo(ix + 7, centerY - 4); ctx.lineTo(ix + 7, centerY + 5);
+                    ctx.moveTo(ix, centerY - 3); ctx.lineTo(ix, centerY + 6);
+                    ctx.moveTo(ix - 7, centerY - 4); ctx.quadraticCurveTo(ix - 3.5, centerY - 5.5, ix, centerY - 3);
+                    ctx.moveTo(ix, centerY - 3); ctx.quadraticCurveTo(ix + 3.5, centerY - 5.5, ix + 7, centerY - 4);
+                    ctx.moveTo(ix - 7, centerY + 5); ctx.quadraticCurveTo(ix - 3.5, centerY + 3.5, ix, centerY + 6);
+                    ctx.moveTo(ix, centerY + 6); ctx.quadraticCurveTo(ix + 3.5, centerY + 3.5, ix + 7, centerY + 5);
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(ix - 5, centerY - 7); ctx.lineTo(ix + 5, centerY - 7);
+                    ctx.moveTo(ix - 5, centerY + 7); ctx.lineTo(ix + 5, centerY + 7);
+                    ctx.moveTo(ix - 5, centerY - 7); ctx.lineTo(ix + 5, centerY + 7);
+                    ctx.moveTo(ix + 5, centerY - 7); ctx.lineTo(ix - 5, centerY + 7);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(ix - 5, centerY + 7); ctx.lineTo(ix, centerY); ctx.lineTo(ix + 5, centerY + 7);
+                    ctx.fill();
+                }
+
+                ctx.textBaseline = 'middle';
+                const labelX = alignX + 34;
+
+                ctx.fillStyle = mixColors('#1a1a1a', THEME_ACCENT, 0.4);
+                ctx.font = `16px 'monalqo', ${FONT_STACK}`;
+                ctx.fillText(label, labelX, centerY + 1);
+
+                const valText = formatStat(value);
+                const valX = panelX + panelW - 23;
+                ctx.font = `bold 16px 'monalqo', ${FONT_STACK}`;
+                ctx.textAlign = 'right';
+                ctx.fillStyle = COLOR_INK;
+                ctx.fillText(valText, valX, centerY + 1);
+                ctx.textAlign = 'left';
+
+                const labelW = ctx.measureText(label).width;
+                ctx.font = `bold 16px 'monalqo', ${FONT_STACK}`;
+                const valW = ctx.measureText(valText).width;
+
+                const dotStartX = labelX + labelW + 12;
+                const dotEndX = valX - valW - 12;
+
+                if (dotEndX > dotStartX) {
+                    ctx.strokeStyle = hexToRgba(THEME_ACCENT, 0.35);
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([2, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(dotStartX, centerY + 5);
+                    ctx.lineTo(dotEndX, centerY + 5);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                ctx.textBaseline = 'alphabetic';
+            };
+
+            drawRow(rowStartY, 'Anime Watched', stats.completed || 0, 'anime');
+            drawRow(rowStartY + rowSpacing, 'Manga Read', stats.manga_completed || 0, 'manga');
+            drawRow(rowStartY + rowSpacing * 2, 'Days Archived', stats.days || 0, 'days');
+
+            ctx.restore();
+            panelBottomY = panelY + panelH;
         }
 
-        // --- 7. PROGRESSION TERMINAL (Hyper-Premium HUD) ---
-        const termY = isCompact ? 255 : 395;
-        const termH = 80;
-
-        ctx.save();
-        ctx.beginPath(); ctx.roundRect(20, termY, CARD_WIDTH - 40, termH, 22);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; ctx.fill();
-        const termBorderGrad = ctx.createLinearGradient(20, termY, 20, termY + termH);
-        termBorderGrad.addColorStop(0, 'rgba(255,255,255,0.1)');
-        termBorderGrad.addColorStop(1, 'rgba(255,255,255,0.02)');
-        ctx.strokeStyle = termBorderGrad; ctx.lineWidth = 1; ctx.stroke();
-
+        // --- 7. READING PROGRESS ---
+        const termY = isCompact ? panelBottomY + 20 : panelBottomY + 28;
         const currentXP = userData.current || 0;
         const requiredXP = userData.required || 1;
         const levelPercent = Math.min(1, currentXP / requiredXP) || 0;
 
-        // 1. DATA CORE: BOLD LEVEL INDICATOR
-        const levelText = (userData.level || '0').toString();
-        const levelBaseX = 64, levelY = termY + termH / 2 + 15;
-        
-        ctx.fillStyle = '#FFFFFF';
-        // Massive Level Signature (Standardized Data Font: Neo)
-        ctx.font = fitText(ctx, levelText, `'neo', ${FONT_STACK}`, 52, '900', 70); 
-        ctx.textAlign = 'center';
-        ctx.shadowColor = hexToRgba(THEME_COLOR, 0.4); ctx.shadowBlur = 15;
-        ctx.fillText(levelText, levelBaseX, levelY + 5);
-        ctx.shadowBlur = 0;
+        ctx.textBaseline = 'alphabetic';
 
-        // V4.2: Level Label (Micro-Exton) - Tightened
-        ctx.font = `700 8.5px 'exton'`; ctx.fillStyle = TEXT_SUB;
-        ctx.fillText('LVL', levelBaseX, levelY - 33);
+        ctx.fillStyle = '#f1ecd8';
+        ctx.font = `20px 'gunty', ${FONT_STACK}`;
+        ctx.fillText('Musing Progress', 30, termY);
 
-        // 2. METADATA: HUD LABELS (Exton Signature)
-        const barX = 115, barW = CARD_WIDTH - barX - 25, barY = termY + 48, barH = 5, barR = 2.5; 
-        
-        ctx.textAlign = 'left';
-        ctx.fillStyle = TEXT_SUB; 
-        ctx.font = fitText(ctx, 'EXPERIENCE', `'exton', ${FONT_STACK}`, 10, '700', 100);
-        ctx.letterSpacing = '1.8px';
-        ctx.fillText('EXPERIENCE', barX, termY + 28);
-        ctx.letterSpacing = '0px';
+        // --- PREMIUM THEME-TINTED XP PLATE ---
+        ctx.save();
+        const curText = formatStat(currentXP);
+        const reqText = `${formatStat(requiredXP)} XP`;
 
-        ctx.textAlign = 'right';
-        const xpText = `${formatStat(userData.current)} / ${formatStat(userData.required)} XP`.toUpperCase();
-        // V4: Data Stats (Exomoon)
-        ctx.font = fitText(ctx, xpText, `'exomoon', ${FONT_STACK}`, 11, '700', 150);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(xpText, barX + barW, termY + 28);
+        ctx.font = `bold 13px 'monalqo', ${FONT_STACK}`;
+        const curW = ctx.measureText(curText).width;
+        const reqW = ctx.measureText(reqText).width;
 
-        // Heavy-Duty Progress Bar Tracks (V4: Precision Meter)
-        ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, barR);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+        const padH = 16;
+        const divW = 24;
+        const boxW = curW + reqW + divW + (padH * 2);
+        const boxH = 24;
+        const boxX = CARD_WIDTH - 30 - boxW;
+        const boxY = termY - 18;
 
-        // The Progress Fill
-        if (levelPercent > 0) {
-            const fillWidth = Math.max(barR * 2, levelPercent * barW);
-            ctx.save();
-            ctx.beginPath(); ctx.roundRect(barX, barY, fillWidth, barH, barR); ctx.clip();
-            
-            const activeGrad = ctx.createLinearGradient(barX, barY, barX + fillWidth, barY);
-            activeGrad.addColorStop(0, hexToRgba(THEME_COLOR, 0.6));
-            activeGrad.addColorStop(0.85, THEME_COLOR);
-            activeGrad.addColorStop(1, '#FFFFFF'); 
-            
-            ctx.fillStyle = activeGrad;
-            ctx.shadowColor = THEME_COLOR; ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 2;
+
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 2);
+
+        const themedPlateGrad = ctx.createLinearGradient(boxX, boxY, boxX + boxW, boxY + boxH);
+        themedPlateGrad.addColorStop(0, mixColors('#ffffff', THEME_ACCENT, 0.6));
+        themedPlateGrad.addColorStop(0.5, THEME_ACCENT);
+        themedPlateGrad.addColorStop(1, mixColors('#000000', THEME_ACCENT, 0.5));
+        ctx.fillStyle = themedPlateGrad;
+
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        ctx.beginPath();
+        ctx.roundRect(boxX + 2, boxY + 2, boxW - 4, boxH - 4, 1);
+        ctx.fillStyle = '#f2ebda';
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        const drawRivet = (rx, ry) => {
+            ctx.beginPath();
+            ctx.arc(rx, ry, 1.2, 0, Math.PI * 2);
+            ctx.fillStyle = mixColors('#000000', THEME_ACCENT, 0.6);
             ctx.fill();
-            
-            // Pulse Point (Precision Lead)
-            ctx.beginPath(); ctx.arc(barX + fillWidth, barY + barH / 2, 2.5, 0, Math.PI * 2);
-            ctx.fillStyle = '#FFFFFF'; ctx.fill();
-            
-            // V4.2: Instrumentation Precision Ticks
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 0.5;
-            for (let i = 0; i <= 5; i++) {
-                const tx = barX + (barW * (i / 5));
-                ctx.beginPath(); ctx.moveTo(tx, barY + barH + 2); ctx.lineTo(tx, barY + barH + 5); ctx.stroke();
-            }
-            
-            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(rx - 0.3, ry - 0.3, 0.4, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+        };
+        drawRivet(boxX + 4, boxY + 4);
+        drawRivet(boxX + boxW - 4, boxY + 4);
+        drawRivet(boxX + 4, boxY + boxH - 4);
+        drawRivet(boxX + boxW - 4, boxY + boxH - 4);
+
+        const divX = boxX + padH + curW + (divW / 2);
+        ctx.strokeStyle = hexToRgba(COLOR_INK, 0.4);
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(divX, boxY + 6);
+        ctx.lineTo(divX, boxY + boxH - 6);
+        ctx.stroke();
+
+        ctx.fillStyle = COLOR_INK;
+        ctx.beginPath(); ctx.arc(divX, boxY + 6, 1, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(divX, boxY + boxH - 6, 1, 0, Math.PI * 2); ctx.fill();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.fillStyle = COLOR_INK;
+        ctx.font = `bold 13px 'monalqo', ${FONT_STACK}`;
+        ctx.fillText(curText, boxX + padH + (curW / 2), boxY + (boxH / 2) + 1);
+
+        ctx.fillStyle = THEME_ACCENT;
+        ctx.font = `11px 'monalqo', ${FONT_STACK}`;
+        ctx.fillText(reqText, boxX + boxW - padH - (reqW / 2), boxY + (boxH / 2) + 1);
+
+        ctx.restore();
+        ctx.textAlign = 'left';
+
+        // --- PHYSICAL BOOK SPINE & SEAL ---
+        const barY = termY + 22;
+        const barH = 24;
+
+        const levelNum = userData.level || 0;
+        const sealX = 50;
+        const sealR = 24;
+        const sealY = barY + (barH / 2);
+
+        const barX = sealX + sealR - 10;
+        const barW = CARD_WIDTH - 30 - barX;
+
+        ctx.save();
+
+        const drawBindingLine = (ctx, t, offset, color) => {
+            const R = barH / 2;
+            const pathR = R - offset;
+            ctx.beginPath();
+            ctx.moveTo(barX + barW, barY + offset);
+            ctx.lineTo(barX + R, barY + offset);
+            ctx.arc(barX + R, barY + R, pathR, 1.5 * Math.PI, 0.5 * Math.PI, true);
+            ctx.lineTo(barX + barW, barY + barH - offset);
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = t;
+            ctx.lineCap = 'butt';
+            ctx.stroke();
+        };
+
+        const tCover = 4.5;
+        const leatherCoverGrad = ctx.createLinearGradient(barX, barY, barX, barY + barH);
+        leatherCoverGrad.addColorStop(0, COLOR_LEATHER_DARK);
+        leatherCoverGrad.addColorStop(0.2, COLOR_LEATHER_MID);
+        leatherCoverGrad.addColorStop(0.8, COLOR_LEATHER_MID);
+        leatherCoverGrad.addColorStop(1, COLOR_LEATHER_DARK);
+
+        drawBindingLine(ctx, tCover, tCover / 2, leatherCoverGrad);
+        drawBindingLine(ctx, 1.2, tCover + 0.6, THEME_ACCENT);
+
+        const tGap = 2;
+        const offsetGap = tCover + 1.2 + (tGap / 2);
+        drawBindingLine(ctx, tGap, offsetGap, '#16181d');
+
+        const inset = tCover + 1.2 + tGap;
+        const pageY = barY + inset;
+        const pageW = barW - (inset * 2);
+        const pageH = barH - (inset * 2);
+        const tailDepth = 3.5;
+
+        const claspW = 14;
+        const claspH = 30;
+        const claspX = barX + barW - 28;
+        const claspY = barY - ((claspH - barH) / 2);
+
+        const buildPagePath = () => {
+            ctx.beginPath();
+            ctx.moveTo(barX + barW, pageY);
+            ctx.lineTo(barX + (barH / 2), pageY);
+            ctx.arc(barX + (barH / 2), barY + (barH / 2), (barH / 2) - inset, 1.5 * Math.PI, 0.5 * Math.PI, true);
+            ctx.lineTo(barX + barW, pageY + pageH);
+            ctx.bezierCurveTo(barX + barW - tailDepth, pageY + pageH * 0.7, barX + barW - tailDepth, pageY + pageH * 0.3, barX + barW, pageY);
+            ctx.closePath();
+        };
+
+        buildPagePath();
+        ctx.fillStyle = '#f2ebda';
+        ctx.fill();
+
+        ctx.save();
+        buildPagePath();
+        ctx.clip();
+
+        const vellumLineGrad = ctx.createLinearGradient(barX + inset, 0, barX + barW, 0);
+        vellumLineGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vellumLineGrad.addColorStop(0.2, hexToRgba(COLOR_INK, 0.15));
+        vellumLineGrad.addColorStop(0.8, hexToRgba(COLOR_INK, 0.15));
+        vellumLineGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.strokeStyle = vellumLineGrad;
+        ctx.lineWidth = 0.8;
+
+        const lineSpacing = pageH / 4;
+        for (let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(barX + inset, pageY + lineSpacing * i);
+            ctx.lineTo(barX + barW, pageY + lineSpacing * i);
+            ctx.stroke();
         }
 
+        if (levelPercent > 0) {
+            const startX = barX + inset;
+            const maxInkWidth = (claspX + claspW / 2) - startX;
+            const fillWidth = maxInkWidth * levelPercent;
+
+            ctx.beginPath();
+            const startY = pageY + pageH / 2;
+            ctx.moveTo(startX, startY);
+
+            const amplitude = pageH * 0.35;
+            const frequency = 0.32;
+
+            for (let x = startX; x <= startX + fillWidth; x += 1) {
+                const relX = x - startX;
+                const y = startY + Math.sin(relX * frequency) * amplitude;
+                ctx.lineTo(x, y);
+            }
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = COLOR_INK;
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            const finalRelX = fillWidth;
+            const endY = startY + Math.sin(finalRelX * frequency) * amplitude;
+            ctx.beginPath();
+            ctx.arc(startX + fillWidth, endY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = COLOR_INK;
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // True Textured Leather Index Clasp Rendering
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 2;
+
+        ctx.beginPath();
+        ctx.roundRect(claspX, claspY, claspW, claspH, 3);
+
+        const leatherGrad = ctx.createLinearGradient(claspX, 0, claspX + claspW, 0);
+        leatherGrad.addColorStop(0, COLOR_LEATHER_DARK);
+        leatherGrad.addColorStop(0.3, COLOR_LEATHER_LIGHT);
+        leatherGrad.addColorStop(0.7, COLOR_LEATHER_MID);
+        leatherGrad.addColorStop(1, COLOR_LEATHER_DARK);
+        ctx.fillStyle = leatherGrad;
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        // Porous Leather Texture Overlay
+        ctx.save();
+        ctx.clip();
+        drawNoise(ctx, CARD_WIDTH, CARD_HEIGHT, 0.12);
+        ctx.restore();
+
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(claspX, claspY + 4); ctx.lineTo(claspX + claspW, claspY + 4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(claspX, claspY + claspH - 4); ctx.lineTo(claspX + claspW, claspY + claspH - 4); ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.beginPath(); ctx.moveTo(claspX, claspY + 5); ctx.lineTo(claspX + claspW, claspY + 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(claspX, claspY + claspH - 3); ctx.lineTo(claspX + claspW, claspY + claspH - 3); ctx.stroke();
+
+        const rivetX = claspX + (claspW / 2);
+        const rivetY = claspY + (claspH / 2);
+        const rivetR = 2.5;
+
+        // Brass rivets tinted to theme
+        ctx.beginPath(); ctx.arc(rivetX, rivetY, rivetR + 1, 0, Math.PI * 2); ctx.fillStyle = mixColors('#b89947', THEME_ACCENT, 0.2); ctx.fill();
+        ctx.beginPath(); ctx.arc(rivetX, rivetY, rivetR, 0, Math.PI * 2); ctx.fillStyle = mixColors('#e5c97c', THEME_ACCENT, 0.1); ctx.fill();
+        ctx.beginPath(); ctx.arc(rivetX, rivetY, rivetR - 1.5, 0, Math.PI * 2); ctx.fillStyle = mixColors('#7a622a', THEME_ACCENT, 0.3); ctx.fill();
+        ctx.restore();
+        ctx.restore();
+
+        // --- PREMIUM 9/10 WAX SEAL ---
+        ctx.save();
+        const drawSealPath = (radius) => {
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 2; a += 0.15) {
+                const r = radius + (Math.sin(a * 7) * 1.8) + (Math.cos(a * 11) * 1.2);
+                const lx = sealX + Math.cos(a) * r;
+                const ly = sealY + Math.sin(a) * r;
+                if (a === 0) ctx.moveTo(lx, ly);
+                else ctx.lineTo(lx, ly);
+            }
+            ctx.closePath();
+        };
+
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 3;
+
+        drawSealPath(sealR);
+        const waxGrad = ctx.createRadialGradient(sealX - 8, sealY - 8, 4, sealX, sealY, sealR);
+        waxGrad.addColorStop(0, mixColors('#ffffff', THEME_ACCENT, 0.7));
+        waxGrad.addColorStop(0.6, THEME_ACCENT);
+        waxGrad.addColorStop(1, mixColors('#000000', THEME_ACCENT, 0.6));
+        ctx.fillStyle = waxGrad;
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        for (let i = 0; i < 30; i++) {
+            ctx.beginPath();
+            ctx.arc(sealX + (Math.random() - 0.5) * sealR * 2, sealY + (Math.random() - 0.5) * sealR * 2, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath(); ctx.arc(sealX, sealY, sealR - 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.beginPath(); ctx.arc(sealX, sealY, sealR - 7.5, 0, Math.PI * 2); ctx.stroke();
+
+        const glossGrad = ctx.createLinearGradient(sealX - 15, sealY - 15, sealX + 5, sealY + 5);
+        glossGrad.addColorStop(0, 'rgba(255,255,255,0.3)');
+        glossGrad.addColorStop(0.5, 'rgba(255,255,255,0)');
+        ctx.beginPath();
+        ctx.arc(sealX, sealY, sealR - 3, 1.1 * Math.PI, 1.7 * Math.PI);
+        ctx.strokeStyle = glossGrad;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 2;
+        ctx.shadowOffsetY = 1;
+
+        ctx.font = `bold 8px 'monalqo', ${FONT_STACK}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillText('LVL', sealX, sealY - 8);
+
+        const lvlStr = levelNum.toString();
+        let lvlFontSize = 20;
+        if (lvlStr.length === 3) lvlFontSize = 16;
+        else if (lvlStr.length >= 4) lvlFontSize = 12;
+
+        ctx.font = `bold ${lvlFontSize}px 'monalqo', ${FONT_STACK}`;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(lvlStr, sealX, sealY + 3);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath(); ctx.arc(sealX - 4, sealY - 2, 1, 0, Math.PI * 2); ctx.fill();
+
+        ctx.restore();
+        ctx.textBaseline = 'alphabetic';
+
+        // --- ARCHIVAL FOOTER WATERMARK ---
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = '700 7px monalqo, sans-serif';
+        if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '6.5px';
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        const footerText = isCompact ? 'ANIMUSE PROFILE | UNLINKED' : 'ANIMUSE PROFILE';
+        ctx.fillText(footerText, CARD_WIDTH / 2, CARD_HEIGHT - 8);
         ctx.restore();
 
     } catch (err) { console.error('Canvas Generation Error:', err); }

@@ -218,6 +218,43 @@ const getResolvableName = (member) => {
     return displayName;
 };
 
+/**
+ * Safely updates an interaction, accounting for deferred or replied states.
+ * Supports both Component Interactions (update) and Commands (editReply).
+ */
+const safeUpdate = async (i, options) => {
+    try {
+        if (i.isMessageComponent()) {
+            if (i.deferred || i.replied) return await i.editReply(options);
+            return await i.update(options);
+        }
+        
+        if (i.deferred || i.replied) return await i.editReply(options);
+        return await i.reply({ ...options, flags: MessageFlags.Ephemeral });
+    } catch (err) {
+        if (err.code === 10062 || err.code === 40060) return;
+        const logger = require('./logger');
+        logger.error('safeUpdate Error:', err, 'VisualUtils');
+    }
+};
+
+/**
+ * Safely defers an interaction, accounting for already acknowledged states.
+ * Supports both Component Interactions (deferUpdate) and Commands (deferReply).
+ */
+const safeDefer = async (i, ephemeral = true) => {
+    try {
+        if (i.deferred || i.replied) return;
+        if (i.isMessageComponent()) {
+            await i.deferUpdate().catch(() => {});
+        } else {
+            await i.deferReply({ flags: ephemeral ? MessageFlags.Ephemeral : undefined }).catch(() => {});
+        }
+    } catch (err) {
+        // Ignored: code 10062/40060 handled by Discord.js or catch block
+    }
+};
+
 module.exports = {
     normalizeColor,
     generateColorTokens,
@@ -225,5 +262,7 @@ module.exports = {
     sanitizeTitle,
     resolveBannerUrl,
     isFontSafe,
-    getResolvableName
+    getResolvableName,
+    safeUpdate,
+    safeDefer
 };

@@ -53,11 +53,11 @@ const clearUserBannerGlobally = async (userId) => {
 };
 
 const getUserTitle = async (userId, guildId) => {
-    if (!supabase) return 'Muse Reader';
+    if (!supabase) return null;
     const { data, error } = await supabase.from('users').select('selected_title').eq('user_id', userId).eq('guild_id', guildId).single();
     if (error && error.code !== 'PGRST116') logger.error('DB Error getUserTitle: ' + error.message, null, 'Database');
-    let t = data ? (data.selected_title || 'Muse Reader') : 'Muse Reader';
-    if (t === 'Muse Player') t = 'Muse Reader';
+    let t = data ? data.selected_title : null;
+    if (t === 'Muse Player') t = null;
     return t;
 };
 
