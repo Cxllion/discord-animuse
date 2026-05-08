@@ -63,6 +63,15 @@ if (PORT) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('Animuse Archives: Systems Operational ♡');
     });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            logger.warn(`[Networking] Port ${PORT} is already in use. Skipping health-check server...`, 'System');
+        } else {
+            logger.error('[Networking] Health-check server encountered an error:', err, 'System');
+        }
+    });
+
     server.listen(PORT, () => {
         logger.debug(`[Networking] Health-Check Server Operational on Port ${PORT}.`, 'System');
     });

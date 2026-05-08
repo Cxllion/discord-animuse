@@ -354,12 +354,27 @@ const generateMinigameLeaderboard = async (challenger, topPlayers, primaryColor 
         }
 
         ctx.save();
-        ctx.fillStyle = TEXT_DIM; ctx.font = '900 11px monalqo, sans-serif';
         ctx.textBaseline = 'middle';
         const rankStr = (i + 1).toString().padStart(2, '0');
-        ctx.textAlign = 'left'; ctx.fillText('[', listX + 12, y + rowHeight / 2);
-        ctx.textAlign = 'center'; ctx.fillText(rankStr, listX + 27, y + rowHeight / 2);
-        ctx.textAlign = 'left'; ctx.fillText(']', listX + 40, y + rowHeight / 2);
+        
+        if (player.isBooster) {
+            ctx.fillStyle = mainColor; ctx.shadowColor = mainColor; ctx.shadowBlur = 8;
+            ctx.font = '900 12px monalqo, sans-serif';
+            ctx.textAlign = 'left'; ctx.fillText('◆', listX + 11, y + rowHeight / 2);
+            ctx.textAlign = 'center'; ctx.fillText(rankStr, listX + 27, y + rowHeight / 2);
+            ctx.textAlign = 'left'; ctx.fillText('◆', listX + 38, y + rowHeight / 2);
+        } else if (player.isPremium) {
+            ctx.fillStyle = '#D4AF37'; ctx.shadowColor = 'rgba(212, 175, 55, 0.4)'; ctx.shadowBlur = 4;
+            ctx.font = '900 11px monalqo, sans-serif';
+            ctx.textAlign = 'left'; ctx.fillText('>', listX + 13, y + rowHeight / 2);
+            ctx.textAlign = 'center'; ctx.fillText(rankStr, listX + 27, y + rowHeight / 2);
+            ctx.textAlign = 'left'; ctx.fillText('<', listX + 39, y + rowHeight / 2);
+        } else {
+            ctx.fillStyle = TEXT_DIM; ctx.font = '900 11px monalqo, sans-serif';
+            ctx.textAlign = 'left'; ctx.fillText('[', listX + 12, y + rowHeight / 2);
+            ctx.textAlign = 'center'; ctx.fillText(rankStr, listX + 27, y + rowHeight / 2);
+            ctx.textAlign = 'left'; ctx.fillText(']', listX + 40, y + rowHeight / 2);
+        }
         ctx.restore();
 
         const miniX = listX + 66; const miniY = y + rowHeight / 2;

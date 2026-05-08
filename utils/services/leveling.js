@@ -198,16 +198,22 @@ const getUserRank = async (userId, guildId) => {
  * Get top 10 users by XP.
  * @param {string} guildId 
  */
-const getTopUsers = async (guildId) => {
+const getTopUsers = async (guildId, limit = 10, offset = 0) => {
     if (!supabase) return [];
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('users')
         .select('user_id, xp, level')
         .eq('guild_id', guildId)
-        .order('xp', { ascending: false })
-        .limit(10);
+        .order('xp', { ascending: false });
 
+    if (offset > 0) {
+        query = query.range(offset, offset + limit - 1);
+    } else {
+        query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
     return data || [];
 };
 

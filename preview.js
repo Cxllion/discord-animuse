@@ -219,14 +219,22 @@ const generators = {
             username: 'Tester', 
             displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' 
         };
-        const challengerData = { rank: 4, level: 25, xp: 8400, current: 840, required: 1200, percent: 70 };
+        const challengerData = { 
+            rank: 4, level: 25, xp: 8400, current: 840, required: 1200, percent: 70,
+            bannerUrl: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/166258-9yR9A7p6x8G1.jpg'
+        };
         const topUsers = Array.from({ length: 10 }, (_, i) => ({
             username: `User ${i+1}`,
             level: 50 - i,
-            avatarUrl: `https://cdn.discordapp.com/embed/avatars/${i % 5}.png`
+            avatarUrl: `https://cdn.discordapp.com/embed/avatars/${i % 5}.png`,
+            isBooster: i === 4 || i === 8,
+            isPremium: i === 5 || i === 7
         }));
 
-        const bufferExp = await generateLeaderboard(challenger, challengerData, topUsers, null, '#8B5CF6', challenger.username, challenger.displayAvatarURL());
+        // EXP Variants
+        const bufferExpRegular = await generateLeaderboard(challenger, { ...challengerData, isPremium: false, isBooster: false }, topUsers, null, '#8B5CF6', challenger.username, challenger.displayAvatarURL());
+        const bufferExpPremium = await generateLeaderboard(challenger, { ...challengerData, isPremium: true, isBooster: false }, topUsers, null, '#D4AF37', challenger.username, challenger.displayAvatarURL());
+        const bufferExpBooster = await generateLeaderboard(challenger, { ...challengerData, isPremium: false, isBooster: true }, topUsers, null, '#FFACD1', challenger.username, challenger.displayAvatarURL());
 
         const miniStats = { rank: 12, total_points: 4500 };
         const topMini = Array.from({ length: 10 }, (_, i) => ({
@@ -241,7 +249,9 @@ const generators = {
         const bufferMini = await generateMinigameLeaderboard(miniChallenger, topMini, '#3B82F6');
 
         return [
-            { name: 'exp', buffer: bufferExp },
+            { name: 'exp_regular', buffer: bufferExpRegular },
+            { name: 'exp_premium', buffer: bufferExpPremium },
+            { name: 'exp_booster', buffer: bufferExpBooster },
             { name: 'minigames', buffer: bufferMini }
         ];
     },
