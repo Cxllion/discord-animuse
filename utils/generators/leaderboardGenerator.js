@@ -771,9 +771,9 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
         ctx.fillStyle = '#FFF';
-        ctx.font = `bold 16px ${FONT_STACK}`;
         const n = (u.username || '').toUpperCase();
-        ctx.fillText(n.length > 10 ? n.slice(0, 9) + '…' : n, x, podiumNameY);
+        ctx.font = fitText(ctx, n, FONT_STACK, 16, 'bold', pStep - 10);
+        ctx.fillText(n, x, podiumNameY);
         ctx.restore();
 
         ctx.fillStyle = pal.m;
@@ -864,19 +864,24 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
             }
 
             const un = (u.username || '').toUpperCase();
+            const lvl = `LVL ${u.level || 0}`;
+            
+            // Measure level first to know available space
+            ctx.font = `bold 13px ${FONT_STACK}`;
+            const lW = ctx.measureText(lvl).width;
+            const availableSpace = (rW - 24 - lW - 12) - (85); // Space between avatar offset and level offset
+
             ctx.fillStyle = '#FFF';
             ctx.textAlign = 'left';
-            ctx.font = `bold 13px ${FONT_STACK}`;
+            ctx.font = fitText(ctx, un, FONT_STACK, 13, 'bold', availableSpace - 5);
             ctx.fillText(un, rX + 85, rCY);
 
-            const lvl = `LVL ${u.level || 0}`;
             ctx.fillStyle = ACCENT;
             ctx.textAlign = 'right';
             ctx.font = `bold 13px ${FONT_STACK}`;
             ctx.fillText(lvl, rX + rW - 24, rCY);
 
             const nW = ctx.measureText(un).width;
-            const lW = ctx.measureText(lvl).width;
             const dS = rX + 85 + nW + 12;
             const dE = rX + rW - 24 - lW - 12;
 
