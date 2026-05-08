@@ -493,7 +493,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     drawDiamond(cX - nW_name / 2 - 16, cNameY);
     drawDiamond(cX + nW_name / 2 + 16, cNameY);
 
-    ctx.fillStyle = ACCENT;
+    ctx.fillStyle = mixColors('#000000', ACCENT, 0.2);
     const cTitleY = lY + 265;
     ctx.font = fitText(ctx, challengerData?.title || 'Chart Librarian', `'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 28, 'normal', 240);
     ctx.fillText(challengerData?.title || 'Chart Librarian', cX, cTitleY);
@@ -701,7 +701,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.textAlign = 'left';
     ctx.fillText('PROGRESS', barX, expY);
 
-    ctx.textAlign = 'right'; ctx.fillStyle = ACCENT;
+    ctx.textAlign = 'right'; ctx.fillStyle = mixColors('#000000', ACCENT, 0.2);
     ctx.font = `bold 12px ${FONT_STACK}`;
     ctx.fillText(`${formatStat(challengerData?.current || 0)} / ${formatStat(challengerData?.required || 1)} XP`, barX + barW, expY);
 
@@ -876,7 +876,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
             ctx.font = fitText(ctx, un, FONT_STACK, 13, 'bold', availableSpace - 5);
             ctx.fillText(un, rX + 85, rCY);
 
-            ctx.fillStyle = ACCENT;
+            ctx.fillStyle = mixColors('#000000', ACCENT, 0.2);
             ctx.textAlign = 'right';
             ctx.font = `bold 13px ${FONT_STACK}`;
             ctx.fillText(lvl, rX + rW - 24, rCY);
