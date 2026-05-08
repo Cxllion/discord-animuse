@@ -297,7 +297,12 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.imageSmoothingQuality = 'high';
 
     const ACCENT = primaryColor || '#FFACD1';
-    const CONTRAST_ACCENT = mixColors('#000000', ACCENT, 0.8); // 20% darkening for archival legibility
+    
+    // Dynamic Luminance-Aware Contrast
+    const [r_lum, g_lum, b_lum] = hexToRgbArr(ACCENT);
+    const lum = (0.299 * r_lum + 0.587 * g_lum + 0.114 * b_lum) / 255;
+    const darkFactor = lum > 0.85 ? 0.65 : (lum > 0.6 ? 0.75 : 0.85); // Darken more for bright/white colors
+    const CONTRAST_ACCENT = mixColors('#000000', ACCENT, darkFactor);
     const COLOR_BG = '#21232a';
     const COLOR_INK = mixColors('#0a0a0a', ACCENT, 0.3);
     const COLOR_HIGHLIGHT = mixColors('#ffffff', ACCENT, 0.8);

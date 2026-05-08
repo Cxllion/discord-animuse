@@ -235,6 +235,7 @@ const generators = {
         const bufferExpRegular = await generateLeaderboard(challenger, { ...challengerData, isPremium: false, isBooster: false }, topUsers, null, '#8B5CF6', challenger.username, challenger.displayAvatarURL());
         const bufferExpPremium = await generateLeaderboard(challenger, { ...challengerData, isPremium: true, isBooster: false }, topUsers, null, '#D4AF37', challenger.username, challenger.displayAvatarURL());
         const bufferExpBooster = await generateLeaderboard(challenger, { ...challengerData, isPremium: false, isBooster: true }, topUsers, null, '#FFACD1', challenger.username, challenger.displayAvatarURL());
+        const bufferExpWhite   = await generateLeaderboard(challenger, { ...challengerData, isPremium: false, isBooster: false }, topUsers, null, '#FFFFFF', challenger.username, challenger.displayAvatarURL());
 
         const miniStats = { rank: 12, total_points: 4500 };
         const topMini = Array.from({ length: 10 }, (_, i) => ({
@@ -252,6 +253,7 @@ const generators = {
             { name: 'exp_regular', buffer: bufferExpRegular },
             { name: 'exp_premium', buffer: bufferExpPremium },
             { name: 'exp_booster', buffer: bufferExpBooster },
+            { name: 'exp_white', buffer: bufferExpWhite },
             { name: 'minigames', buffer: bufferMini }
         ];
     },
