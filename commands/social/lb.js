@@ -13,7 +13,13 @@ module.exports = {
                 .setRequired(false)
                 .addChoices(
                     { name: '✨ Experience', value: 'exp' },
-                    { name: '🎯 Minigames', value: 'minigames' }
-                )),
+                    { name: '🎯 Arcade', value: 'arcade' },
+                    { name: '🎯 Minigames (Legacy)', value: 'minigames' }
+                ))
+        .addIntegerOption(option =>
+            option.setName('page')
+                .setDescription('The page of the archives to view.')
+                .setMinValue(1)
+                .setRequired(false)),
     execute: leaderboardCommand.execute
 };

@@ -35,7 +35,7 @@ const fetchConfig = async (guildId) => {
             leveling_channels: [],
             level_up_channel_id: null,
             xp_level_up_message: null,
-            xp_level_up_emoji: '<a:level_up:1483138860417286358>',
+            xp_level_up_emoji: '⬆️',
             muse_role_id: null,
             member_role_id: null,
             mod_role_id: null,
@@ -80,8 +80,10 @@ const assignChannel = async (guildId, key, channelId) => {
     if (!supabase) return;
     const updates = { [key]: channelId };
     await supabase.from('guild_configs').update(updates).eq('guild_id', guildId);
-    // Invalidate cache so next fetchConfig() returns fresh data
+    // Invalidate all related caches
     configCache.del(guildId);
+    configCache.del(`archive_settings:${guildId}`);
+    configCache.del('all_arcade_channels'); 
 };
 
 const getArchiveSettings = async (guildId) => {
@@ -114,9 +116,9 @@ const isParentServer = async (guildId) => {
     return !!settings;
 };
 
-// Simple in-memory cache for channel activity pulses
-const pulseCache = new Set();
-const PULSE_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+// 🛡️ [Cyber Librarian] Time-aware pulse cache to prevent memory bloat
+const pulseCache = new Map(); // key -> expiry timestamp
+const PULSE_COOLDOWN = 5 * 60 * 1000;
 
 /**
  * Updates the last active timestamp for a channel.
@@ -125,15 +127,21 @@ const PULSE_COOLDOWN = 5 * 60 * 1000; // 5 minutes
  * @param {string} channelId 
  */
 const pulseChannelActivity = async (guildId, channelId) => {
-    if (!supabase) return;
-
     const key = `${guildId}-${channelId}`;
-    if (pulseCache.has(key)) return;
+    const now = Date.now();
+    
+    if (pulseCache.has(key) && pulseCache.get(key) > now) return;
+    
+    pulseCache.set(key, now + PULSE_COOLDOWN);
+    
+    // Lazy cleanup of stale entries (amortized O(1))
+    if (pulseCache.size > 1000) {
+        for (const [k, exp] of pulseCache) {
+            if (exp < now) pulseCache.delete(k);
+        }
+    }
 
-    // Set cooldown
-    pulseCache.add(key);
-    setTimeout(() => pulseCache.delete(key), PULSE_COOLDOWN);
-
+    if (!supabase) return;
     try {
         await supabase.from('guild_channels').upsert({
             guild_id: guildId,

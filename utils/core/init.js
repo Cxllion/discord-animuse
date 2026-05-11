@@ -57,18 +57,11 @@ const initializeDatabase = async (client) => {
 
     try {
         // Guarantee startup by wrapping Supabase check in a 25s timeout
-        const checkConnection = () => {
-            return new Promise(async (resolve) => {
-                const timer = setTimeout(() => resolve({ timeout: true }), 25000);
-                try {
-                    const { error } = await supabase.from('guild_configs').select('guild_id').limit(1);
-                    clearTimeout(timer);
-                    resolve({ error });
-                } catch (e) {
-                    clearTimeout(timer);
-                    resolve({ error: e });
-                }
-            });
+        const checkConnection = async () => {
+            const timeout = new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 25000));
+            const query = supabase.from('guild_configs').select('guild_id').limit(1).then(res => ({ ...res }));
+            
+            return Promise.race([query, timeout]);
         };
 
         const result = await checkConnection();

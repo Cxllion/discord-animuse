@@ -72,8 +72,6 @@ module.exports = {
             }
         }
 
-        client.isSystemsGo = true;
-
         try {
             await require('../utils/mafia/MafiaManager').loadState(client);
         } catch (e) {
@@ -114,37 +112,39 @@ module.exports = {
         }
 
         if (!CONFIG.DISABLE_INTERNAL_SCHEDULER) {
-            setTimeout(async () => {
-                logger.debug('Initializing scheduler activities...', 'System');
-                
-                // 1. Airing Notifications (5m)
-                client.scheduler.addTask('Airing Detection', checkAiringAnime, 5 * 60 * 1000, { immediate: true });
-                
-                // 2. User Activity Feeds (5m)
-                client.scheduler.addTask('Activity Feed', checkUserActivity, 5 * 60 * 1000, { immediate: true });
+            logger.debug('Initializing scheduler activities...', 'System');
+            
+            // 1. Airing Notifications (5m)
+            client.scheduler.addTask('Airing Detection', checkAiringAnime, 5 * 60 * 1000, { immediate: true });
+            
+            // 2. User Activity Feeds (5m)
+            client.scheduler.addTask('Activity Feed', checkUserActivity, 5 * 60 * 1000, { immediate: true });
 
-                // 3. Sync User Trackers (6h)
-                client.scheduler.addTask('Tracker Sync', syncAllUserTrackers, 6 * 60 * 60 * 1000);
+            // 3. Sync User Trackers (6h)
+            client.scheduler.addTask('Tracker Sync', syncAllUserTrackers, 6 * 60 * 60 * 1000);
 
-                // 4. Global Housekeeping (1h)
-                client.scheduler.addTask('Housekeeping', () => {
-                    flushAniListCache();
-                    clearConfigCache();
-                }, 3600 * 1000, { testModeSafe: true });
+            // 4. Global Housekeeping (1h)
+            client.scheduler.addTask('Housekeeping', () => {
+                flushAniListCache();
+                clearConfigCache();
+            }, 3600 * 1000, { testModeSafe: true });
 
-                // 5. Wordle Cycle Monitor (15m)
-                const { checkWordleReset } = require('../utils/services/scheduler');
-                client.scheduler.addTask('Wordle Cycle Monitor', checkWordleReset, 15 * 60 * 1000, { immediate: true });
+            // 5. Wordle Cycle Monitor (15m)
+            const { checkWordleReset } = require('../utils/services/scheduler');
+            client.scheduler.addTask('Wordle Cycle Monitor', checkWordleReset, 15 * 60 * 1000, { immediate: true });
 
-                // 6. Wordle Housekeeping (15m)
-                client.scheduler.addTask('Wordle Housekeeping', checkWordleHousekeeping, 15 * 60 * 1000, { immediate: true });
+            // 6. Wordle Housekeeping (15m)
+            client.scheduler.addTask('Wordle Housekeeping', checkWordleHousekeeping, 15 * 60 * 1000, { immediate: true });
 
-                // 7. Connect4 Housekeeping (5m)
-                client.scheduler.addTask('Connect4 Housekeeping', checkConnect4Housekeeping, 5 * 60 * 1000, { immediate: true });
-
-            }, 10000);
+            // 7. Connect4 Housekeeping (5m)
+            client.scheduler.addTask('Connect4 Housekeeping', checkConnect4Housekeeping, 5 * 60 * 1000, { immediate: true });
+            
+            // FINAL: Systems are GO
+            client.isSystemsGo = true;
+            logger.info('Archives are now fully synchronized and open for visitation. ♡', 'System');
         } else {
             logger.info('Internal Scheduler disabled. Assuming external worker.', 'System');
+            client.isSystemsGo = true;
         }
     },
 };

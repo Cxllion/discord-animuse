@@ -2,6 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const CONFIG = require('../config');
 
 /**
+ * 📚 [Animuse Base Embed Generator]
  * Creates a standardized EmbedBuilder with the Animuse Librarian theme.
  * Pre-configured with:
  * - Brand Color (Soft Pink)
@@ -15,16 +16,22 @@ const CONFIG = require('../config');
  * @returns {EmbedBuilder}
  */
 const baseEmbed = (title = null, description = null, iconURL = null) => {
+    // Signature Librarian Icon (Premium Book Asset)
+    const LIBRARIAN_ICON = 'https://cdn.discordapp.com/emojis/1109015024765636668.webp';
+
     const embed = new EmbedBuilder()
-        .setColor(CONFIG.COLORS.PRIMARY)
+        .setColor(CONFIG.THEME.EMBED_SIDE_COLOR || CONFIG.COLORS.PRIMARY)
         .setAuthor({ 
             name: CONFIG.THEME.AUTHOR, 
-            iconURL: iconURL || 'https://cdn.discordapp.com/emojis/1109015024765636668.webp' // Fallback Librarian Book Icon
+            iconURL: iconURL || LIBRARIAN_ICON
         })
-        .setFooter({ text: CONFIG.THEME.FOOTER })
+        .setFooter({ 
+            text: `━━━━━━━━━━━━━━━━━━━━\n${CONFIG.THEME.FOOTER}`,
+            iconURL: LIBRARIAN_ICON
+        })
         .setTimestamp();
 
-    if (title) embed.setTitle(title);
+    if (title) embed.setTitle(`${title}`);
     if (description) embed.setDescription(description);
 
     return embed;

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const crypto = require('crypto');
+const CONFIG = require('../config');
 const logger = require('./logger');
 
 const HASH_FILE = path.join(__dirname, '../../.deploy_hash');
@@ -52,28 +53,17 @@ const deployCommands = async (client) => {
         return;
     }
 
-    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+    const rest = new REST().setToken(CONFIG.DISCORD_TOKEN);
 
     try {
 
         logger.info(`Syncing ${commands.length} commands with Discord API...`, 'CommandDeployer');
 
-        // Clear Global Commands (to prevent duplicates if switching from global to guild)
+        // 1. Sync Global Commands (Production standard)
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: [] },
+            Routes.applicationCommands(CONFIG.CLIENT_ID),
+            { body: commands },
         );
-        logger.debug('Global commands cleared.', 'CommandDeployer');
-
-        // Deploy to ALL guilds (Parallel for performance)
-        const guilds = client.guilds.cache.map(guild => guild.id);
-        
-        await Promise.all(guilds.map(guildId => 
-            rest.put(
-                Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
-                { body: commands },
-            )
-        ));
 
         fs.writeFileSync(HASH_FILE, currentHash);
 

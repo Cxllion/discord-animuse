@@ -31,8 +31,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildPresences
+        GatewayIntentBits.GuildVoiceStates
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     shards: 'auto'
@@ -48,6 +47,9 @@ client.intervals = [];
 client.scheduler = new TaskScheduler(client);
 client.isSystemsGo = false;
 client.isTestBot = CONFIG.TEST_MODE;
+
+// Register client globally for service access
+require('./utils/core/botClient').set(client);
 
 if (client.isTestBot) {
     logger.debug('[System] Test Mode Detected. Background schedulers will be DISABLED. ♡', 'System');

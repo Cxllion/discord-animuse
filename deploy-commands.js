@@ -31,7 +31,7 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN);
         logger.info(`Started refreshing ${commands.length} application (/) commands.`, 'CommandDeployer');
 
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
+            Routes.applicationCommands(CONFIG.CLIENT_ID || process.env.CLIENT_ID),
             { body: commands },
         );
 

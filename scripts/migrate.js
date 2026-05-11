@@ -586,6 +586,17 @@ const initializeDatabase = async () => {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_subs_anilist_id ON public.subscriptions(anilist_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_tracked_next_airing ON public.tracked_anime_state(next_airing);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_users_guild_user ON public.users(guild_id, user_id);`);
+        
+        // 17. Create cooldowns table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.cooldowns (
+                id TEXT PRIMARY KEY,
+                expires_at TIMESTAMPTZ NOT NULL
+            );
+            ALTER TABLE public.cooldowns ENABLE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS "Enable all access for service role on cooldowns" ON public.cooldowns;
+            CREATE POLICY "Enable all access for service role on cooldowns" ON public.cooldowns FOR ALL TO service_role USING (true) WITH CHECK (true);
+        `);
 
         // 14. RELOAD SCHEMA CACHE (Critical for Supabase/PostgREST to see new columns immediately)
         await client.query("NOTIFY pgrst, 'reload schema';");

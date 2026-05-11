@@ -9,9 +9,10 @@ const logger = require('./logger');
 
 const pool = new Pool({
     connectionString: CONFIG.DATABASE_URL,
-    max: 20, // Max concurrent connections
+    max: 10, // Avoid exhausting Supabase limits
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000, // Harder timeout for production
+    allowExitOnIdle: true
 });
 
 // Pool Error Handling

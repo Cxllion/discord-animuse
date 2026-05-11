@@ -25,6 +25,9 @@ const EMOJIS = {
     CANCEL: '⛔',
     CONFIRM: '✅',
     REFRESH: '🔄',
+    LEFT: '◀️',
+    RIGHT: '▶️',
+    PAGE: '📄',
     
     // Navigation & Dashboard Categories
     DASHBOARD: '🏠',

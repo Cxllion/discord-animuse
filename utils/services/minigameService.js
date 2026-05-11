@@ -283,13 +283,13 @@ class MinigameService {
     /**
      * Fetch the top players for the leaderboard (Arcade Standings).
      */
-    async getTopPlayers(limit = 10) {
+    async getTopPlayers(limit = 10, offset = 0) {
         if (!supabase) return [];
         const { data, error } = await supabase
             .from('minigame_scores')
             .select('*')
             .order('total_points', { ascending: false })
-            .limit(limit);
+            .range(offset, offset + limit - 1);
 
         if (error) return [];
         return data;

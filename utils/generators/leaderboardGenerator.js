@@ -369,11 +369,12 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.shadowOffsetY = 10;
     ctx.beginPath();
     ctx.roundRect(lX, lY, lW, lH, 12);
-    ctx.fillStyle = '#f8f4e6';
+    ctx.fillStyle = COLOR_BG;
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
     ctx.clip();
+    drawSeigaihaPattern(ctx, CARD_WIDTH, CARD_HEIGHT, ACCENT);
     const vig = ctx.createRadialGradient(cX, lY + lH / 2, lH * 0.2, cX, lY + lH / 2, lW * 0.9);
     vig.addColorStop(0, 'rgba(0,0,0,0)');
     vig.addColorStop(1, hexToRgba(ACCENT, 0.12));
@@ -469,8 +470,8 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     drawSatinRibbon(ctx, bmX - 4, bmY, bmW + 8, bmH + 8, COLOR_LEATHER_DARK, bmStatus, true);
     drawSatinRibbon(ctx, bmX, bmY, bmW, bmH, ACCENT, bmStatus, false);
 
-    ctx.fillStyle = COLOR_INK;
-    ctx.font = `bold 18px ${FONT_STACK}`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold 14px ${FONT_STACK}`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(`#${challengerData?.rank || '--'}`, cX, bmY + 62);
 
@@ -486,7 +487,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
 
     // F. Flourished Typography 
     const cName = (challengerName || challenger?.username || challengerData?.username || 'Unknown').toUpperCase();
-    ctx.fillStyle = mixColors('#1a1a1a', ACCENT, 0.4);
+    ctx.fillStyle = '#FFFFFF';
     const cNameY = lY + 235;
     ctx.font = fitText(ctx, cName, `'monalqo', ${FONT_STACK}`, 28, 'normal', lW - 60);
     ctx.fillText(cName, cX, cNameY);
@@ -499,10 +500,11 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     drawDiamond(cX - nW_name / 2 - 16, cNameY);
     drawDiamond(cX + nW_name / 2 + 16, cNameY);
 
-    ctx.fillStyle = CONTRAST_ACCENT;
+    const titleText = challengerData?.title || 'Chart Librarian';
+    ctx.fillStyle = hexToRgba(ACCENT, 0.8);
     const cTitleY = lY + 265;
-    ctx.font = fitText(ctx, challengerData?.title || 'Chart Librarian', `'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 28, 'normal', 240);
-    ctx.fillText(challengerData?.title || 'Chart Librarian', cX, cTitleY);
+    ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 32, 'normal', 240);
+    ctx.fillText(titleText, cX, cTitleY);
 
     const cDivY = lY + 315;
     const lDiv = ctx.createLinearGradient(lX + 30, 0, lX + lW - 30, 0);
@@ -602,61 +604,57 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const badgeY = barY - badgeR + 5;
     
     if (challengerData?.isBooster) {
-        // --- BOOSTER: Radiant Crystalline Diamond ---
+        // --- BOOSTER: Glowing Hexagonal Bezel ---
         ctx.save();
-        ctx.shadowColor = hexToRgba(ACCENT, 0.8); ctx.shadowBlur = 20;
+        const themeColor = '#A855F7';
         
-        // Draw Diamond Rhombus Base
-        ctx.beginPath();
-        ctx.moveTo(cX, badgeY - badgeR - 4);     // Top
-        ctx.lineTo(cX + badgeR + 6, badgeY);      // Right
-        ctx.lineTo(cX, badgeY + badgeR + 4);      // Bottom
-        ctx.lineTo(cX - badgeR - 6, badgeY);      // Left
-        ctx.closePath();
-        
-        const crystGrad = ctx.createRadialGradient(cX, badgeY, 0, cX, badgeY, badgeR + 10);
-        crystGrad.addColorStop(0, '#FFFFFF');
-        crystGrad.addColorStop(0.2, '#B0E0E6'); // Powder Blue
-        crystGrad.addColorStop(0.5, '#9370DB'); // Medium Purple
-        crystGrad.addColorStop(1, '#4B0082');   // Indigo
-        ctx.fillStyle = crystGrad; ctx.fill();
-        
-        // Internal Facet Lines
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cX, badgeY - badgeR - 4); ctx.lineTo(cX, badgeY + badgeR + 4);
-        ctx.moveTo(cX - badgeR - 6, badgeY); ctx.lineTo(cX + badgeR + 6, badgeY);
-        ctx.stroke();
-        
-        // Radiant Glints & Sparkles (Shimmering Crystalline Atmosphere)
-        for(let i=0; i<12; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = Math.random() * (badgeR + 15);
-            const sX = cX + Math.cos(angle) * dist;
-            const sY = badgeY + Math.sin(angle) * dist;
-            const size = 0.8 + Math.random() * 1.5;
-            
-            ctx.save();
-            ctx.shadowColor = '#FFF'; ctx.shadowBlur = 5;
-            if (i % 4 === 0) {
-                // High-Intensity Star Glint
-                const len = size * 4;
-                ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + Math.random() * 0.5})`;
-                ctx.lineWidth = 0.8;
-                ctx.beginPath(); ctx.moveTo(sX - len, sY); ctx.lineTo(sX + len, sY); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(sX, sY - len); ctx.lineTo(sX, sY + len); ctx.stroke();
-            } else {
-                // Soft Particle
-                ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + Math.random() * 0.6})`;
-                ctx.beginPath(); ctx.arc(sX, sY, size, 0, Math.PI*2); ctx.fill();
+        ctx.shadowColor = hexToRgba(themeColor, 0.8);
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetY = 2;
+
+        const r = badgeR + 2; // Size adjustment for hexagon
+        const drawHexagon = (ctx, x, y, size) => {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - Math.PI / 2; // Pointy top
+                const px = x + size * Math.cos(angle);
+                const py = y + size * Math.sin(angle);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
             }
-            ctx.restore();
-        }
+            ctx.closePath();
+        };
+
+        // Outer Glowing Bezel
+        const g = ctx.createLinearGradient(cX - r, badgeY - r, cX + r, badgeY + r);
+        g.addColorStop(0, '#E9D5FF');
+        g.addColorStop(0.5, themeColor);
+        g.addColorStop(1, '#581C87');
+
+        drawHexagon(ctx, cX, badgeY, r + 4);
+        ctx.fillStyle = g;
+        ctx.fill();
+
+        // Inner Dark Core (Matches regular badge style)
+        ctx.shadowColor = 'transparent';
+        drawHexagon(ctx, cX, badgeY, r);
+        ctx.fillStyle = '#1A0B2E'; // Very dark purple core
+        ctx.fill();
         
-        ctx.shadowBlur = 4; ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        // Inner Detail Line
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = hexToRgba(themeColor, 0.5);
+        drawHexagon(ctx, cX, badgeY, r - 2);
+        ctx.stroke();
+
+        // Standardized Typography (Exact same offsets as regular badge)
         ctx.fillStyle = '#FFF';
-        ctx.font = `bold 22px ${FONT_STACK}`; ctx.fillText(challengerData?.level || '0', cX, badgeY + 6);
-        ctx.font = `bold 9px ${FONT_STACK}`; ctx.fillText('LVL', cX, badgeY - 14);
+        ctx.textAlign = 'center';
+        ctx.font = `bold 20px ${FONT_STACK}`; 
+        ctx.fillText(challengerData?.level || '0', cX, badgeY + 4);
+        ctx.font = `bold 9px ${FONT_STACK}`; 
+        ctx.fillText('LVL', cX, badgeY - 12);
+        
         ctx.restore();
     } else if (challengerData?.isPremium) {
         // --- PREMIUM: Golden Wax Seal with Ribbons ---
@@ -702,12 +700,12 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     }
 
     const expY = barY + barH + 24;
-    ctx.fillStyle = mixColors('#1a1a1a', ACCENT, 0.4);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.font = `14px 'gunty', ${FONT_STACK}`;
     ctx.textAlign = 'left';
     ctx.fillText('PROGRESS', barX, expY);
 
-    ctx.textAlign = 'right'; ctx.fillStyle = CONTRAST_ACCENT;
+    ctx.textAlign = 'right'; ctx.fillStyle = '#FFFFFF';
     ctx.font = `bold 12px ${FONT_STACK}`;
     ctx.fillText(`${formatStat(challengerData?.current || 0)} / ${formatStat(challengerData?.required || 1)} XP`, barX + barW, expY);
 
@@ -744,7 +742,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     ctx.fillStyle = mixColors('#ffffff', ACCENT, 0.6);
     ctx.font = `18px 'gunty', ${FONT_STACK}`;
     ctx.letterSpacing = '3px';
-    ctx.fillText('ANIMUSE RANKINGS', rX + rW / 2, rY + 26);
+    ctx.fillText(`ANIMUSE RANKINGS // PAGE ${page}`, rX + rW / 2, rY + 26);
     ctx.letterSpacing = '0px';
 
     const rDiv = ctx.createLinearGradient(rX + 50, 0, rX + rW - 50, 0);

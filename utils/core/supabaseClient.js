@@ -3,23 +3,37 @@ const CONFIG = require('../config');
 const logger = require('./logger');
 
 /**
- * ⚠️  SECURITY NOTE — SERVICE ROLE KEY
- * SUPABASE_KEY must be the `service_role` JWT.
- * This key bypasses Row Level Security (RLS) and has full DB superuser access.
+ * 📚 [Supabase Architecture]
+ * We maintain two clients to enforce the Principle of Least Privilege:
+ * 1. serviceClient: Bypasses RLS. Use ONLY for admin/backend tasks.
+ * 2. anonClient: Respects RLS. Use for all user-facing read/write operations.
  */
-const supabaseUrl = CONFIG.SUPABASE_URL;
-const supabaseKey = CONFIG.SUPABASE_KEY; // Must be service_role key
 
-let supabase;
+const { URL, SERVICE_KEY, ANON_KEY } = CONFIG.SUPABASE;
 
-if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey, {
-        db: { schema: 'public' },
+let serviceClient = null;
+let anonClient = null;
+
+if (URL && SERVICE_KEY) {
+    // 1. Privileged Client (Service Role)
+    serviceClient = createClient(URL, SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false }
+    });
+
+    // 2. Unprivileged Client (Anon Key)
+    // If ANON_KEY is provided, we use it to respect RLS.
+    anonClient = createClient(URL, ANON_KEY || SERVICE_KEY, {
         auth: { persistSession: false, autoRefreshToken: false }
     });
 } else {
-    logger.warn('⚠️ Supabase credentials missing. Database features will not work.', 'SupabaseClient');
-    supabase = null;
+    logger.error('❌ Supabase credentials missing. Archives are locked.', 'SupabaseClient');
 }
 
-module.exports = supabase;
+/**
+ * Exports both clients.
+ * Default export remains the serviceClient for legacy compatibility.
+ */
+module.exports = serviceClient;
+module.exports.serviceClient = serviceClient;
+module.exports.anonClient = anonClient;
+

@@ -143,7 +143,7 @@ module.exports = {
                     await upsertConfig(guildId, { arcade_channel_id: channel.id });
 
                     return await interaction.editReply({
-                        content: `✅ **Configuration Updated**\nThe **Arcade Protocol** has been localized to ${channel}. Minigames will now be strictly managed within this wing.`
+                        content: `✅ **Configuration Updated**\nThe **Arcade Protocol** has been localized to ${channel}. The Arcade archives will now be strictly managed within this wing.`
                     });
                 }
                 else if (type === 'suggestions') {

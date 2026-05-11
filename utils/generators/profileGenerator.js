@@ -266,7 +266,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
 
         const titleText = userData.title || 'Chart Librarian';
         ctx.fillStyle = THEME_ACCENT;
-        ctx.font = fitText(ctx, titleText, `'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 28, 'normal', 240);
+        ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 32, 'normal', 240);
         ctx.fillText(titleText, nameX, titleY);
         ctx.restore();
 

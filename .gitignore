@@ -50,6 +50,10 @@ deprecated/
 tmp/
 temp/
 .activity_posted_cache.json
+.wordle_sessions.json
+.deploy_hash
+backups/
+logs/*.log
 
 # Game State (ephemeral; contains player IDs — do not commit)
 utils/mafia/mafia_state.json

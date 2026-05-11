@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const os = require('os');
 const baseEmbed = require('../../utils/generators/baseEmbed');
-const db = require('../../utils/core/db');
+const supabase = require('../../utils/core/supabaseClient');
 const cacheManager = require('../../utils/core/CacheManager');
 const { getAniListStatus } = require('../../utils/services/anilistService');
 const { getGlobalTrackCount } = require('../../utils/services/animeTrackerService');
@@ -38,7 +38,7 @@ module.exports = {
         let dbLatency = 'N/A';
         try {
             const start = Date.now();
-            await db.query('SELECT 1');
+            await supabase.from('guild_configs').select('guild_id').limit(1);
             dbLatency = `${Date.now() - start}ms`;
         } catch (e) {}
 

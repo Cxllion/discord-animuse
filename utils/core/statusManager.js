@@ -131,20 +131,20 @@ class StatusManager {
     }
 
     createMaintenanceEmbed() {
-        const baseEmbed = require('./baseEmbed');
+        const baseEmbed = require('../generators/baseEmbed');
         const preset = this.getRandomPreset();
         // [Straightforward Header] + [Themed Title]
         return baseEmbed(`🛠️ [MAINTENANCE] ${preset.title}`, `${preset.description}\n\n**The Archival Mainframe is currently undergoing scheduled maintenance. Please check back shortly.** ♡`, null)
-            .setColor('#D4AF37'); // Gold / Premium Color
+            .setColor(CONFIG.COLORS.GOLD || '#D4AF37');
     }
 
     createStartupEmbed() {
-        const baseEmbed = require('./baseEmbed');
+        const baseEmbed = require('../generators/baseEmbed');
         // [Straightforward Header] + [Themed Title]
         return baseEmbed("⏳ [STARTUP] The Library is Opening", 
             "Our archivists are currently unlocking the main gates and dusting the shelves.\n\n**Systems are initializing. We should be ready to serve you in a moment.** ♡", 
             null
-        ).setColor('#3498DB'); // Startup Blue
+        ).setColor(CONFIG.COLORS.INFO || '#3498DB');
     }
 }
 

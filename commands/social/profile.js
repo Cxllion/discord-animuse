@@ -61,10 +61,10 @@ module.exports = {
         );
         const attachment = new AttachmentBuilder(buffer, { name: 'profile-card.webp' });
 
-        // Dashboard Interaction Entry
+        const CONFIG = require('../../utils/config');
         const dashboardBtn = new ButtonBuilder()
             .setCustomId(`profile_dash_open_${user.id}`)
-            .setEmoji('🔍')
+            .setEmoji(CONFIG.EMOJIS.SEARCH)
             .setStyle(ButtonStyle.Secondary);
 
         const row = new ActionRowBuilder().addComponents(dashboardBtn);

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { fetchConfig, pulseChannelActivity } = require('../utils/core/database');
 const baseEmbed = require('../utils/generators/baseEmbed');
+const activityPulseCache = require('../utils/core/activityPulseCache');
 const logger = require('../utils/core/logger');
 const { getDynamicUserTitle } = require('../utils/core/userMeta');
 const CONFIG = require('../utils/config');
@@ -8,6 +9,10 @@ const CONFIG = require('../utils/config');
 const MafiaManager = require('../utils/mafia/MafiaManager');
 const { markAsSpoken } = require('../utils/services/welcomeService');
 const { addXp } = require('../utils/services/leveling');
+
+// 🛡️ [Cyber Librarian] Hoisted media regex for performance and safety
+const GALLERY_MEDIA_REGEX = /^(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?$/i;
+const DISCORD_CDN_REGEX = /cdn\.discordapp\.com|media\.discordapp\.net/i;
 const { getLinkedAnilist } = require('../utils/services/userService');
 const { pulseUserActivity } = require('../utils/services/scheduler');
 
@@ -35,19 +40,18 @@ module.exports = {
         // But the Activity Pulse is allowed for live-dev testing
         const isSelfTest = message.client.isTestBot;
 
-        // Fetch config (Note: FetchConfig has its own 5m in-memory cache)
-        const config = await fetchConfig(message.guild.id);
+        // --- 1. Background Logic (Parallelized) ---
+        const backgroundTasks = [
+            fetchConfig(message.guild.id),
+            markAsSpoken(message.author.id, message.guild.id).catch(() => {}),
+            pulseChannelActivity(message.guild.id, message.channel.id).catch(() => {})
+        ];
+        
+        const [config] = await Promise.all(backgroundTasks);
         if (!config) return;
 
         // --- Maintenance Mode Guard ---
         if (config.maintenance_mode && !isSelfTest) return;
-
-        // --- Anti-Ghosting: Protect Welcome ---
-        await markAsSpoken(message.author.id, message.guild.id);
-
-        // --- Activity Pulse (For Hybrid Sorting) ---
-        // NOTE: pulseChannelActivity has a 5m per-channel cooldown
-        await pulseChannelActivity(message.guild.id, message.channel.id);
 
         // --- Archive Bureau (Pin Mirroring) ---
         if (!isSelfTest && message.type === 6 && config.archive_mirror_channel_id) {
@@ -83,11 +87,12 @@ module.exports = {
         }
 
         // --- Gallery Mode ---
-        if (!isSelfTest && config.gallery_channel_ids && config.gallery_channel_ids.includes(message.channel.id)) {
-            const urlRegex = /https?:\/\/[^\s]+/;
-            const hasLink = urlRegex.test(message.content);
+        if (!isSelfTest && config.gallery_channels?.includes(message.channel.id)) {
+            const hasMedia = message.attachments.size > 0 || 
+                             GALLERY_MEDIA_REGEX.test(message.content) || 
+                             DISCORD_CDN_REGEX.test(message.content);
 
-            if (message.attachments.size > 0 || hasLink) {
+            if (hasMedia) {
                 // Valid post: Create thread
                 try {
                     const displayName = message.member?.displayName || message.author.displayName || message.author.username;
@@ -135,10 +140,8 @@ module.exports = {
 
         // --- AniList Activity Pulse (Instant Tracking) ---
         if (config.activity_channel_id && !message.client.isTestBot) {
-            if (!message.client.activityPulseCache) message.client.activityPulseCache = new Map();
-            
             const cooldownKey = `${message.author.id}_${message.guild.id}`;
-            const lastPulse = message.client.activityPulseCache.get(cooldownKey) || 0;
+            const lastPulse = activityPulseCache.get(cooldownKey) || 0;
             const now = Date.now();
             const cooldownMs = 2 * 60 * 1000;
 
@@ -153,7 +156,7 @@ module.exports = {
                             anilist_username: anilistUsername
                         };
                         await pulseUserActivity(message.client, message.guild.id, userRow, activityChannel);
-                        message.client.activityPulseCache.set(cooldownKey, now);
+                        activityPulseCache.set(cooldownKey, now);
                     }
                 }
             }

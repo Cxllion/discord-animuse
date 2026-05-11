@@ -105,18 +105,15 @@ const log = {
         loggerInstance.error(message, metadata);
 
         // Report to Global Webhook (Developer Alert)
-        if (globalWebhook && !CONFIG.TEST_MODE) {
+        if (CONFIG.LOGS_WEBHOOK_URL && !CONFIG.TEST_MODE) {
+            const webhook = new WebhookClient({ url: CONFIG.LOGS_WEBHOOK_URL });
             const embed = new EmbedBuilder()
-                .setTitle('🚨 Critical System Alert')
-                .setDescription(`**${message}**\n\n\`\`\`js\n${err?.message || err || 'No additional error info'}\n\`\`\``)
-                .addFields(
-                    { name: 'Context', value: context || 'None', inline: true },
-                    { name: 'Level', value: 'ERROR', inline: true }
-                )
-                .setColor(0xEF4444) // Error Red
+                .setTitle(`🚨 [System Error] ERROR`)
+                .setDescription(`**${message}**\n\`\`\`${err?.message?.substring(0, 500) || 'No detailed error message provided.'}\`\`\``)
+                .setColor('#FF0000')
                 .setTimestamp();
 
-            globalWebhook.send({ embeds: [embed] }).catch(() => {});
+            webhook.send({ embeds: [embed] }).catch(() => {});
         }
     },
 

@@ -83,6 +83,23 @@ const queryAnilist = async (query, variables = {}, retries = 3) => {
             if (consecutiveFailures >= FAILURE_THRESHOLD) {
                 lastCircuitTrip = Date.now();
                 logger.error(`🚨 [Circuit Breaker] Tripped after ${consecutiveFailures} consecutive AniList failures. Entering cooling period.`, null, 'AniList');
+                
+                // 🛡️ [Cyber Librarian] Shard Synchronization
+                try {
+                    const botClient = require('../core/botClient');
+                    const client = botClient.get();
+                    if (client?.shard) {
+                        client.shard.broadcastEval((c, { tripTime }) => {
+                            try {
+                                const al = require('./utils/services/anilistService');
+                                al.notifyCircuitTrip(tripTime);
+                            } catch (e) {}
+                        }, { context: { tripTime: lastCircuitTrip } });
+                    }
+                } catch (e) {
+                    logger.debug(`[Circuit Breaker] Shard sync failed: ${e.message}`, 'AniList');
+                }
+
                 throw new Error('AL_MAINTENANCE');
             }
 
@@ -297,9 +314,18 @@ const getAnilistUser = async (username) => {
  * @returns {Promise<Array>} List of media objects
  */
 const getPlanningList = async (username, type = 'ANIME') => {
+    // 1. Resolve Username to UserId for schema compatibility
+    let userId = userIdCache.get(username.toLowerCase());
+    if (!userId) {
+        const user = await getAnilistUser(username);
+        if (!user) return [];
+        userId = user.id;
+        userIdCache.set(username.toLowerCase(), userId);
+    }
+
     const query = `
-    query ($username: String, $type: MediaType) {
-        MediaListCollection(userName: $username, type: $type, status: PLANNING, sort: ADDED_TIME_DESC) {
+    query ($userId: Int, $type: MediaType) {
+        MediaListCollection(userId: $userId, type: $type, status: PLANNING, sort: ADDED_TIME_DESC) {
             lists {
                 entries {
                     media {
@@ -316,10 +342,9 @@ const getPlanningList = async (username, type = 'ANIME') => {
         }
     }
     `;
-    const data = await queryAnilist(query, { username, type });
-    if (!data.MediaListCollection.lists.length) return [];
+    const data = await queryAnilist(query, { userId, type });
+    if (!data?.MediaListCollection?.lists?.length) return [];
 
-    // Flatten lists (rare cases of custom lists but usually one "Planning" list)
     return data.MediaListCollection.lists.flatMap(list => list.entries.map(e => e.media));
 };
 
@@ -329,9 +354,18 @@ const getPlanningList = async (username, type = 'ANIME') => {
  * @returns {Promise<Array>} List of media objects
  */
 const getWatchingList = async (username) => {
+    // 1. Resolve Username to UserId for schema compatibility
+    let userId = userIdCache.get(username.toLowerCase());
+    if (!userId) {
+        const user = await getAnilistUser(username);
+        if (!user) return [];
+        userId = user.id;
+        userIdCache.set(username.toLowerCase(), userId);
+    }
+
     const query = `
-    query ($username: String) {
-        MediaListCollection(userName: $username, type: ANIME, status: CURRENT) {
+    query ($userId: Int) {
+        MediaListCollection(userId: $userId, type: ANIME, status: CURRENT) {
             lists {
                 entries {
                     media {
@@ -345,8 +379,8 @@ const getWatchingList = async (username) => {
     }
     `;
     try {
-        const data = await queryAnilist(query, { username });
-        if (!data || !data.MediaListCollection || !data.MediaListCollection.lists.length) return [];
+        const data = await queryAnilist(query, { userId });
+        if (!data?.MediaListCollection?.lists?.length) return [];
         return data.MediaListCollection.lists.flatMap(list => list.entries.map(e => e.media));
     } catch (e) {
         return [];
@@ -743,10 +777,19 @@ const getAniListStatus = () => {
     };
 };
 
+/**
+ * Cross-shard notification for circuit breaker state
+ */
+const notifyCircuitTrip = (tripTime) => {
+    consecutiveFailures = 5;
+    lastCircuitTrip = tripTime;
+};
+
 module.exports = {
     anilistClient,
     queryAnilist,
     getAniListStatus,
+    notifyCircuitTrip,
     searchMedia,
     getMediaById,
     getAnilistUser,

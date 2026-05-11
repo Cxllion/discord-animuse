@@ -22,12 +22,13 @@ module.exports = {
         // 1. Verify User exists on AniList
         const anilistUser = await getAnilistUser(username);
 
+        const CONFIG = require('../../utils/config');
         if (!anilistUser) {
             const embed = baseEmbed()
                 .setTitle('User Not Found')
                 .setDescription(`I could not locate a file under the name "**${username}**" in the external AniList Archives. Please verify the spelling on your card.`)
                 .setFooter({ text: 'Archive Query • Powered by AniList' })
-                .setColor('#FF0000');
+                .setColor(CONFIG.COLORS.ERROR);
             return await interaction.editReply({ embeds: [embed] });
         }
 
@@ -38,7 +39,7 @@ module.exports = {
             logger.error('Link Error:', error, 'LinkCommand');
             const embed = baseEmbed()
                 .setDescription('The archives are currently in disarray. I successfully initiated the link, but the ink smudged. Please try again.')
-                .setColor('#FF0000');
+                .setColor(CONFIG.COLORS.ERROR);
             return await interaction.editReply({ embeds: [embed] });
         }
 

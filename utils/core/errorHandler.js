@@ -49,7 +49,7 @@ const createErrorEmbed = (title, description, color = CONFIG.COLORS.ERROR, optio
     const embed = baseEmbed(title, description)
         .setColor(color)
         .setFooter({ 
-            text: `Archival Note: ${getCuteLibrarianTip()}`, 
+            text: `📝 Archival Note: ${getCuteLibrarianTip()}`, 
             iconURL: options.footerIcon || null 
         });
 
@@ -70,8 +70,8 @@ const createCooldownEmbed = (seconds, commandName = '') => {
     const timeText = seconds === 1 ? '1 second' : `${seconds} seconds`;
 
     return createErrorEmbed(
-        '📚 Please Wait, Reader!',
-        `You're browsing the archives too quickly.\n\nTry **${commandName ? `\`/${commandName}\`` : 'this command'}** again in **${timeText}**. ♡`,
+        '⏳ Please Wait, Dear Patron!',
+        `You're browsing the archives a bit too quickly. The ink needs a moment to dry!\n\nTry **${commandName ? `\`/${commandName}\`` : 'this command'}** again in **${timeText}**. ♡`,
         CONFIG.COLORS.WARNING
     );
 };
@@ -87,7 +87,7 @@ const createBotPermissionEmbed = (missing) => {
 
     return createErrorEmbed(
         '🔒 Restricted Wing',
-        `I need a few more archival keys (permissions) to do that:\n\n${formatted}\n\n${suggestion} ♡`,
+        `I'm afraid I don't have the proper keys (permissions) to access this section:\n\n${formatted}\n\n${suggestion} ♡`,
         CONFIG.COLORS.ERROR
     );
 };
@@ -102,14 +102,14 @@ const createUserPermissionEmbed = (missing, requiredRole = null) => {
     let description;
 
     if (requiredRole) {
-        description = `I'm sorry, but this section of the library is restricted to senior archivists.\n\n**Required role**: ${requiredRole} ♡`;
+        description = `I'm terribly sorry, but this section of the library is restricted to senior archivists.\n\n**Required credentials**: ${requiredRole} ♡`;
     } else {
         const formatted = missing.map(p => `• ${formatPermission(p)}`).join('\n');
-        description = `You need a few more credentials to access this wing, Reader:\n\n${formatted} ♡`;
+        description = `You'll need a few more credentials to access this wing, dear Reader:\n\n${formatted} ♡`;
     }
 
     return createErrorEmbed(
-        '🚫 Entry Denied',
+        '🚫 Entry Refused',
         description,
         CONFIG.COLORS.ERROR
     );
@@ -122,11 +122,11 @@ const createUserPermissionEmbed = (missing, requiredRole = null) => {
  */
 const createDatabaseErrorEmbed = (critical = false) => {
     const description = critical
-        ? 'A critical error occurred while accessing the library\'s records. The ink has spilled everywhere! 🖋️\n\n**Please contact support while I clean this up.** ♡'
-        : 'The library\'s records are temporarily being reorganized by the archivists. ✨\n\n**Please try again in a moment.** ♡';
+        ? 'A critical error occurred while accessing the library\'s records. The ink has spilled everywhere! 🖋️\n\n**Please notify a senior archivist while I clean this up.** ♡'
+        : 'The library\'s records are temporarily being reorganized. ✨\n\n**Please try again in a moment.** ♡';
 
     return createErrorEmbed(
-        '🗄️ [DATABASE OFFLINE] Archives Temporarily Sealed',
+        '🗄️ Archives Temporarily Sealed',
         description,
         CONFIG.COLORS.WARNING
     );
@@ -139,12 +139,12 @@ const createDatabaseErrorEmbed = (critical = false) => {
  * @returns {EmbedBuilder}
  */
 const createGeneralErrorEmbed = (message = null, errorCode = null) => {
-    const defaultMessage = 'An unexpected error occurred while processing your request. Even the best archivists make mistakes! ♡';
+    const defaultMessage = 'An unexpected hiccup occurred while processing your request. Even the best archivists misplace a bookmark now and then! ♡';
     const description = message || defaultMessage;
 
     return createErrorEmbed(
-        '❌ [SYSTEM ERROR] Archival Hiccup',
-        errorCode ? `${description}\n\n**Support ID**: \`${errorCode}\` 🎀` : description,
+        '❌ Archival Hiccup',
+        errorCode ? `${description}\n\n**Reference Code**: \`${errorCode}\` 🎀` : description,
         CONFIG.COLORS.ERROR
     );
 };

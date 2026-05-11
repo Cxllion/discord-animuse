@@ -766,7 +766,7 @@ module.exports = {
 
                 // --- LEADERBOARD TEST ---
                 else if (type === 'leaderboard') {
-                    await interaction.editReply({ content: '📊 **Leaderboard Diagnostic**: Materializing both Experience and Minigame archives... ♡' });
+                    await interaction.editReply({ content: '📊 **Leaderboard Diagnostic**: Materializing both Experience and Arcade archives... ♡' });
 
                     const { generateLeaderboard } = require('../../utils/generators/leaderboardGenerator');
                     const { generateMinigameLeaderboard } = require('../../utils/generators/minigameLeaderboardGenerator');
@@ -801,10 +801,10 @@ module.exports = {
                         const miniStats = await minigameService.getUserStats(interaction.user.id);
 
                         const bufferMini = await generateMinigameLeaderboard(interaction.user, miniStats, topMinigame, themeColor);
-                        const attachmentMini = new AttachmentBuilder(bufferMini, { name: 'test-leaderboard-mini.webp' });
+                        const attachmentMini = new AttachmentBuilder(bufferMini, { name: 'test-leaderboard-arcade.webp' });
 
                         await interaction.editReply({
-                            content: `✅ **Leaderboard Diagnostic Complete**\nGenerated **Experience** and **Minigame** variants.`,
+                            content: `✅ **Leaderboard Diagnostic Complete**\nGenerated **Experience** and **Arcade** variants.`,
                             files: [attachmentExp, attachmentMini]
                         });
 

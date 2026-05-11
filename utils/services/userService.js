@@ -1,5 +1,6 @@
 const supabase = require('../core/supabaseClient');
 const logger = require('../core/logger');
+const CONFIG = require('../config');
 
 const linkAnilistAccount = async (userId, guildId, username) => {
     if (!supabase) return { error: 'Supabase client not initialized.' };
@@ -67,10 +68,10 @@ const updateUserTitle = async (userId, guildId, title) => {
 };
 
 const getUserColor = async (userId, guildId) => {
-    if (!supabase) return '#FFACD1';
+    if (!supabase) return CONFIG.COLORS.PRIMARY;
     const { data, error } = await supabase.from('users').select('primary_color').eq('user_id', userId).eq('guild_id', guildId).single();
     if (error && error.code !== 'PGRST116') logger.error('DB Error getUserColor: ' + error.message, null, 'Database');
-    return data ? (data.primary_color || '#FFACD1') : '#FFACD1';
+    return data ? (data.primary_color || CONFIG.COLORS.PRIMARY) : CONFIG.COLORS.PRIMARY;
 };
 
 const updateUserColor = async (userId, guildId, color) => {
@@ -101,6 +102,18 @@ const getBulkUserAvatarConfig = async (guildId, userIds) => {
     const { data } = await supabase.from('users').select('user_id, avatar_source, custom_avatar_url, anilist_username').eq('guild_id', guildId).in('user_id', userIds);
     const map = {};
     if (data) data.forEach(row => { map[row.user_id] = { source: row.avatar_source || 'DISCORD_GLOBAL', customUrl: row.custom_avatar_url, anilistUsername: row.anilist_username }; });
+    return map;
+};
+
+const getBulkUserTitles = async (guildId, userIds) => {
+    if (!supabase || userIds.length === 0) return {};
+    const { data } = await supabase.from('users').select('user_id, selected_title').eq('guild_id', guildId).in('user_id', userIds);
+    const map = {};
+    if (data) data.forEach(row => { 
+        let t = row.selected_title || null;
+        if (t === 'Muse Player') t = null;
+        map[row.user_id] = t; 
+    });
     return map;
 };
 
@@ -330,6 +343,7 @@ module.exports = {
     getUserAvatarConfig,
     updateUserAvatarConfig,
     getBulkUserAvatarConfig,
+    getBulkUserTitles,
     getOwnedTitles,
     addTitle,
     addUserFavorite,

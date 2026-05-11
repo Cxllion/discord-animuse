@@ -30,7 +30,7 @@ module.exports = {
         const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator) || false;
         
         // Maintenance Block
-        if (statusManager.isMaintenance() && !isOwner && !isAdmin) {
+        if (statusManager.isMaintenance() && !isOwner) {
             try {
                 if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
                     return await interaction.reply({
@@ -75,8 +75,8 @@ module.exports = {
                     if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
                         await interaction.reply({
                             embeds: [statusManager.createMaintenanceEmbed()
-                                .setTitle('🚫 **Access Restricted**')
-                                .setDescription('This is a **Test Instance** of the library. Access is restricted to Librarians and Beta Readers.')
+                                .setTitle('🚫 Entry Restricted')
+                                .setDescription('I\'m sorry, Reader, but this is a **Test Instance** of the library archives.\n\nAccess is currently restricted to Senior Archivists and Beta Readers while we reorganize the shelves. ♡')
                             ],
                             flags: MessageFlags.Ephemeral
                         });
@@ -100,8 +100,8 @@ module.exports = {
                 if (interaction.client.isOfflineMode && command.dbRequired !== false) {
                     return await interaction.reply({
                         embeds: [statusManager.createMaintenanceEmbed()
-                            .setTitle('🗄️ [DATABASE OFFLINE] Archives Sealed')
-                            .setDescription('**The library database is currently unreachable.**\n\nCommands requiring access to server records cannot be used at this time. ♡')
+                            .setTitle('🗄️ Archives Temporarily Sealed')
+                            .setDescription('I\'m terribly sorry, but the **library database is currently unreachable.**\n\nCommands requiring access to our server records cannot be used until the ink has dried on our system synchronization. ♡')
                         ],
                         flags: MessageFlags.Ephemeral
                     });
@@ -109,7 +109,7 @@ module.exports = {
 
                 // Cooldowns
                 const cooldown = command.cooldown || 3;
-                if (!cooldownManager.check(interaction.user.id, interaction.commandName, cooldown, isOwner)) {
+                if (!(await cooldownManager.check(interaction.user.id, interaction.commandName, cooldown, isOwner))) {
                     const remaining = cooldownManager.getRemainingTime(interaction.user.id, interaction.commandName);
                     return await interaction.reply({
                         embeds: [createCooldownEmbed(remaining, interaction.commandName)],
@@ -139,14 +139,15 @@ module.exports = {
                     }
                 }
 
-                cooldownManager.set(interaction.user.id, interaction.commandName, cooldown);
+                await cooldownManager.set(interaction.user.id, interaction.commandName, cooldown);
                 
                 // --- Auto-Defer Pipeline ---
                 let isHandled = false;
+                const isEphemeral = command.ephemeral ?? false;
                 const deferTimer = setTimeout(async () => {
                     if (!isHandled && !interaction.replied && !interaction.deferred) {
                         try {
-                            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                            await interaction.deferReply({ flags: isEphemeral ? MessageFlags.Ephemeral : undefined });
                         } catch (e) {}
                     }
                 }, 2500);

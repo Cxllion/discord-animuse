@@ -59,10 +59,11 @@ module.exports = {
             const buffer = await arcadeGenerator.generatePage('summary', stats, userData);
             const attachment = new AttachmentBuilder(buffer, { name: `arcade-passport-${targetUser.id}.webp` });
 
+            const CONFIG = require('../../utils/config');
             // 4. Navigation Components
             const components = [
                 new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`arcade_page_summary_${targetUser.id}`).setLabel('Summary').setEmoji('📇').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`arcade_page_summary_${targetUser.id}`).setLabel('Summary').setEmoji(CONFIG.EMOJIS.PARCHMENT).setStyle(ButtonStyle.Primary),
                     new ButtonBuilder().setCustomId(`arcade_page_wordle_${targetUser.id}`).setLabel('Wordle').setEmoji('🔠').setStyle(ButtonStyle.Secondary),
                     new ButtonBuilder().setCustomId(`arcade_page_connect4_${targetUser.id}`).setLabel('Connect4').setEmoji('🔵').setStyle(ButtonStyle.Secondary)
                 )

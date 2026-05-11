@@ -3,8 +3,20 @@ const path = require('path');
 const logger = require('./logger');
 
 /**
+ * @typedef {Object} CommandModule
+ * @property {import('discord.js').SlashCommandBuilder} data
+ * @property {function(import('discord.js').ChatInputCommandInteraction): Promise<void>} execute
+ * @property {function(import('discord.js').AutocompleteInteraction): Promise<void>} [autocomplete]
+ * @property {number} [cooldown]
+ * @property {string[]} [botPermissions]
+ * @property {string[]} [userPermissions]
+ * @property {boolean} [dbRequired]
+ * @property {boolean} [ephemeral]
+ */
+
+/**
  * Loads all commands from the commands directory recursively.
- * @param {Client} client The Discord client instance.
+ * @param {import('discord.js').Client} client The Discord client instance.
  */
 const loadCommands = (client) => {
     const foldersPath = path.join(__dirname, '../../commands');

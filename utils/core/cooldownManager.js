@@ -1,130 +1,92 @@
 const { Collection } = require('discord.js');
+const { serviceClient: supabase } = require('./supabaseClient');
 const logger = require('./logger');
 
 /**
  * Cooldown Manager for AniMuse
- * Prevents command spam with library-themed rate limiting
+ * Refactored for shard-safe database persistence.
  */
 class CooldownManager {
     constructor() {
         this.cooldowns = new Collection();
-        this.ownerBypass = true; // Owners bypass cooldowns
+        this.dbSyncEnabled = !!supabase;
     }
 
     /**
-     * Check if user can use command (not on cooldown)
-     * @param {string} userId - Discord user ID
-     * @param {string} commandName - Command name
-     * @param {number} cooldownSeconds - Cooldown duration in seconds
-     * @param {boolean} isOwner - Whether user is bot owner
-     * @returns {boolean} - True if can proceed, false if on cooldown
+     * Check if user can use command (Memory + DB Fallback)
+     * @returns {Promise<boolean>}
      */
-    check(userId, commandName, cooldownSeconds = 3, isOwner = false) {
-        // Owners bypass cooldowns
-        if (isOwner && this.ownerBypass) return true;
-
-        // No cooldown set
+    async check(userId, commandName, cooldownSeconds = 3, isOwner = false) {
+        if (isOwner) return true;
         if (cooldownSeconds === 0) return true;
 
         const key = `${userId}-${commandName}`;
-
-        if (!this.cooldowns.has(key)) {
-            return true;
-        }
-
-        const entry = this.cooldowns.get(key);
         const now = Date.now();
 
-        if (now >= entry.expiry) {
-            // Cooldown expired, allow
-            clearTimeout(entry.timer);
-            this.cooldowns.delete(key);
-            return true;
+        // 1. Check Memory
+        const memoryEntry = this.cooldowns.get(key);
+        if (memoryEntry && now < memoryEntry.expiry) return false;
+
+        // 2. Check DB (Cross-shard sync)
+        if (this.dbSyncEnabled) {
+            try {
+                const { data } = await supabase
+                    .from('cooldowns')
+                    .select('expires_at')
+                    .eq('id', key)
+                    .single();
+
+                if (data) {
+                    const dbExpiry = new Date(data.expires_at).getTime();
+                    if (dbExpiry > now) {
+                        // Sync back to memory
+                        this.set(userId, commandName, (dbExpiry - now) / 1000, true);
+                        return false;
+                    }
+                }
+            } catch (e) {
+                // Ignore PagerDuty errors (row not found)
+                if (e.code !== 'PGRST116') logger.error(`Cooldown DB Check Error: ${e.message}`, 'CooldownManager');
+            }
         }
 
-        // Still on cooldown
-        return false;
+        return true;
     }
 
     /**
-     * Set cooldown for user on command
-     * @param {string} userId - Discord user ID
-     * @param {string} commandName - Command name
-     * @param {number} cooldownSeconds - Cooldown duration in seconds
+     * Set cooldown (Memory + DB)
      */
-    set(userId, commandName, cooldownSeconds = 3) {
-        if (cooldownSeconds === 0) return;
+    async set(userId, commandName, cooldownSeconds = 3, skipDB = false) {
+        if (cooldownSeconds <= 0) return;
 
         const key = `${userId}-${commandName}`;
         const expiry = Date.now() + (cooldownSeconds * 1000);
 
-        // Cancel any existing timer for this key before overwriting
+        // 1. Set Memory
+        const timer = setTimeout(() => this.cooldowns.delete(key), cooldownSeconds * 1000);
         const existing = this.cooldowns.get(key);
         if (existing?.timer) clearTimeout(existing.timer);
-
-        const timer = setTimeout(() => {
-            this.cooldowns.delete(key);
-        }, cooldownSeconds * 1000);
-
         this.cooldowns.set(key, { expiry, timer });
+
+        // 2. Set DB
+        if (this.dbSyncEnabled && !skipDB) {
+            try {
+                await supabase.from('cooldowns').upsert({
+                    id: key,
+                    expires_at: new Date(expiry).toISOString()
+                });
+            } catch (e) {
+                logger.error(`Cooldown DB Sync Failed: ${e.message}`, 'CooldownManager');
+            }
+        }
     }
 
-    /**
-     * Get remaining cooldown time in seconds
-     * @param {string} userId - Discord user ID
-     * @param {string} commandName - Command name
-     * @returns {number} - Seconds remaining (0 if not on cooldown)
-     */
     getRemainingTime(userId, commandName) {
         const key = `${userId}-${commandName}`;
-
-        if (!this.cooldowns.has(key)) {
-            return 0;
-        }
-
         const entry = this.cooldowns.get(key);
-        const now = Date.now();
-        const remaining = Math.ceil((entry.expiry - now) / 1000);
-
-        return remaining > 0 ? remaining : 0;
-    }
-
-    /**
-     * Clear all cooldowns for a user (admin function)
-     * @param {string} userId - Discord user ID
-     */
-    clearUser(userId) {
-        const keys = Array.from(this.cooldowns.keys()).filter(k => k.startsWith(userId));
-        keys.forEach(key => {
-            const entry = this.cooldowns.get(key);
-            if (entry?.timer) clearTimeout(entry.timer);
-            this.cooldowns.delete(key);
-        });
-        logger.info(`Cleared all cooldowns for user ${userId}`, 'CooldownManager');
-    }
-
-    /**
-     * Clear specific command cooldown for user
-     * @param {string} userId - Discord user ID
-     * @param {string} commandName - Command name
-     */
-    clear(userId, commandName) {
-        const key = `${userId}-${commandName}`;
-        const entry = this.cooldowns.get(key);
-        if (entry?.timer) clearTimeout(entry.timer);
-        this.cooldowns.delete(key);
-    }
-
-    /**
-     * Get total active cooldowns
-     * @returns {number} - Number of active cooldowns
-     */
-    getActiveCount() {
-        return this.cooldowns.size;
+        if (!entry) return 0;
+        return Math.ceil((entry.expiry - Date.now()) / 1000);
     }
 }
 
-// Create singleton instance
-const cooldownManager = new CooldownManager();
-
-module.exports = cooldownManager;
+module.exports = new CooldownManager();

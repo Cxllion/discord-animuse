@@ -13,6 +13,7 @@ const setupProcessHandlers = () => {
     // --- Global Error Handlers ---
     process.on('unhandledRejection', (reason, promise) => {
         logger.error('[Unhandled Rejection]', reason);
+        process.exit(1);
     });
 
     process.on('uncaughtException', (error) => {

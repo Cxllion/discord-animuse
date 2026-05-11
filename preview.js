@@ -247,14 +247,18 @@ const generators = {
             avatarUrl: challenger.displayAvatarURL(),
             stats: miniStats
         };
-        const bufferMini = await generateMinigameLeaderboard(miniChallenger, topMini, '#3B82F6');
+        const miniChallengerData = {
+            rank: 12, level: 12, xp: 4500, current: 4500, required: 10000, percent: 45,
+            bannerUrl: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/166258-9yR9A7p6x8G1.jpg'
+        };
+        const bufferMini = await generateMinigameLeaderboard(miniChallenger, miniChallengerData, topMini, null, '#3B82F6', miniChallenger.username, miniChallenger.avatarUrl);
 
         return [
             { name: 'exp_regular', buffer: bufferExpRegular },
             { name: 'exp_premium', buffer: bufferExpPremium },
             { name: 'exp_booster', buffer: bufferExpBooster },
             { name: 'exp_white', buffer: bufferExpWhite },
-            { name: 'minigames', buffer: bufferMini }
+            { name: 'arcade', buffer: bufferMini }
         ];
     },
     search: async () => {

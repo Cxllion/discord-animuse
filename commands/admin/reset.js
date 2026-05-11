@@ -85,6 +85,10 @@ module.exports = {
             });
 
             collector.on('collect', async i => {
+                if (i.user.id !== interaction.user.id) {
+                    return i.reply({ content: '❌ Only the initiating archivist can confirm this protocol. ♡', flags: [MessageFlags.Ephemeral] });
+                }
+
                 if (i.customId === 'local_reset_cancel') {
                     await i.update({ content: '❌ **Protocol Aborted.** Archival records remain untouched. ♡', embeds: [], components: [] });
                     return collector.stop();
@@ -106,7 +110,11 @@ module.exports = {
                         }
 
                         if (dataToBackup.length > 0) {
-                            fs.writeFileSync(snapshotPath, JSON.stringify(dataToBackup, null, 2));
+                            const dir = path.dirname(snapshotPath);
+                            if (!fs.existsSync(dir)) {
+                                await fs.promises.mkdir(dir, { recursive: true });
+                            }
+                            await fs.promises.writeFile(snapshotPath, JSON.stringify(dataToBackup, null, 2));
                         }
 
                         await i.editReply({ content: `⏳ **Nuclear Wipe in Progress...** (Snapshot Created: \`${snapshotId}\`)` });

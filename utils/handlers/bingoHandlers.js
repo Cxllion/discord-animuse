@@ -361,6 +361,7 @@ module.exports = {
     handleBingoInteraction, 
     handleBingoModals, 
     getBingoWizardPayload,
+    resolveCardInteraction,
     routerConfig: {
         prefixes: ['bingo_'],
         handle: async (interaction) => {

@@ -4,8 +4,15 @@ const env = require('./core/envSchema');
 const CONFIG = {
     // --- Environment Variables (Validated) ---
     ...env,
+    
+    // Explicit Supabase Mapping for clarity
+    SUPABASE: {
+        URL: env.SUPABASE_URL,
+        SERVICE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+        ANON_KEY: env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY // Fallback if anon is missing
+    },
 
-    // Brand Identity
+    // Brand Identity (UX-E-01)
     COLORS: {
         PRIMARY: '#FFACD1', // Soft Pink - Main Brand Color
         SECONDARY: '#B39DDB', // Soft Purple
@@ -13,33 +20,36 @@ const CONFIG = {
         ERROR: '#E57373',   // Pastel Red
         WARNING: '#FFB74D', // Pastel Orange
         INFO: '#4FC3F7',    // Light Blue
-        DARK: '#2C2F33',    // Dark Grey for backgrounds if needed
+        DARK: '#2C2F33',    // Dark Grey for backgrounds
         INVISIBLE: '#2B2D31', // Discord Dark Mode Blend
         ARCHIVE: '#A78BFA',  // Premium Archive Purple
-        GALLERY: '#FFACD1'   // Gallery Soft Pink
+        GOLD: '#FFD700',     // Victory/Achievement
+        NEUTRAL: '#71717A'   // Muted/Disabled
     },
 
     // Librarian Theme Branding
     THEME: {
         AUTHOR: 'Animuse Librarian',
         FOOTER: 'Animuse Archives',
-        ICON: '📚'
+        ICON: '📚',
+        EMBED_SIDE_COLOR: '#FFACD1'
     },
 
-    // Standardized Emojis (Imported from emojiConfig)
+    // Standardized Emojis (UX-A-01)
     EMOJIS: EMOJIS,
 
     // System Messages
     MESSAGES: {
         ERRORS: {
-            GENERIC: "An unexpected error occurred in the archives.",
-            PERMISSION: "You do not have the required permissions to perform this action.",
-            BOT_PERMISSION: "I do not have the permissions to execute this. Please check my role hierarchy.",
-            USER_NOT_FOUND: "I could not find that patron in this guild.",
-            DB_ERROR: "The archives are currently inaccessible. Please try again later."
+            GENERIC: "🏮 An unexpected error occurred in the archives.",
+            PERMISSION: "📜 You do not have the required permissions to perform this action.",
+            BOT_PERMISSION: "🔨 I do not have the permissions to execute this. Please check my role hierarchy.",
+            USER_NOT_FOUND: "👥 I could not find that patron in this guild.",
+            DB_ERROR: "⛓️ The archives are currently inaccessible. Please try again later.",
+            COOLDOWN: "⏳ Please wait! This volume is currently being restored."
         },
         SUCCESS: {
-            GENERIC: "Action completed successfully."
+            GENERIC: "✨ Action completed successfully."
         }
     },
 

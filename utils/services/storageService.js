@@ -111,6 +111,10 @@ const refreshDiscordUrls = async (urls) => {
         const resultList = urlList.map(u => resultMap[u] || u);
         return isArray ? resultList : resultList[0];
     } catch (err) {
+        // Redact token from error object before logging
+        if (err.config && err.config.headers) {
+            delete err.config.headers['Authorization'];
+        }
         logger.error(`Discord URL Refresh Failed: ${err.message}`, null, 'StorageService');
         return urls;
     }

@@ -16,11 +16,12 @@ module.exports = {
         // Check if linked first? Not strictly necessary but nice UX.
         const currentLink = await getLinkedAnilist(interaction.user.id, interaction.guild.id);
 
+        const CONFIG = require('../../utils/config');
         if (!currentLink) {
             const embed = baseEmbed()
                 .setTitle('Not Linked')
                 .setDescription('You do not have an AniList account linked to your profile.')
-                .setColor('#FFACD1');
+                .setColor(CONFIG.COLORS.INFO);
             return await interaction.editReply({ embeds: [embed] });
         }
 
@@ -30,14 +31,14 @@ module.exports = {
             logger.error('Unlink Error:', error, 'UnlinkCommand');
             const embed = baseEmbed()
                 .setDescription('An error occurred while attempting to sever the spiritual link. The bond remains.')
-                .setColor('#FF0000');
+                .setColor(CONFIG.COLORS.ERROR);
             return await interaction.editReply({ embeds: [embed] });
         }
 
         const embed = baseEmbed()
             .setTitle('Link Severed')
             .setDescription(`The spiritual connection to **${currentLink}** has been dissolved. Your library card is now autonomous.`)
-            .setColor('#FFACD1');
+            .setColor(CONFIG.COLORS.SUCCESS);
 
         await interaction.editReply({ embeds: [embed] });
     },

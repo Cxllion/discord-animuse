@@ -59,7 +59,17 @@ module.exports = {
 
                     // Add Custom Welcome Message if configured
                     if (config.welcome_message) {
-                        messageOptions.content = config.welcome_message.replace(/{user}/g, member.toString());
+                        let formattedWelcomeMsg = config.welcome_message
+                            .replace(/{user}/g, member.toString())
+                            .replace(/{guild}/g, member.guild.name)
+                            .replace(/{count}/g, member.guild.memberCount);
+                        
+                        // 🛡️ [Cyber Librarian] Prevent mass-mention exploits
+                        formattedWelcomeMsg = formattedWelcomeMsg
+                            .replace(/@everyone/g, '@\u200Beveryone')
+                            .replace(/@here/g, '@\u200Bhere');
+                        
+                        messageOptions.content = formattedWelcomeMsg;
                     }
 
                     welcomeMsg = await channel.send(messageOptions);

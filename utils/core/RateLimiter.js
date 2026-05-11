@@ -1,8 +1,8 @@
 const logger = require('./logger');
 
 /**
- * High-Precision Token Bucket Rate Limiter
- * Ensures we don't exceed API rate limits while maximizing throughput.
+ * High-Precision Token Bucket Rate Limiter (Lazy Evaluation)
+ * Refactored to avoid background polling loops.
  */
 class RateLimiter {
     /**
@@ -14,22 +14,22 @@ class RateLimiter {
         this.maxBurst = maxBurst;
         this.tokens = maxBurst;
         this.lastRefill = Date.now();
-        this.queue = [];
         this.refillInterval = (60 * 1000) / tokensPerMinute;
-        
-        this.processQueue();
+        this.queue = [];
     }
 
     /**
-     * Refill tokens based on elapsed time
+     * Internal: Refill tokens based on elapsed time since last request.
      */
-    refill() {
+    _refill() {
         const now = Date.now();
         const elapsed = now - this.lastRefill;
         const newTokens = elapsed / this.refillInterval;
         
-        this.tokens = Math.min(this.maxBurst, this.tokens + newTokens);
-        this.lastRefill = now;
+        if (newTokens >= 1) {
+            this.tokens = Math.min(this.maxBurst, this.tokens + newTokens);
+            this.lastRefill = now;
+        }
     }
 
     /**
@@ -37,34 +37,28 @@ class RateLimiter {
      * @returns {Promise<void>}
      */
     async acquire() {
-        return new Promise((resolve) => {
-            this.queue.push(resolve);
-        });
-    }
+        this._refill();
 
-    /**
-     * Internal processor for the request queue
-     */
-    async processQueue() {
-        while (true) {
-            this.refill();
-
-            if (this.tokens >= 1 && this.queue.length > 0) {
-                const resolve = this.queue.shift();
-                this.tokens -= 1;
-                resolve();
-            }
-
-            // Sleep for a short duration or until next token refill
-            const sleepTime = this.tokens < 1 ? this.refillInterval : 50;
-            await new Promise(r => setTimeout(r, sleepTime));
+        if (this.tokens >= 1) {
+            this.tokens -= 1;
+            return Promise.resolve();
         }
+
+        // Calculate time until next token is available
+        const waitTime = this.refillInterval - (Date.now() - this.lastRefill);
+        
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                this.acquire().then(resolve);
+            }, Math.max(waitTime, 50));
+        });
     }
 
     /**
      * Get current status
      */
     getStatus() {
+        this._refill();
         return {
             tokens: Math.floor(this.tokens),
             queueLength: this.queue.length,

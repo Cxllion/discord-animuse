@@ -8,7 +8,7 @@ class TaskScheduler {
     constructor(client) {
         this.client = client;
         this.tasks = new Map();
-        this.intervals = [];
+        this.intervals = new Map();
     }
 
     /**
@@ -67,8 +67,16 @@ class TaskScheduler {
         }
 
         // Setup Interval
-        const interval = setInterval(runTask, intervalMs);
-        this.intervals.push(interval);
+        const interval = setInterval(() => {
+            runTask();
+        }, intervalMs);
+
+        this.intervals.set(name, interval);
+        
+        // 🛡️ [Cyber Librarian] Register with client for global shutdown tracking
+        if (this.client.intervals) {
+            this.client.intervals.push(interval);
+        }
         
         logger.info(`Registered background task: ${name} (${intervalMs / 1000}s)`, 'Scheduler');
     }
@@ -78,7 +86,7 @@ class TaskScheduler {
      */
     stopAll() {
         this.intervals.forEach(clearInterval);
-        this.intervals = [];
+        this.intervals.clear();
         this.tasks.clear();
         logger.info('All background tasks terminated.', 'Scheduler');
     }

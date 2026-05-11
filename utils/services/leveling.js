@@ -230,21 +230,23 @@ const syncLevelRoles = async (member, level) => {
 
     if (!botMember.permissions.has('ManageRoles')) return null;
 
+    const tasks = [];
     for (const lr of levelRoles) {
         const role = member.guild.roles.cache.get(lr.role_id);
         if (!role || role.position >= botMember.roles.highest.position) continue;
 
         if (lr.level <= level) {
             if (!member.roles.cache.has(lr.role_id)) {
-                await member.roles.add(role).catch(() => {});
+                tasks.push(member.roles.add(role).catch(() => {}));
             }
             if (lr.level === level) targetLevelRole = role;
         } else {
             if (member.roles.cache.has(lr.role_id)) {
-                await member.roles.remove(role).catch(() => {});
+                tasks.push(member.roles.remove(role).catch(() => {}));
             }
         }
     }
+    if (tasks.length > 0) await Promise.all(tasks);
     return targetLevelRole;
 };
 
@@ -348,7 +350,7 @@ const resetAllLevels = async (guildId) => {
  */
 const getAllLevels = async (guildId) => {
     if (!supabase) return [];
-    const { data } = await supabase.from('users').select('*').eq('guild_id', guildId);
+    const { data } = await supabase.from('users').select('user_id, xp, level').eq('guild_id', guildId);
     return data || [];
 };
 

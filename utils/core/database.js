@@ -16,7 +16,7 @@ const {
     linkAnilistAccount, unlinkAnilistAccount, getLinkedAnilist, 
     updateUserBannerConfig, getUserBannerConfig, clearUserBannerGlobally, getUserTitle, 
     updateUserTitle, getUserColor, updateUserColor, 
-    getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, 
+    getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, getBulkUserTitles, 
     getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal,
     getLinkedUsersForFeed, updateLastActivityId, getActivityCache, upsertActivityCache, clearActivityCache
 } = require('../services/userService');
@@ -83,6 +83,7 @@ module.exports = {
     getUserAvatarConfig,
     updateUserAvatarConfig,
     getBulkUserAvatarConfig,
+    getBulkUserTitles,
     getOwnedTitles,
     addTitle,
     addUserFavorite,

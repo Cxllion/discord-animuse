@@ -12,14 +12,8 @@ const hasPremium = async (member) => {
     // 1. Check for Administrator permission
     if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
 
-    // 2. Check for common benefactor/patron role names
-    const hasSpecialRole = member.roles.cache.some(r => 
-        r.name.includes('Benefactor') || 
-        r.name.includes('Patron') || 
-        r.name.includes('Premium') ||
-        r.name.includes('Supporter')
-    );
-    if (hasSpecialRole) return true;
+    // 2. [DELETED] Fuzzy role name check removed for production security.
+    // Privileges are now strictly tied to configured role IDs or Admin permissions.
 
     // 3. Check for specific premium role configured in the guild
     if (member.guild) {

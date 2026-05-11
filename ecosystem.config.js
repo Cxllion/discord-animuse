@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'animuse-bot',
-      script: 'index.js',
+      script: 'bot.js',
       instances: 1,
       autorestart: true,
       watch: false,
