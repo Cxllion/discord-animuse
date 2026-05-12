@@ -29,7 +29,19 @@ const loadCommands = (client) => {
     const commandFolders = fs.readdirSync(foldersPath, { withFileTypes: true });
     let totalLoaded = 0;
 
-    for (const folder of commandFolders) {
+    const CONFIG = require('../config');
+    const botType = CONFIG.BOT_TYPE || 'main';
+    let filteredFolders = commandFolders;
+
+    if (botType === 'main') {
+        const allowedMain = ['search', 'anime', 'social', 'minigames', 'fun', 'general', 'moderation'];
+        filteredFolders = commandFolders.filter(folder => allowedMain.includes(folder.name));
+    } else if (botType === 'core') {
+        const allowedCore = ['configuration', 'admin', 'utility', 'system'];
+        filteredFolders = commandFolders.filter(folder => allowedCore.includes(folder.name));
+    }
+
+    for (const folder of filteredFolders) {
         if (!folder.isDirectory()) continue;
 
         const commandsPath = path.join(foldersPath, folder.name);

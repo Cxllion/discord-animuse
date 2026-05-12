@@ -15,12 +15,15 @@ if (process.env.SUPABASE_KEY && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
  */
 const envSchema = z.object({
     // --- DISCORD ---
-    DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
+    DISCORD_TOKEN_MAIN: z.string().optional(),
+    CLIENT_ID_MAIN: z.string().optional(),
+    DISCORD_TOKEN_CORE: z.string().optional(),
+    CLIENT_ID_CORE: z.string().optional(),
     TEST_DISCORD_TOKEN: z.string().optional(),
-    CLIENT_ID: z.string().min(1, "CLIENT_ID is required"),
     TEST_CLIENT_ID: z.string().optional(),
     GUILD_ID: z.string().optional(),
     TESTER_ROLE_ID: z.string().optional(),
+    BOT_TYPE: z.enum(['main', 'core', 'test']).default('main'),
 
     // --- DATABASE ---
     DATABASE_URL: z.string().url("DATABASE_URL must be a valid postgres URL"),

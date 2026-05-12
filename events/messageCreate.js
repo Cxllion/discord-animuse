@@ -23,7 +23,11 @@ module.exports = {
         if (message.author.bot) return;
         if (!message.guild) return;
 
+        const botType = CONFIG.BOT_TYPE || 'main';
+        const isSelfTest = message.client.isTestBot;
+
         // --- Mafia Vigilant Redaction (Silence for the Dead) ---
+        if (botType === 'main' || botType === 'test') {
         if (message.channel.isThread()) {
             const game = MafiaManager.games.get(message.channel.id);
             if (game && game.state !== 'LOBBY' && game.state !== 'GAME_OVER') {
@@ -33,6 +37,8 @@ module.exports = {
                         await message.delete();
                         return; // Halt further processing for redacted messages
                     } catch (e) {}
+                }
+            }
                 }
             }
         }
@@ -55,7 +61,7 @@ module.exports = {
         if (config.maintenance_mode && !isSelfTest) return;
 
         // --- Archive Bureau (Pin Mirroring) ---
-        if (!isSelfTest && message.type === 6 && config.archive_mirror_channel_id) {
+        if ((botType === 'core' || botType === 'test') && !isSelfTest && message.type === 6 && config.archive_mirror_channel_id) {
             const archiveChannel = message.guild.channels.cache.get(config.archive_mirror_channel_id);
             if (archiveChannel) {
                 try {
@@ -88,7 +94,7 @@ module.exports = {
         }
 
         // --- Gallery Mode ---
-        if (!isSelfTest && config.gallery_channel_ids?.includes(message.channel.id)) {
+        if ((botType === 'core' || botType === 'test') && !isSelfTest && config.gallery_channel_ids?.includes(message.channel.id)) {
             const hasMedia = message.attachments.size > 0 || 
                              GALLERY_MEDIA_REGEX.test(message.content) || 
                              DISCORD_CDN_REGEX.test(message.content) ||
@@ -135,10 +141,11 @@ module.exports = {
             return;
         }
 
-        // --- Levelling & Rank Hook ---
-        if (!isSelfTest) {
-            await addXp(message.author.id, message.guild.id, message.member, message);
-        }
+        if (botType === 'main' || botType === 'test') {
+            // --- Levelling & Rank Hook ---
+            if (!isSelfTest) {
+                await addXp(message.author.id, message.guild.id, message.member, message);
+            }
 
         // --- AniList Activity Pulse (Instant Tracking) ---
         if (config.activity_channel_id && !message.client.isTestBot) {
@@ -165,9 +172,11 @@ module.exports = {
         }
 
         // --- Archive Lobby Bumping ---
-        const lobby = MafiaManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
-        if (lobby) {
-            lobby.scheduleRefresh(message.channel);
+        if (botType === 'main' || botType === 'test') {
+            const lobby = MafiaManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
+            if (lobby) {
+                lobby.scheduleRefresh(message.channel);
+            }
         }
     },
 };

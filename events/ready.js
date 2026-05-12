@@ -9,14 +9,14 @@ module.exports = {
     name: Events.ClientReady,
     once: true,
     async execute(client) {
-        // --- Sanctuary Status Board ---
-        const modeLabel = client.isTestBot ? 'ARCHIVAL TEST' : 'GRAND LIBRARY (PROD)';
+        const botType = CONFIG.BOT_TYPE || 'main';
+        const modeLabel = client.isTestBot ? 'ARCHIVAL TEST' : botType === 'core' ? 'ANIMUSE CORE (PROD)' : 'ANIMUSE MAIN (PROD)';
         const shardLabel = `${client.shardId + 1}/${client.shardCount}`;
         const cmdCount = client.commands?.size || 0;
         const guildCount = client.guilds.cache.size;
 
         console.log('\n┌──────────────────────────────────────────┐');
-        console.log(`│   🏮  ANIMUSE SANCTUARY ONLINE  🏮      │`);
+        console.log(`│   🏮  ${botType === 'core' ? 'ANIMUSE CORE ONLINE' : 'ANIMUSE SANCTUARY ONLINE'}  🏮      │`);
         console.log(`├──────────────────────────────────────────┤`);
         console.log(`│  Identity : ${client.user.tag.padEnd(28)} │`);
         console.log(`│  Mode     : ${modeLabel.padEnd(28)} │`);
@@ -114,30 +114,35 @@ module.exports = {
         if (!CONFIG.DISABLE_INTERNAL_SCHEDULER) {
             logger.debug('Initializing scheduler activities...', 'System');
             
-            // 1. Airing Notifications (5m)
-            client.scheduler.addTask('Airing Detection', checkAiringAnime, 5 * 60 * 1000, { immediate: true });
-            
-            // 2. User Activity Feeds (5m)
-            client.scheduler.addTask('Activity Feed', checkUserActivity, 5 * 60 * 1000, { immediate: true });
+            const botType = CONFIG.BOT_TYPE || 'main';
 
-            // 3. Sync User Trackers (6h)
-            client.scheduler.addTask('Tracker Sync', syncAllUserTrackers, 6 * 60 * 60 * 1000);
+            if (botType === 'main' || botType === 'test') {
+                // 1. Airing Notifications (5m)
+                client.scheduler.addTask('Airing Detection', checkAiringAnime, 5 * 60 * 1000, { immediate: true });
+                
+                // 2. User Activity Feeds (5m)
+                client.scheduler.addTask('Activity Feed', checkUserActivity, 5 * 60 * 1000, { immediate: true });
 
-            // 4. Global Housekeeping (1h)
+                // 3. Sync User Trackers (6h)
+                client.scheduler.addTask('Tracker Sync', syncAllUserTrackers, 6 * 60 * 60 * 1000);
+
+                // 5. Wordle Cycle Monitor (15m)
+                const { checkWordleReset } = require('../utils/services/scheduler');
+                client.scheduler.addTask('Wordle Cycle Monitor', checkWordleReset, 15 * 60 * 1000, { immediate: true });
+
+                // 6. Wordle Housekeeping (15m)
+                client.scheduler.addTask('Wordle Housekeeping', checkWordleHousekeeping, 15 * 60 * 1000, { immediate: true });
+
+                // 7. Connect4 Housekeeping (5m)
+                client.scheduler.addTask('Connect4 Housekeeping', checkConnect4Housekeeping, 5 * 60 * 1000, { immediate: true });
+            }
+
+            // 4. Global Housekeeping (1h) - Runs on both Main and Core to clear caches
             client.scheduler.addTask('Housekeeping', () => {
                 flushAniListCache();
                 clearConfigCache();
             }, 3600 * 1000, { testModeSafe: true });
-
-            // 5. Wordle Cycle Monitor (15m)
-            const { checkWordleReset } = require('../utils/services/scheduler');
-            client.scheduler.addTask('Wordle Cycle Monitor', checkWordleReset, 15 * 60 * 1000, { immediate: true });
-
-            // 6. Wordle Housekeeping (15m)
-            client.scheduler.addTask('Wordle Housekeeping', checkWordleHousekeeping, 15 * 60 * 1000, { immediate: true });
-
-            // 7. Connect4 Housekeeping (5m)
-            client.scheduler.addTask('Connect4 Housekeeping', checkConnect4Housekeeping, 5 * 60 * 1000, { immediate: true });
+            
             
             // FINAL: Systems are GO
             client.isSystemsGo = true;

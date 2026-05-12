@@ -251,7 +251,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
         const nameY = titleY - 32; // Maintained breathing room between name and title
         const nameX = 145;
 
-        const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
+        const nameText = ((displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username)).toUpperCase();
 
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.8)';

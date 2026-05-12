@@ -6,8 +6,6 @@ const crypto = require('crypto');
 const CONFIG = require('../config');
 const logger = require('./logger');
 
-const HASH_FILE = path.join(__dirname, '../../.deploy_hash');
-
 /**
  * Calculates a hash of the current commands.
  * @param {Array} commands 
@@ -17,14 +15,22 @@ const calculateHash = (commands) => {
     return crypto.createHash('md5').update(JSON.stringify(commands)).digest('hex');
 };
 
-/**
- * Deploys commands to all guilds the client is in.
- * @param {object} client 
- */
 const deployCommands = async (client) => {
     const commands = [];
     const foldersPath = path.join(__dirname, '../../commands');
-    const commandFolders = fs.readdirSync(foldersPath);
+    let commandFolders = fs.readdirSync(foldersPath);
+
+    // Filter by BOT_TYPE
+    const botType = CONFIG.BOT_TYPE || 'main';
+    if (botType === 'main') {
+        const allowedMain = ['search', 'anime', 'social', 'minigames', 'fun', 'general', 'moderation'];
+        commandFolders = commandFolders.filter(folder => allowedMain.includes(folder));
+    } else if (botType === 'core') {
+        const allowedCore = ['configuration', 'admin', 'utility', 'system'];
+        commandFolders = commandFolders.filter(folder => allowedCore.includes(folder));
+    }
+
+    const HASH_FILE = path.join(__dirname, `../../.deploy_hash_${botType}`);
 
     for (const folder of commandFolders) {
         const commandsPath = path.join(foldersPath, folder);

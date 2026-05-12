@@ -1,9 +1,22 @@
 const { EMOJIS } = require('./config/emojiConfig');
 const env = require('./core/envSchema');
 
+let discordToken = env.DISCORD_TOKEN_MAIN;
+let clientId = env.CLIENT_ID_MAIN;
+
+if (env.BOT_TYPE === 'core') {
+    discordToken = env.DISCORD_TOKEN_CORE;
+    clientId = env.CLIENT_ID_CORE;
+} else if (env.BOT_TYPE === 'test') {
+    discordToken = env.TEST_DISCORD_TOKEN;
+    clientId = env.TEST_CLIENT_ID;
+}
+
 const CONFIG = {
     // --- Environment Variables (Validated) ---
     ...env,
+    DISCORD_TOKEN: discordToken,
+    CLIENT_ID: clientId,
     
     // Explicit Supabase Mapping for clarity
     SUPABASE: {
