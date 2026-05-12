@@ -11,8 +11,9 @@ const { markAsSpoken } = require('../utils/services/welcomeService');
 const { addXp } = require('../utils/services/leveling');
 
 // 🛡️ [Cyber Librarian] Hoisted media regex for performance and safety
-const GALLERY_MEDIA_REGEX = /^(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?$/i;
+const GALLERY_MEDIA_REGEX = /(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?/i;
 const DISCORD_CDN_REGEX = /cdn\.discordapp\.com|media\.discordapp\.net/i;
+const GIF_SITE_REGEX = /tenor\.com|giphy\.com/i;
 const { getLinkedAnilist } = require('../utils/services/userService');
 const { pulseUserActivity } = require('../utils/services/scheduler');
 
@@ -87,10 +88,11 @@ module.exports = {
         }
 
         // --- Gallery Mode ---
-        if (!isSelfTest && config.gallery_channels?.includes(message.channel.id)) {
+        if (!isSelfTest && config.gallery_channel_ids?.includes(message.channel.id)) {
             const hasMedia = message.attachments.size > 0 || 
                              GALLERY_MEDIA_REGEX.test(message.content) || 
-                             DISCORD_CDN_REGEX.test(message.content);
+                             DISCORD_CDN_REGEX.test(message.content) ||
+                             GIF_SITE_REGEX.test(message.content);
 
             if (hasMedia) {
                 // Valid post: Create thread
