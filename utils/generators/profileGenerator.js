@@ -247,8 +247,8 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
 
         // --- 7. LITERARY IDENTITY ---
         const avatarBottomY = avY + avR + 4.5;
-        const titleY = avatarBottomY - 1;
-        const nameY = titleY - 24;
+        const titleY = avatarBottomY + 6; // Shifted down 7px from previous (-1) to give breathing room from banner
+        const nameY = titleY - 32; // Maintained breathing room between name and title
         const nameX = 145;
 
         const nameText = (displayName || discordUser.username).length > 20 ? (displayName || discordUser.username).substring(0, 20) + '...' : (displayName || discordUser.username);
@@ -266,7 +266,7 @@ const generateProfileCard = async (discordUser, userData, favorites, bannerUrl =
 
         const titleText = userData.title || 'Chart Librarian';
         ctx.fillStyle = THEME_ACCENT;
-        ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 32, 'normal', 240);
+        ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 24, 'normal', 240);
         ctx.fillText(titleText, nameX, titleY);
         ctx.restore();
 

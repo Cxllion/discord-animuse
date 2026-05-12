@@ -503,7 +503,7 @@ const generateLeaderboard = async (challenger, challengerData, topUsers, backgro
     const titleText = challengerData?.title || 'Chart Librarian';
     ctx.fillStyle = hexToRgba(ACCENT, 0.8);
     const cTitleY = lY + 265;
-    ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 32, 'normal', 240);
+    ctx.font = fitText(ctx, titleText, `'pacifico', 'alexbrush', 'Dancing Script', 'Lucida Handwriting', 'Brush Script MT', 'monalqo', cursive, ${FONT_STACK}`, 24, 'normal', 240);
     ctx.fillText(titleText, cX, cTitleY);
 
     const cDivY = lY + 315;
