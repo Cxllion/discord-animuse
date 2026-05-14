@@ -163,9 +163,9 @@ const generators = {
 
         const baseActivity = {
             media: {
-                title: { english: 'One Piece', romaji: 'One Piece' },
-                coverImage: { extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-YCD308643198.jpg', color: '#8B5CF6' },
-                bannerImage: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-63043198.jpg',
+                title: { english: 'Cowboy Bebop', romaji: 'Cowboy Bebop' },
+                coverImage: { extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-995662.jpg', color: '#8B5CF6' },
+                bannerImage: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1-979z79.jpg',
                 averageScore: 87,
                 format: 'TV'
             },
