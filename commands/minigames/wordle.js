@@ -86,7 +86,7 @@ module.exports = {
             };
 
             // 2. Initialize Game State (Individual)
-            const gameState = await wordleService.startNewGame(userId);
+            const gameState = await wordleService.startNewGame(userId, interaction.guildId);
             
             // 3. Generate Anonymized Board Card (Public)
             // Fetch minigrid cache so the very first public board has rings of others

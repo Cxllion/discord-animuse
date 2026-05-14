@@ -88,7 +88,7 @@ module.exports = {
                 const timeout = new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 15000));
                 const probe = (async () => {
                     try {
-                        const { error } = await supabase.from('activity_posted').select('id').limit(1);
+                        const { error } = await supabase.from('activity_posted').select('activity_id').limit(1);
                         return { error };
                     } catch (e) {
                         return { error: e };

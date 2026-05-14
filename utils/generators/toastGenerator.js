@@ -19,6 +19,8 @@ class ToastGenerator {
             TEXT_MUTED: 'rgba(255, 255, 255, 0.4)',
             SUCCESS: '#4ADE80'
         };
+        // Robust font stack with system fallbacks
+        this.FONT_STACK = "'monalqo', Arial, sans-serif";
     }
 
     async generateSuccessSlip(options = {}) {
@@ -37,20 +39,32 @@ class ToastGenerator {
         const ctx = canvas.getContext('2d');
         ctx.scale(scale, scale);
 
+        // Normalize Game Name (User Request: Connect Muse -> Connect4)
+        const normalizedGameName = gameName.toUpperCase() === 'CONNECT MUSE' ? 'CONNECT4' : gameName.toUpperCase();
+
         // 1. Base Glassmorphism Card
         ctx.fillStyle = this.COLORS.BACKGROUND;
         ctx.beginPath();
         ctx.roundRect(0, 0, this.WIDTH, this.HEIGHT, 14);
         ctx.fill();
 
+        // Dynamic Theme Color (Default to Gold)
+        const themeColor = options.color || '#FFD700';
+
         // Glowing Edge
         const gradient = ctx.createLinearGradient(0, 0, this.WIDTH, this.HEIGHT);
-        gradient.addColorStop(0, 'rgba(255, 215, 0, 0.28)');
+        gradient.addColorStop(0, `${themeColor}48`); // 28% opacity
         gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
-        gradient.addColorStop(1, 'rgba(255, 215, 0, 0.28)');
+        gradient.addColorStop(1, `${themeColor}48`);
         ctx.strokeStyle = gradient;
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Subtle Outer Glow
+        ctx.shadowColor = `${themeColor}20`;
+        ctx.shadowBlur = 15;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
 
         // 2. Avatar with Shield Border
         const avX = 30;
@@ -83,80 +97,101 @@ class ToastGenerator {
         
         ctx.textAlign = 'left';
         ctx.fillStyle = this.COLORS.ACCENT;
-        ctx.font = `900 48px 'monalqo', sans-serif`;
+        // Font weight 400 to match monalqo's registered metadata
+        ctx.font = `400 48px ${this.FONT_STACK}`;
         ctx.fillText(`+${pointsEarned}`, contentX, 70);
 
         ctx.fillStyle = this.COLORS.TEXT_SECONDARY;
-        ctx.font = `800 12px 'monalqo', sans-serif`;
+        ctx.font = `400 12px ${this.FONT_STACK}`;
         ctx.letterSpacing = '1.8px';
         ctx.fillText('ARCADE CREDITS EARNED', contentX, 90);
 
         // 4. Statistics Row (Dynamic Pills)
-        const statsY = 114; // Raised to balance vertical gap between text and bottom panel
-        const pillStartX = contentX - 8; // Offset the pill background left so the text aligns with the paragraph
+        const statsY = 114; 
+        const pillStartX = contentX - 8; 
         
-        // A. Streak Pill
-        const streakText = `${streak} DAYS STREAK`.toUpperCase();
-        ctx.font = `900 10px 'monalqo', sans-serif`;
-        ctx.letterSpacing = '1px';
-        const streakTextWidth = ctx.measureText(streakText).width;
-        const streakPillW = streakTextWidth + 20;
+        let currentPillX = pillStartX;
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-        ctx.beginPath();
-        ctx.roundRect(pillStartX, statsY - 14, streakPillW, 22, 5);
-        ctx.fill();
-        
-        ctx.fillStyle = this.COLORS.TEXT_PRIMARY;
-        ctx.fillText(streakText, pillStartX + 10, statsY + 1);
+        // A. Streak Pill (Only show if > 0)
+        if (streak > 0) {
+            const streakText = `${streak} DAYS STREAK`.toUpperCase();
+            ctx.font = `400 10px ${this.FONT_STACK}`;
+            ctx.letterSpacing = '1px';
+            const streakTextWidth = ctx.measureText(streakText).width;
+            const streakPillW = streakTextWidth + 20;
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+            ctx.beginPath();
+            ctx.roundRect(currentPillX, statsY - 14, streakPillW, 22, 5);
+            ctx.fill();
+            
+            ctx.fillStyle = this.COLORS.TEXT_PRIMARY;
+            ctx.fillText(streakText, currentPillX + 10, statsY + 1);
+            currentPillX += streakPillW + 8;
+        } else {
+            // Optional: Show "ACTIVE PATRON" if no streak
+            const statusText = "ACTIVE PATRON";
+            ctx.font = `400 10px ${this.FONT_STACK}`;
+            ctx.letterSpacing = '1px';
+            const statusWidth = ctx.measureText(statusText).width;
+            const statusPillW = statusWidth + 20;
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.beginPath();
+            ctx.roundRect(currentPillX, statsY - 14, statusPillW, 22, 5);
+            ctx.fill();
+            
+            ctx.fillStyle = this.COLORS.TEXT_MUTED;
+            ctx.fillText(statusText, currentPillX + 10, statsY + 1);
+            currentPillX += statusPillW + 8;
+        }
 
         // B. Bonus Pill (Dynamic)
-        let bonusPillW = 0;
         if (streakBonus > 0) {
             const bonusText = `+${streakBonus} BONUS`.toUpperCase();
-            ctx.font = `800 10px 'monalqo', sans-serif`;
+            ctx.font = `400 10px ${this.FONT_STACK}`;
             const bonusTextWidth = ctx.measureText(bonusText).width;
-            bonusPillW = bonusTextWidth + 20;
+            const bonusPillW = bonusTextWidth + 20;
 
             ctx.fillStyle = 'rgba(74, 222, 128, 0.12)';
             ctx.beginPath();
-            ctx.roundRect(pillStartX + streakPillW + 8, statsY - 14, bonusPillW, 22, 5);
+            ctx.roundRect(currentPillX, statsY - 14, bonusPillW, 22, 5);
             ctx.fill();
             
             ctx.fillStyle = this.COLORS.SUCCESS;
-            ctx.fillText(bonusText, pillStartX + streakPillW + 18, statsY + 1);
+            ctx.fillText(bonusText, currentPillX + 10, statsY + 1);
+            currentPillX += bonusPillW + 8;
         }
 
         // C. Precision Pill (Wordle Specialized)
-        if (gameName.toUpperCase() === 'WORDLE' && attempts > 0 && attempts <= 2) {
+        if (normalizedGameName === 'WORDLE' && attempts > 0 && attempts <= 2) {
             const precisionText = attempts === 1 ? 'FLAWLESS' : 'PRECISION';
-            ctx.font = `800 10px 'monalqo', sans-serif`;
+            ctx.font = `400 10px ${this.FONT_STACK}`;
             const precisionTextWidth = ctx.measureText(precisionText).width;
             const precisionPillW = precisionTextWidth + 20;
 
-            const precisionX = pillStartX + streakPillW + (bonusPillW > 0 ? bonusPillW + 16 : 8);
-
-            ctx.fillStyle = attempts === 1 ? 'rgba(255, 215, 0, 0.12)' : 'rgba(139, 92, 246, 0.12)'; // Gold for Flawless, Purple for Precision
+            ctx.fillStyle = attempts === 1 ? 'rgba(255, 215, 0, 0.12)' : 'rgba(139, 92, 246, 0.12)'; 
             ctx.beginPath();
-            ctx.roundRect(precisionX, statsY - 14, precisionPillW, 22, 5);
+            ctx.roundRect(currentPillX, statsY - 14, precisionPillW, 22, 5);
             ctx.fill();
             
             ctx.fillStyle = attempts === 1 ? '#FFD700' : '#8B5CF6'; 
-            ctx.fillText(precisionText, precisionX + 10, statsY + 1);
+            ctx.fillText(precisionText, currentPillX + 10, statsY + 1);
         }
 
-        // C. Total Balance
+        // D. Total Balance
         ctx.textAlign = 'right';
         ctx.fillStyle = this.COLORS.TEXT_MUTED;
-        ctx.font = `700 11px 'monalqo', sans-serif`;
+        ctx.font = `400 11px ${this.FONT_STACK}`;
         ctx.letterSpacing = '0.5px';
         ctx.fillText(`BALANCE: ${totalPoints.toLocaleString()} PTS`, this.WIDTH - 30, statsY + 1);
 
-        // 5. Game ID
+        // 5. Game ID (Ghost Text)
         ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.font = `900 36px 'monalqo', sans-serif`;
-        ctx.fillText(gameName.toUpperCase(), this.WIDTH - 30, 55);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; 
+        ctx.font = `400 34px ${this.FONT_STACK}`;
+        ctx.letterSpacing = '4px'; 
+        ctx.fillText(normalizedGameName, this.WIDTH - 15, 45);
 
         return canvas.toBuffer('image/webp', { quality: 95 });
     }

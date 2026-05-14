@@ -265,7 +265,7 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
             // V2: Protect the private attempt by removing the image entirely at game end.
             privateContent = `🏁 **Archive Synchronized.** Your decoding session for today has been successfully archived. You may now dismiss this console to protect your attempt data. ♡`;
         } else {
-            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData });
+            const bufferPersonal = await wordleGenerator.generateBoard(gameState, { anonymize: false, user: userData, guildId: interaction.guildId });
             personalAttachments.push(new AttachmentBuilder(bufferPersonal, { name: 'wordle-personal.png' }));
         }
  
@@ -313,7 +313,8 @@ const updateWordleViews = async (interaction, gameState, user, options = {}) => 
                 const bufferAnon = await wordleGenerator.generateBoard(gameState, { 
                     anonymize: true, 
                     user: userData,
-                    otherGames: otherGames
+                    otherGames: otherGames,
+                    guildId: interaction.guildId
                 });
                 
                 await channel.messages.edit(gameState.publicMessageId, {

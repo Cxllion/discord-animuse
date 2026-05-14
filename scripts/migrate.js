@@ -276,6 +276,9 @@ const initializeDatabase = async () => {
                 status text,
                 posted_at timestamp with time zone DEFAULT now()
             );
+            ALTER TABLE public.activity_posted ENABLE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS "Enable all access for service role on activity_posted" ON public.activity_posted;
+            CREATE POLICY "Enable all access for service role on activity_posted" ON public.activity_posted FOR ALL TO service_role USING (true) WITH CHECK (true);
         `);
         // Migration Harden
         try {
@@ -499,6 +502,45 @@ const initializeDatabase = async () => {
 
             DROP POLICY IF EXISTS "Enable all access for service role on connect4_history" ON public.connect4_history;
             CREATE POLICY "Enable all access for service role on connect4_history" ON public.connect4_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            -- 15c. TicTacToe Tables
+            CREATE TABLE IF NOT EXISTS public.tictactoe_sessions (
+                id TEXT PRIMARY KEY,
+                player1 TEXT NOT NULL,
+                player2 TEXT NOT NULL,
+                board JSONB NOT NULL,
+                current_turn TEXT,
+                status TEXT DEFAULT 'PLAYING',
+                winner TEXT,
+                winning_tiles JSONB DEFAULT '[]'::jsonb,
+                moves INTEGER DEFAULT 0,
+                public_message_id TEXT,
+                public_channel_id TEXT,
+                last_move_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                history JSONB DEFAULT '[]'::jsonb,
+                last_move_coord JSONB,
+                guild_id TEXT,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.tictactoe_history (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                player1_id TEXT NOT NULL,
+                player2_id TEXT NOT NULL,
+                winner_id TEXT,
+                date DATE NOT NULL,
+                points_awarded INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE public.tictactoe_sessions ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE public.tictactoe_history ENABLE ROW LEVEL SECURITY;
+
+            DROP POLICY IF EXISTS "Enable all access for service role on tictactoe_sessions" ON public.tictactoe_sessions;
+            CREATE POLICY "Enable all access for service role on tictactoe_sessions" ON public.tictactoe_sessions FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+            DROP POLICY IF EXISTS "Enable all access for service role on tictactoe_history" ON public.tictactoe_history;
+            CREATE POLICY "Enable all access for service role on tictactoe_history" ON public.tictactoe_history FOR ALL TO service_role USING (true) WITH CHECK (true);
         `);
 
         // 16. Suggestions Table

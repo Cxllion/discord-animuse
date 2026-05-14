@@ -14,7 +14,7 @@ class Connect4Service {
     /**
      * Start a new Connect4 session.
      */
-    async startNewGame(player1Id, player2Id) {
+    async startNewGame(player1Id, player2Id, guildId) {
         if (!supabase) return null;
 
         // Active Session Blocking: Prevent concurrent games
@@ -55,7 +55,8 @@ class Connect4Service {
             startedAt: new Date().toISOString(),
             moves: 0,
             winningTiles: [],
-            history: []
+            history: [],
+            guildId: guildId
         };
         
         await this.saveSession(gameState.id, gameState);
@@ -115,6 +116,7 @@ class Connect4Service {
                     last_move_at: state.lastMoveAt || new Date().toISOString(),
                     history: state.history || [],
                     last_move_coord: state.lastMoveCoord || null,
+                    guild_id: state.guildId || null,
                     updated_at: new Date().toISOString()
                 });
         } catch (err) {
@@ -167,12 +169,12 @@ class Connect4Service {
                 game.winner = userId;
                 game.winningTiles = win.tiles;
                 
-                const reward = await minigameService.recordConnect4Result(p1, p2, userId, game.moves);
+                const reward = await minigameService.recordConnect4Result(p1, p2, userId, game.moves, { guildId: game.guild_id || game.guildId });
                 game.reward = reward;
             } else if (!connect4Engine.canEitherPlayerWin(game.board)) {
                 game.status = 'DRAW';
                 game.winner = null;
-                await minigameService.recordConnect4Result(p1, p2, null, game.moves);
+                await minigameService.recordConnect4Result(p1, p2, null, game.moves, { guildId: game.guild_id || game.guildId });
             } else {
                 game.current_turn = userId === p1 ? p2 : p1;
             }
@@ -239,8 +241,8 @@ class Connect4Service {
             p1, 
             p2, 
             winnerId, 
-            isEarlyForfeit ? 0 : moveCount, // Passing 0 moves if early to signal no points logic if needed, or just let recordConnect4Result handle it
-            { isForfeit: true, isEarly: isEarlyForfeit }
+            isEarlyForfeit ? 0 : moveCount, 
+            { isForfeit: true, isEarly: isEarlyForfeit, guildId: game.guild_id || game.guildId }
         );
 
         game.reward = reward;

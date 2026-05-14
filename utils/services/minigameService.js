@@ -41,13 +41,11 @@ class MinigameService {
      */
     async awardPoints(userId, amount, options = {}) {
         if (!supabase) return;
-        const { gameId = 'generic', metadata = {}, score = amount } = options;
+        const { gameId = 'generic', metadata = {}, score = amount, guildId } = options;
 
         try {
             // 1. Update Specific Game Stats (High Score, Total Plays)
-            // We use upsert with a unique constraint on (user_id, game_id)
             try {
-                // Skip if table is known to be missing in this environment
                 const { data: existingStats } = await supabase
                     .from('minigame_stats')
                     .select('high_score, total_plays, wins, metadata')
@@ -105,6 +103,14 @@ class MinigameService {
             } else {
                 logger.info(`[ArcadeProtocol] Awarded ${amount} pts to ${userId} for [${gameId}]. Global: ${newTotalPoints}`);
             }
+
+            // 3. Leveling Integration (New: Award XP for participating)
+            if (guildId) {
+                const leveling = require('./leveling');
+                // Award a fixed small amount of XP for playing (bonus if it was a win)
+                const xpToAward = options.isWin ? 30 : 15; 
+                await leveling.addXp(userId, guildId).catch(e => logger.warn(`[ArcadeProtocol] Leveling sync failed for ${userId}: ${e.message}`));
+            }
             
             return {
                 totalPoints: newTotalPoints,
@@ -121,7 +127,7 @@ class MinigameService {
      * Record a Wordle result with the new 10/8/6/5/2 Point System and Streak logic.
      */
     async recordWordleResult(userId, guesses, solved, date = null, options = {}) {
-        const { isTimeout = false } = options;
+        const { isTimeout = false, guildId } = options;
         if (!supabase) return;
         const today = date || this.getWordleDate();
 
@@ -243,7 +249,8 @@ class MinigameService {
             gameId: 'wordle', 
             isWin: solved, 
             score: solved ? (100 / (solvedOrder || 1)) : 0,
-            metadata: { streak: streak } 
+            metadata: { streak: streak },
+            guildId: guildId
         });
 
         return {
@@ -780,6 +787,7 @@ class MinigameService {
      */
     async recordConnect4Result(p1Id, p2Id, winnerId, moves = 0, options = {}) {
         if (!supabase) return { pointsAwarded: 0 };
+        const { guildId } = options;
         const today = this.getWordleDate();
         
         let pointsAwarded = 0;
@@ -804,13 +812,13 @@ class MinigameService {
                 if (count < 3) {
                     // Standard points for natural win or late forfeit
                     pointsAwarded = moves <= 10 ? 5 : 3;
-                    await this.awardPoints(winnerId, pointsAwarded, { gameId: 'connect4', isWin: true });
+                    await this.awardPoints(winnerId, pointsAwarded, { gameId: 'connect4', isWin: true, guildId });
                 } else {
                     // Still record the game played stat
-                    await this.awardPoints(winnerId, 0, { gameId: 'connect4', isWin: true });
+                    await this.awardPoints(winnerId, 0, { gameId: 'connect4', isWin: true, guildId });
                 }
                 // Always record participation for loser
-                await this.awardPoints(loserId, 0, { gameId: 'connect4' });
+                await this.awardPoints(loserId, 0, { gameId: 'connect4', guildId });
             } catch (err) {
                 // If table doesn't exist yet, we still record but skip the limit check
                 logger.error(`[ArcadeProtocol] Failed to check Connect4 limits: ${err.message}`);
@@ -853,6 +861,78 @@ class MinigameService {
             totalPoints: scoreData?.total_points || 0 
         };
     }
+
+    /**
+     * Record a Tic Tac Toe result.
+     * Rule: Max 3 point-yielding games against the same opponent per day.
+     * Points: 1 point per win.
+     */
+    async recordTicTacToeResult(p1Id, p2Id, winnerId, options = {}) {
+        if (!supabase) return { pointsAwarded: 0 };
+        const { guildId } = options;
+        const today = this.getWordleDate();
+        
+        let pointsAwarded = 0;
+        const isSelfPlay = p1Id === p2Id;
+        
+        if (winnerId && !isSelfPlay) {
+            const loserId = winnerId === p1Id ? p2Id : p1Id;
+
+            try {
+                // Check how many times winnerId has won against loserId today
+                const { count } = await supabase
+                    .from('tictactoe_history')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('winner_id', winnerId)
+                    .eq('date', today)
+                    .or(`player1_id.eq.${loserId},player2_id.eq.${loserId}`);
+
+                if (count < 3) {
+                    pointsAwarded = 1;
+                    await this.awardPoints(winnerId, pointsAwarded, { gameId: 'tictactoe', isWin: true, guildId });
+                } else {
+                    await this.awardPoints(winnerId, 0, { gameId: 'tictactoe', isWin: true, guildId });
+                }
+                await this.awardPoints(loserId, 0, { gameId: 'tictactoe', guildId });
+            } catch (err) {
+                logger.error(`[ArcadeProtocol] Failed to check TicTacToe limits: ${err.message}`);
+            }
+        } else if (winnerId && isSelfPlay) {
+            await this.awardPoints(winnerId, 0, { gameId: 'tictactoe', isWin: true });
+            const loserId = winnerId === p1Id ? p2Id : p1Id;
+            await this.awardPoints(loserId, 0, { gameId: 'tictactoe' });
+        } else {
+            // Draw
+            await this.awardPoints(p1Id, 0, { gameId: 'tictactoe' });
+            await this.awardPoints(p2Id, 0, { gameId: 'tictactoe' });
+        }
+
+        try {
+            await supabase
+                .from('tictactoe_history')
+                .insert({
+                    player1_id: p1Id,
+                    player2_id: p2Id,
+                    winner_id: winnerId,
+                    date: today,
+                    points_awarded: pointsAwarded
+                });
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to save TicTacToe history: ${err.message}`);
+        }
+
+        const { data: scoreData } = await supabase
+            .from('minigame_scores')
+            .select('total_points')
+            .eq('user_id', winnerId || p1Id)
+            .maybeSingle();
+
+        return { 
+            pointsAwarded, 
+            totalPoints: scoreData?.total_points || 0 
+        };
+    }
+
     /**
      * getArcadeStats: Unified fetch for the Arcade Passport.
      */

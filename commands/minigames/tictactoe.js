@@ -1,22 +1,16 @@
-const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
-const connect4Service = require('../../utils/services/connect4Service');
-const connect4Generator = require('../../utils/generators/connect4Generator');
+const { SlashCommandBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { fetchConfig } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
-// Simple in-memory cooldown to prevent challenge spam
 const challengeCooldowns = new Set();
 
-/**
- * Connect4 Command: Tactical Link initialization.
- */
 module.exports = {
     category: 'minigames',
     dbRequired: true,
     cooldown: 15,
     data: new SlashCommandBuilder()
-        .setName('connect4')
-        .setDescription('Initialize a Tactical Link (Connect 4) challenge against another patron.')
+        .setName('tictactoe')
+        .setDescription('Initialize a Tactical Link (Tic Tac Toe) challenge against another patron.')
         .addUserOption(option => 
             option.setName('opponent')
             .setDescription('The patron to challenge')
@@ -38,7 +32,6 @@ module.exports = {
             const isAdmin = interaction.member?.permissions.has('Administrator');
             const isSelfBotChallenge = opponent.id === interaction.client.user.id && isAdmin;
 
-            // 1. Validation Checks
             if (opponent.bot && !isSelfBotChallenge) {
                 return await interaction.reply({ 
                     content: '🤖 **Protocol Error:** Automated entities cannot participate in the Tactical Link.', 
@@ -53,7 +46,6 @@ module.exports = {
                 });
             }
 
-            // 2. Arcade Protocol: Channel Verification
             const config = await fetchConfig(interaction.guildId);
             const isArcadeChannel = config?.arcade_channel_id && interaction.channelId === config.arcade_channel_id;
 
@@ -64,7 +56,6 @@ module.exports = {
                         flags: [MessageFlags.Ephemeral]
                     });
                 }
-                // Admin bypass nudge
                 await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
                 await interaction.editReply({
                     content: `⚠️ **Admin Bypass Active**: Initializing terminal outside of the designated Arcade wing. It is recommended to use <#${config.arcade_channel_id}>. ♡`
@@ -73,7 +64,6 @@ module.exports = {
                 await interaction.deferReply();
             }
 
-            // 2.5 Permission Guard
             const requiredPerms = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles];
             if (interaction.guild && !interaction.appPermissions?.has(requiredPerms)) {
                 return await (interaction.deferred ? interaction.editReply : interaction.reply)({
@@ -82,28 +72,26 @@ module.exports = {
                 });
             }
 
-            // 3. Arcade Protocol: Invitation Phase
-            const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+            const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`${prefix}_accept_${challengerId}_${opponent.id}`).setLabel('Accept').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId(`${prefix}_decline_${challengerId}_${opponent.id}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
-            const inviteMessage = `🌸 **TACTICAL LINK: INVITATION RECEIVED**\n\nThe patron <@${challengerId}> is requesting to establish a **Connect Muse** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
-
-            const payload = {
+            const inviteMessage = `🌸 **TACTICAL LINK: INVITATION RECEIVED**\n\nThe patron <@${challengerId}> is requesting to establish a **Tic Tac Toe** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 1 Arcade Point\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
+            const msgOptions = {
                 content: `👋 <@${opponent.id}>, a new link request has arrived.\n\n${inviteMessage}`,
                 components: [row]
             };
 
             if (interaction.deferred) {
-                await interaction.editReply(payload);
+                await interaction.editReply(msgOptions);
             } else {
-                await interaction.reply(payload);
+                await interaction.reply(msgOptions);
             }
 
         } catch (error) {
-            logger.error('[Connect4] Command Execution Failed:', error);
+            logger.error('[TicTacToe] Command Execution Failed:', error);
             const response = { 
                 content: `❌ **Protocol Failure:** ${error.message}`, 
                 flags: [MessageFlags.Ephemeral] 

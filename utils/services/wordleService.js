@@ -19,7 +19,7 @@ class WordleService {
     /**
      * Starts a new Wordle session for a user.
      */
-    async startNewGame(userId) {
+    async startNewGame(userId, guildId) {
         try {
             // 1. Check if already played today (Finished Game)
             const hasPlayed = await minigameService.hasPlayedToday(userId);
@@ -56,7 +56,8 @@ class WordleService {
                 status: 'PLAYING',
                 startedAt: Date.now(),
                 publicMessageId: null,
-                publicChannelId: null
+                publicChannelId: null,
+                guildId: guildId
             };
 
             // 4. Save to Database
@@ -101,7 +102,7 @@ class WordleService {
 
             // If game ended, record result and clear session
             if (game.status !== 'PLAYING') {
-                const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON', game.date);
+                const solveData = await minigameService.recordWordleResult(userId, game.guesses, game.status === 'WON', game.date, { guildId: game.guildId });
                 game.reward = solveData; 
                 await minigameService.clearWordleSession(userId);
             } else {
@@ -124,7 +125,7 @@ class WordleService {
             if (!game || game.status !== 'PLAYING') return null;
 
             game.status = 'LOST';
-            const solveData = await minigameService.recordWordleResult(userId, game.guesses, false, game.date);
+            const solveData = await minigameService.recordWordleResult(userId, game.guesses, false, game.date, { guildId: game.guildId });
             game.reward = solveData;
             
             await minigameService.clearWordleSession(userId);

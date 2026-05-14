@@ -159,12 +159,7 @@ const handleConnect4Interaction = async (interaction) => {
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
             const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
 
-            // Directly build and send the invite — avoids cooldown + mock-interaction bugs
-            const inviteEmbed = new EmbedBuilder()
-                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
-                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
-                .setColor(0xFFB7C5)
-                .setFooter({ text: 'Awaiting biometric authorization...' });
+            const inviteMessage = `🌸 **TACTICAL LINK: REMATCH REQUESTED**\n\n<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
 
             const rematchRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
@@ -176,8 +171,7 @@ const handleConnect4Interaction = async (interaction) => {
 
             // Send fresh invite to channel
             await interaction.channel.send({
-                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
-                embeds: [inviteEmbed],
+                content: `👋 <@${opponentId}>, a rematch request has arrived!\n\n${inviteMessage}`,
                 components: [rematchRow]
             });
 
@@ -196,7 +190,7 @@ const handleConnect4Interaction = async (interaction) => {
             try {
                 // Fetch User Data for Caching
 
-                const gameState = await connect4Service.startNewGame(challengerId, opponentId);
+                const gameState = await connect4Service.startNewGame(challengerId, opponentId, interaction.guildId);
                 
                 if (!gameState) {
                     throw new Error('FAILED_TO_START: Service returned null session.');
@@ -328,10 +322,9 @@ const updateConnect4Views = async (interaction, gameState) => {
             }).catch(() => {});
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(gameState.status === 'PLAYING' ? 0xFFB7C5 : (gameState.status === 'WON' ? 0xFFD700 : 0x71717A))
-            .setImage(`attachment://${attachment.name}`)
-            .setFooter({ text: `Protocol Sequence: ${gameState.moves} moves | 2-minute move limit enforced` });
+        if (gameState.status === 'PLAYING') {
+            content += `\n*Protocol Sequence: ${gameState.moves} moves | 2-minute move limit enforced*`;
+        }
 
         // Build Interface
         const components = [];
@@ -366,7 +359,6 @@ const updateConnect4Views = async (interaction, gameState) => {
         // Update the message
         const payload = {
             content: content,
-            embeds: [embed],
             files: [attachment],
             attachments: [], 
             components: components
@@ -387,7 +379,9 @@ const updateConnect4Views = async (interaction, gameState) => {
             const toastBuffer = await toastGenerator.generateSuccessSlip({
                 user: winnerData,
                 pointsEarned: gameState.reward.pointsAwarded,
-                totalPoints: gameState.reward.totalPoints
+                totalPoints: gameState.reward.totalPoints,
+                gameName: 'CONNECT4',
+                color: winnerData.color // Passing theme color if available
             });
             await interaction.channel.send({
                 files: [new AttachmentBuilder(toastBuffer, { name: 'victory-slip.webp' })]
