@@ -281,7 +281,11 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         
         let verb = isManga ? 'READ' : 'WATCHED';
         if (lStatus.includes('completed')) {
-            verb = 'FINISHED';
+            if (g.progress.length > 1) {
+                verb = binge ? (isManga ? 'BINGE READ AND FINISHED' : 'BINGED AND FINISHED') : (isManga ? 'READ AND FINISHED' : 'WATCHED AND FINISHED');
+            } else {
+                verb = 'FINISHED';
+            }
         } else if (lStatus.includes('dropped')) {
             verb = 'DROPPED';
         } else if (lStatus.includes('paused')) {
