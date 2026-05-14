@@ -16,10 +16,10 @@ const { pulseUserActivity } = require('../utils/services/scheduler');
 // Issue 15: Named constant so archive duration is easy to locate and make configurable
 const GALLERY_THREAD_ARCHIVE_DURATION = 1440; // 24 hours (Discord: 60, 1440, 4320, 10080)
 
-// Issue 19: Expanded to cover common anime/media sharing sites beyond just Tenor/Giphy
-const GALLERY_MEDIA_REGEX = /(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?/i;
+// Issue 19: Comprehensive media detection for images, videos, and social embeds
+const GALLERY_MEDIA_REGEX = /(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm|mkv|avi|flv|wmv)(\?[^\s]*)?/i;
 const DISCORD_CDN_REGEX = /cdn\.discordapp\.com|media\.discordapp\.net/i;
-const GIF_SITE_REGEX = /tenor\.com|giphy\.com|imgur\.com|i\.redd\.it|gfycat\.com|catbox\.moe|pbs\.twimg\.com|i\.pximg\.net/i;
+const SOCIAL_MEDIA_REGEX = /tenor\.com|giphy\.com|imgur\.com|i\.redd\.it|v\.redd\.it|gfycat\.com|catbox\.moe|pbs\.twimg\.com|i\.pximg\.net|youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|twitch\.tv/i;
 // ────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -97,9 +97,10 @@ module.exports = {
         const galleryIds = (config.gallery_channel_ids || []).map(String);
         if ((botType === 'core' || botType === 'test') && !isSelfTest && galleryIds.includes(String(message.channel.id))) {
             const hasMedia = message.attachments.size > 0 ||
+                             message.stickers.size > 0 ||
                              GALLERY_MEDIA_REGEX.test(message.content) ||
                              DISCORD_CDN_REGEX.test(message.content) ||
-                             GIF_SITE_REGEX.test(message.content);
+                             SOCIAL_MEDIA_REGEX.test(message.content);
 
             if (hasMedia) {
                 // Valid post: Create thread
@@ -131,10 +132,10 @@ module.exports = {
 
                         // Issue 16: Warning embed has a proper title and footer branding
                         const embed = baseEmbed()
-                            .setTitle('📵 Gallery Violation')
-                            .setDescription(`I'm sorry, **${userTitle}**, but this wing of the gallery is for visual archives only. Please keep the library tidy for other **Readers**! ♡\n\n*(Use the threads for conversation!)*`)
-                            .setColor(CONFIG.COLORS.GALLERY) // Issue 3: Now defined in config
-                            .setFooter({ text: CONFIG.THEME.FOOTER });
+                            .setTitle('🏮 Gallery Protocol')
+                            .setDescription(`I'm sorry, **${userTitle}**, but this wing of the archives is reserved for visual records only. Please keep the library tidy for other **Readers**! ♡\n\n*(Use the threads below posts for conversation!)*`)
+                            .setColor(CONFIG.COLORS.PRIMARY)
+                            .setFooter({ text: 'Archives Cleanliness Policy • ' + CONFIG.THEME.FOOTER });
 
                         const warning = await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed] });
 

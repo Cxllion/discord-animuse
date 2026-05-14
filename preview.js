@@ -163,9 +163,9 @@ const generators = {
 
         const baseActivity = {
             media: {
-                title: { english: 'Code Geass: Lelouch of the Rebellion', romaji: 'Code Geass: Hangyaku de Lelouch' },
-                coverImage: { extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1575-YI646R5i4dK9.png', color: '#8B5CF6' },
-                bannerImage: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1575-S7X0mZfY7YIu.jpg',
+                title: { english: 'One Piece', romaji: 'One Piece' },
+                coverImage: { extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-YCD308643198.jpg', color: '#8B5CF6' },
+                bannerImage: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-63043198.jpg',
                 averageScore: 87,
                 format: 'TV'
             },
