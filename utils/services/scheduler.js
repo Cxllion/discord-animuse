@@ -1,6 +1,5 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const { generateAiringCard } = require('../generators/airingGenerator');
-const { watchInteraction } = require('../handlers/interactionManager');
 const { queryAnilist, getUserActivity, getUserMediaScore } = require('./anilistService');
 const {
     getAllTrackersForAnime,
@@ -18,9 +17,7 @@ const { generateActivityCard } = require('../generators/activityGenerator');
 const { wasPostedInDB, markPostedInDB, findRecentActivityPostInDB, clearOldActivityPostsInDB } = require('./userService');
 const logger = require('../core/logger');
 const CONFIG = require('../config');
-const minigameService = require('./minigameService');
-const wordleService = require('./wordleService');
-const connect4Service = require('./connect4Service');
+// NOTE: minigameService, wordleService, connect4Service are lazy-required inside their functions (#19)
 
 // Batch size for AniList queries to avoid hitting complexity limits
 const BATCH_SIZE = 50;
@@ -42,27 +39,31 @@ const checkAiringAnime = async (client) => {
     if (isAiringPolling) return;
     isAiringPolling = true;
 
+    // #1: Track whether any real work was done so telemetry isn't misleadingly stamped on idle polls
+    let didWork = false;
     try {
         const monitorIds = await getAnimeDueForUpdate();
         if (monitorIds.length === 0) return;
 
+        didWork = true;
         for (let i = 0; i < monitorIds.length; i += BATCH_SIZE) {
             const batch = monitorIds.slice(i, i + BATCH_SIZE);
             await processBatch(client, batch);
         }
     } finally {
         isAiringPolling = false;
-        lastAiringPulse = Date.now();
+        if (didWork) lastAiringPulse = Date.now(); // #1: Only stamp when work was done
     }
 };
 
 const processBatch = async (client, ids) => {
+    // #12: Use edges (not nodes) so airingGenerator can access isMain + node.name
     const query = `
     query ($ids: [Int]) {
         Page {
             media(id_in: $ids, type: ANIME) {
-                id status title { romaji english } coverImage { extraLarge large color }
-                bannerImage format genres studios { nodes { name } } siteUrl
+                id status episodes title { romaji english } coverImage { extraLarge large color }
+                bannerImage format genres studios { edges { isMain node { name } } } siteUrl
                 nextAiringEpisode { episode airingAt timeUntilAiring }
             }
         }
@@ -79,15 +80,26 @@ const processBatch = async (client, ids) => {
             const knownLastEpisode = trackedState ? trackedState.last_episode : 0;
             const nextAiringDate = nextEp ? new Date(nextEp.airingAt * 1000).toISOString() : null;
 
-            if (!nextEp || nextEp.timeUntilAiring > 1200) {
-                if (nextAiringDate) await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
-                else if (media.status === 'FINISHED') await removeAllTrackersForAnime(media.id);
+            // #5: Guard threshold raised to 1800s (30 min) to match the query window
+            if (!nextEp || nextEp.timeUntilAiring > 1800) {
+                if (nextAiringDate) {
+                    await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
+                } else if (media.status === 'FINISHED') {
+                    // #3: Only clean up if total episodes are known AND the finale was already notified
+                    if (media.episodes && knownLastEpisode >= media.episodes) {
+                        await removeAllTrackersForAnime(media.id);
+                    } else {
+                        // Unknown episode count or finale not yet sent — preserve state, do not delete
+                        await updateTrackedAnimeState(media.id, knownLastEpisode, null);
+                    }
+                }
                 continue;
             }
 
             if (nextEp.episode > knownLastEpisode) {
-                await sendNotifications(client, media, nextEp);
+                // #2: Update state FIRST to prevent duplicate notifications from concurrent polls
                 await updateTrackedAnimeState(media.id, nextEp.episode, nextAiringDate);
+                await sendNotifications(client, media, nextEp);
             } else {
                 await updateTrackedAnimeState(media.id, knownLastEpisode, nextAiringDate);
             }
@@ -110,41 +122,64 @@ const sendNotifications = async (client, media, episode, options = {}) => {
         if (sub.user_id) entriesByGuild[sub.guild_id].push(sub.user_id);
     }
 
-    let attachment = null;
-    try {
-        const buffer = await generateAiringCard(media, episode);
-        attachment = new AttachmentBuilder(buffer, { name: media.isAdult ? `SPOILER_airing-${media.id}.webp` : `airing-${media.id}.webp` });
-    } catch (e) {
-        logger.error('Failed to generate airing card:', e, 'Scheduler');
-    }
-
     for (const [guildId, userIds] of Object.entries(entriesByGuild)) {
         try {
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) continue;
 
             const config = await fetchConfig(guildId);
-            const channel = await guild.channels.fetch(options.forceChannelId || config?.airing_channel_id).catch(() => null);
-            if (!channel) continue;
+            const channelId = options.forceChannelId || config?.airing_channel_id;
 
+            // #6: Log when a guild has no airing channel configured instead of silently skipping
+            if (!channelId) {
+                logger.warn(`[Scheduler] Guild ${guildId} (${guild.name}) has no airing_channel_id configured — notification skipped.`, 'Scheduler');
+                continue;
+            }
+
+            const channel = await guild.channels.fetch(channelId).catch(() => null);
+            if (!channel) {
+                logger.warn(`[Scheduler] Could not fetch airing channel ${channelId} in guild ${guildId} (${guild.name}) — notification skipped.`, 'Scheduler');
+                continue;
+            }
+
+            // #16: Build per-guild tracker HUD data (capped at first 5 subscribers)
+            let trackerData = [];
+            try {
+                trackerData = (await Promise.all(
+                    userIds.slice(0, 5).map(async (uid) => {
+                        const member = await guild.members.fetch(uid).catch(() => null);
+                        return member ? {
+                            avatarURL: member.user.displayAvatarURL({ extension: 'png', size: 64 }),
+                            displayName: member.displayName,
+                            level: 0
+                        } : null;
+                    })
+                )).filter(Boolean);
+            } catch (e) {
+                logger.warn(`[Scheduler] Tracker HUD fetch failed for guild ${guildId}: ${e.message}`, 'Scheduler');
+            }
+
+            // Generate airing card with per-guild tracker avatars
+            let attachment = null;
+            try {
+                const buffer = await generateAiringCard(media, episode, trackerData);
+                attachment = new AttachmentBuilder(buffer, { name: media.isAdult ? `SPOILER_airing-${media.id}.webp` : `airing-${media.id}.webp` });
+            } catch (e) {
+                logger.error('Failed to generate airing card:', e, 'Scheduler');
+            }
+
+            // #18: track_add_ is now handled persistently by the router in trackHandlers.js
+            // — no watchInteraction needed; the button works indefinitely
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setLabel('View on AniList').setStyle(ButtonStyle.Link).setURL(media.siteUrl || `https://anilist.co/anime/${media.id}`),
                 new ButtonBuilder().setCustomId(`track_add_${media.id}`).setLabel('Track +').setStyle(ButtonStyle.Primary)
             );
 
-            const msg = await channel.send({
+            await channel.send({
                 content: userIds.length > 0 ? userIds.map(uid => `<@${uid}>`).join(' ') : '',
                 files: attachment ? [attachment] : [],
                 components: [row]
             });
-
-            watchInteraction(msg, 600000, async (i) => {
-                if (i.customId === `track_add_${media.id}`) {
-                    await i.deferReply({ flags: MessageFlags.Ephemeral });
-                    const res = await addTracker(guildId, i.user.id, media.id, media.title.english || media.title.romaji);
-                    await i.editReply(res.error ? '❌ Failed to start tracking.' : '✅ You are now tracking this series!');
-                }
-            }, [`track_add_${media.id}`]);
         } catch (err) {
             logger.error(`Failed to notify guild ${guildId}:`, err, 'Scheduler');
         }
@@ -176,17 +211,29 @@ const fetchAndGroupUserActivities = async (userRow) => {
         for (const act of activities) {
             if (act.createdAt < cutoff || !act.media || await wasPosted(act.id)) continue;
 
-            const groupKey = `${act.media.id}`;
+            const groupKey = String(act.media.id);
             if (!groups.has(groupKey)) {
                 groups.set(groupKey, { media: act.media, status: act.status, user: act.user, ids: [], progress: [], earliestCreatedAt: act.createdAt });
             }
             const g = groups.get(groupKey);
-            g.ids.push(act.id);
-            if (act.status?.toLowerCase() === 'completed') g.status = 'completed';
-            if (act.progress) g.progress.push(act.progress);
+            
+            // Only push IDs and progress if we haven't seen this specific activity ID in the group yet
+            if (!g.ids.includes(act.id)) {
+                g.ids.push(act.id);
+                if (act.progress) g.progress.push(act.progress);
+            }
+
+            const lowerStatus = (act.status || '').toLowerCase();
+            // Prioritize definitive statuses over generic watch/read progress
+            if (lowerStatus.includes('completed') || lowerStatus.includes('dropped') || lowerStatus.includes('paused') || lowerStatus.includes('plans to') || lowerStatus.includes('repeating')) {
+                g.status = act.status;
+            }
         }
         return Array.from(groups.values());
-    } catch (e) { return []; }
+    } catch (e) {
+        logger.error(`[Activity Feed] Fetch failed for ${userRow.anilist_username}:`, e, 'Scheduler');
+        return [];
+    }
 };
 
 const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
@@ -211,7 +258,14 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
             getUserMediaScore(g.user.id, g.media.id)
         ]);
 
-        const guild = client.guilds.cache.get(guildId);
+        let guild = client.guilds.cache.get(guildId);
+        if (!guild) {
+            guild = await client.guilds.fetch(guildId).catch(() => null);
+        }
+        if (!guild) {
+            logger.debug(`[Activity Feed] Guild ${guildId} not found/cached, skipping card for ${userRow.anilist_username}.`, 'Scheduler');
+            return;
+        }
         const member = guild ? await guild.members.fetch(userRow.user_id).catch(() => null) : null;
         const displayName = member?.displayName || g.user.name;
 
@@ -221,11 +275,29 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
             avatarUrl: [userAvatar.customUrl, member?.user?.displayAvatarURL({ extension: 'png' })].filter(u => u)
         };
 
-        const binge = g.progress.length >= 5;
-        const lStatus = g.status.toLowerCase();
+        const binge = g.progress.length >= 3; // Lowered to 3 for better binge detection
+        const lStatus = (g.status || '').toLowerCase();
         const isManga = g.media.type === 'MANGA';
-        let verb = lStatus.includes('completed') ? 'FINISHED' : (binge ? 'BINGED' : 'WATCHED');
-        if (finalProgress) verb += ` ${isManga ? 'CH' : 'EP'} ${finalProgress}`;
+        
+        let verb = isManga ? 'READ' : 'WATCHED';
+        if (lStatus.includes('completed')) {
+            verb = 'FINISHED';
+        } else if (lStatus.includes('dropped')) {
+            verb = 'DROPPED';
+        } else if (lStatus.includes('paused')) {
+            verb = 'PAUSED';
+        } else if (lStatus.includes('plans to')) {
+            verb = isManga ? 'PLANS TO READ' : 'PLANS TO WATCH';
+        } else if (lStatus.includes('repeating')) {
+            verb = isManga ? 'REREADING' : 'REWATCHING';
+        } else if (binge) {
+            verb = isManga ? 'BINGE READ' : 'BINGED';
+        }
+
+        // Only append EP/CH numbers if it's a progress update, binge, or completion (not paused/planning/dropped)
+        if (finalProgress && !lStatus.includes('dropped') && !lStatus.includes('paused') && !lStatus.includes('plans to')) {
+            verb += ` ${isManga ? 'CH' : 'EP'} ${finalProgress}`;
+        }
 
         const buffer = await generateActivityCard(userMeta, { ...g, progress: finalProgress, score: scoreData?.score || 0, scoreFormat: scoreData?.format || 'POINT_10_DECIMAL', bingeMode: binge, displayVerb: verb });
         const attach = new AttachmentBuilder(buffer, { name: g.media.isAdult ? `SPOILER_act-${g.media.id}.webp` : `act-${g.media.id}.webp` });
@@ -235,9 +307,7 @@ const postGroupedActivity = async (client, guildId, userRow, channel, g) => {
         );
 
         const newMsg = await channel.send({ files: [attach], components: [row] });
-        if (!client.isTestBot) {
-            await markPosted(g.ids, { userId: userRow.user_id, mediaId: g.media.id, channelId: channel.id, messageId: newMsg.id, progress: finalProgress, status: g.status });
-        }
+        await markPosted(g.ids, { userId: userRow.user_id, mediaId: g.media.id, channelId: channel.id, messageId: newMsg.id, progress: finalProgress, status: g.status });
     } catch (e) { logger.error(`[Activity Feed] Card failed for ${userRow.anilist_username}:`, e, 'Scheduler'); }
 };
 
@@ -272,9 +342,18 @@ const checkUserActivity = async (client) => {
     isActivityPolling = true;
 
     try {
-        clearOldActivityPostsInDB().catch(() => null);
+        clearOldActivityPostsInDB().catch(e => logger.debug('[Activity] Cleanup error:', e, 'Scheduler'));
         const guilds = Array.from(client.guilds.cache.values());
-        const CONCURRENCY = 3;
+        
+        // Option B, 1: Add debug log for missed guilds
+        const allConfigs = await require('../core/database').getAllGuildConfigs?.() || [];
+        for (const conf of allConfigs) {
+            if (conf.activity_channel_id && !client.guilds.cache.has(conf.guild_id)) {
+                logger.debug(`[Activity Feed] Guild ${conf.guild_id} has activity feed enabled but is NOT in cache. Skipping poll.`, 'Scheduler');
+            }
+        }
+
+        const CONCURRENCY = CONFIG.ACTIVITY_CONCURRENCY || 3;
         for (let i = 0; i < guilds.length; i += CONCURRENCY) {
             await Promise.allSettled(guilds.slice(i, i + CONCURRENCY).map(g => processGuildActivity(client, g)));
         }
@@ -293,7 +372,10 @@ const pulseUserActivity = async (client, guildId, userRow, channel) => {
         if (!groups.length) return;
         const latest = groups.sort((a,b) => b.earliestCreatedAt - a.earliestCreatedAt)[0];
         await postGroupedActivity(client, guildId, userRow, channel, latest);
-    } catch (e) {}
+    } catch (e) {
+        // #20: Log errors instead of silently swallowing them
+        logger.error(`[pulseUserActivity] Failed for user ${userRow?.user_id} (${userRow?.anilist_username}): ${e.message}`, e, 'Scheduler');
+    }
 };
 
 const syncAllUserTrackers = async (client) => {
@@ -307,12 +389,20 @@ const syncAllUserTrackers = async (client) => {
                 for (const anime of list.filter(m => ['RELEASING', 'NOT_YET_RELEASED'].includes(m.status))) {
                     await addTracker(user.guild_id, user.user_id, anime.id, anime.title.english || anime.title.romaji);
                 }
-            } catch (err) {}
+            } catch (err) {
+                // #9: Log per-user sync failures for observability
+                logger.warn(`[AutoSync] Failed to sync user ${user.user_id} (${user.anilist_username}): ${err.message}`, 'Scheduler');
+            }
         }
-    } catch (e) {}
+    } catch (e) {
+        logger.error('[AutoSync] Fatal error in syncAllUserTrackers:', e, 'Scheduler');
+    }
 };
 
 const checkWordleReset = async (client) => {
+    // #19: Lazy-require minigame modules — not loaded at startup in core bot mode
+    const minigameService = require('./minigameService');
+    const wordleService = require('./wordleService');
     try {
         const today = minigameService.getWordleDate();
         if (!lastWordleDate) {
@@ -330,8 +420,9 @@ const checkWordleReset = async (client) => {
     } catch (e) {}
 };
 
-const checkWordleHousekeeping = async () => { try { await wordleService.cleanupStaleSessions(); } catch (e) {} };
-const checkConnect4Housekeeping = async (client) => { try { await connect4Service.cleanupStaleSessions(client); } catch (e) {} };
+// #19: Lazy-require wordleService and connect4Service inside their functions
+const checkWordleHousekeeping = async () => { try { await require('./wordleService').cleanupStaleSessions(); } catch (e) {} };
+const checkConnect4Housekeeping = async (client) => { try { await require('./connect4Service').cleanupStaleSessions(client); } catch (e) {} };
 
 const getPulseStatus = () => ({ airing: lastAiringPulse, activity: lastActivityPulse, isAiringBusy: isAiringPolling, isActivityBusy: isActivityPolling });
 

@@ -189,11 +189,7 @@ const getAutoSyncUsers = async () => {
     return data || [];
 };
 
-const updateLastActivityId = async (userId, guildId, activityId) => {
-    // This column is missing in Supabase, so we use memory-based tracking for now
-    // to avoid PGRST204 errors until the user runs the schema migration.
-    return;
-};
+
 
 const getActivityCache = async (userId, guildId, mediaId) => {
     // Gracefully handle missing table
@@ -302,7 +298,7 @@ const findRecentActivityPostInDB = async (userId, mediaId, channelId) => {
             .eq('media_id', String(mediaId))
             .eq('channel_id', String(channelId))
             .not('message_id', 'is', null) // Prioritize posts we can actually delete
-            .gt('posted_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // Extended window: 48h for better media deduplication
+            .gt('posted_at', new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()) // Extended window: 72h for better media deduplication
             .order('posted_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -352,7 +348,7 @@ module.exports = {
     getLinkedUsersForFeed,
     getAutoSyncUsers,
     toggleTrackSync,
-    updateLastActivityId,
+
     getActivityCache,
     upsertActivityCache,
     clearActivityCache,

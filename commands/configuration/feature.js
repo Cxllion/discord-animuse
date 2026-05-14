@@ -8,7 +8,8 @@ const {
     getUserBannerConfig: retrieveBannerConfig,
     getLevelRoles,
     updateUserBannerConfig,
-    clearUserBannerGlobally
+    clearUserBannerGlobally,
+    getLinkedUsersForFeed
 } = require('../../utils/core/database');
 const { generateWelcomeCard } = require('../../utils/generators/welcomeGenerator');
 const { generateBingoCard } = require('../../utils/generators/bingoGenerator');
@@ -16,7 +17,7 @@ const { generateProfileCard } = require('../../utils/generators/profileGenerator
 const { getMediaById, getTrendingAnime, getTrendingManga, getTrendingMovies, getAniListProfile } = require('../../utils/services/anilistService');
 const { getUserRank, getLevelProgress } = require('../../utils/services/leveling');
 const { getDynamicUserTitle } = require('../../utils/core/userMeta');
-const { sendNotifications } = require('../../utils/services/scheduler');
+const { sendNotifications, pulseUserActivity } = require('../../utils/services/scheduler');
 const logger = require('../../utils/core/logger');
 const CONFIG = require('../../utils/config');
 
@@ -423,6 +424,23 @@ module.exports = {
 
                 // --- ACTIVITY GRAPHICS TEST ---
                 else if (type === 'activity') {
+                    if (query) {
+                        const targetUserId = query.replace(/[<@!>]/g, '');
+                        const linkedUsers = await getLinkedUsersForFeed(interaction.guild.id);
+                        const userRow = linkedUsers.find(u => u.user_id === targetUserId);
+
+                        if (!userRow) {
+                            return interaction.editReply({ content: `🏮 **Patron <@${targetUserId}> has no linked AniList account in this guild archives.**` });
+                        }
+
+                        await interaction.editReply({ content: `🎬 **Triggering Real Activity Feed Pulse for <@${targetUserId}> (${userRow.anilist_username})...**` });
+                        
+                        // We use the current channel for the test pulse
+                        await pulseUserActivity(interaction.client, interaction.guild.id, userRow, interaction.channel);
+                        
+                        return interaction.followUp({ content: `✅ **Real pipeline test complete.** If new activity was found, it should appear above.` });
+                    }
+
                     await interaction.editReply({ content: '🎨 **Generating All Activity Feed States**...' });
 
                     // Fetch trending items mix

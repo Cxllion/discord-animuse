@@ -59,7 +59,7 @@ const renderTrackList = async (guildId, userId, page = 0) => {
         new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId(`track_untrack_select_${userId}`)
-                .setPlaceholder('Select a record to stop tracking...')
+                .setPlaceholder('Select a record to confirm removal...')
                 .addOptions(optionsArr)
         )
     ];
@@ -188,6 +188,38 @@ const handleTrackInteraction = async (interaction) => {
     try {
         const { customId, user, guild } = interaction;
         
+        // --- 0. Persistent "Track +" button from Airing Cards (#7, #14) ---
+        if (customId.startsWith('track_add_')) {
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            }
+
+            const animeId = parseInt(customId.replace('track_add_', ''));
+            if (isNaN(animeId)) return;
+
+            // #14: Check if user is already tracking before calling addTracker
+            const existing = await getUserTrackedAnime(guild.id, user.id);
+            if (existing.some(s => s.anilist_id === animeId)) {
+                return interaction.editReply({ content: '📖 You are already observing this series — no changes made.' });
+            }
+
+            const media = await getMediaById(animeId);
+            if (!media) {
+                return interaction.editReply({ content: '❌ Could not retrieve details for this series.' });
+            }
+
+            const title = media.title.english || media.title.romaji;
+            const res = await addTracker(guild.id, user.id, animeId, title);
+
+            if (res.error) {
+                return interaction.editReply({ content: '❌ Failed to start tracking. Please try again.' });
+            }
+
+            return interaction.editReply({
+                content: `✅ **Observation Logged**\n\nYou are now tracking **${title}**. I'll notify you whenever a new episode airs.`
+            });
+        }
+
         // --- 1. "Track Anime" Button (from Search Results) ---
         if (customId.startsWith('track_anime_')) {
             try {
@@ -221,11 +253,34 @@ const handleTrackInteraction = async (interaction) => {
             return;
         }
 
-        // --- 2. Track interactions ---
+        // --- 2. Track interactions (controller-gated) ---
         const parts = customId.split('_');
         const action = parts[1];
         const subAction = parts[2];
         const controllerId = parts[3]; 
+
+        // --- 2a. Confirm/Cancel removal (#13) ---
+        // CustomId: track_confirm_remove_userId_animeId  OR  track_cancel_remove_userId
+        if (action === 'confirm' && subAction === 'remove') {
+            const confirmControllerId = parts[3];
+            if (user.id !== confirmControllerId) {
+                return interaction.reply({ content: '🔒 This confirmation belongs to another user.', flags: MessageFlags.Ephemeral });
+            }
+            const animeId = parseInt(parts[4]);
+            await removeTracker(guild.id, user.id, animeId);
+            const payload = await renderTrackList(guild.id, user.id, 0);
+            return interaction.update(payload);
+        }
+
+        if (action === 'cancel' && subAction === 'remove') {
+            const cancelControllerId = parts[3];
+            if (user.id !== cancelControllerId) {
+                return interaction.reply({ content: '🔒 This confirmation belongs to another user.', flags: MessageFlags.Ephemeral });
+            }
+            // Restore the track list
+            const payload = await renderTrackList(guild.id, user.id, 0);
+            return interaction.update(payload);
+        }
 
         if (user.id !== controllerId) {
             return interaction.reply({ 
@@ -236,10 +291,28 @@ const handleTrackInteraction = async (interaction) => {
 
         // A. Standard Personal List Interactions
         if (action === 'untrack') {
+            // #13: Show a confirmation step instead of immediately removing
             const animeId = parseInt(interaction.values[0]);
-            await removeTracker(guild.id, user.id, animeId);
-            const payload = await renderTrackList(guild.id, user.id, 0); 
-            return interaction.update(payload);
+            const subs = await getUserTrackedAnime(guild.id, user.id);
+            const target = subs.find(s => s.anilist_id === animeId);
+            const displayTitle = target?.anime_title || `Series #${animeId}`;
+
+            const confirmRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`track_confirm_remove_${user.id}_${animeId}`)
+                    .setLabel('Confirm Remove')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`track_cancel_remove_${user.id}`)
+                    .setLabel('Cancel')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+            return interaction.update({
+                content: `⚠️ **Remove Confirmation**: Are you sure you want to stop tracking **${displayTitle}**?`,
+                embeds: [],
+                components: [confirmRow]
+            });
         }
 
         if (action === 'prev' || action === 'next') {

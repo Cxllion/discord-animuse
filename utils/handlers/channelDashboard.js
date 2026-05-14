@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, MessageFlags } = require('discord.js');
-const { fetchConfig, assignChannel, getGuildChannelData, pinChannelPosition, pulseChannelActivity } = require('../core/database');
+const { fetchConfig, upsertConfig, assignChannel, getGuildChannelData, pinChannelPosition, pulseChannelActivity } = require('../core/database');
 const baseEmbed = require('../generators/baseEmbed');
 const CONFIG = require('../config');
 
@@ -102,11 +102,12 @@ const handleChannelDashboardInteraction = async (interaction) => {
         const channelId = interaction.values[0];
 
         if (key === 'add_gallery') {
+            // Issue 4: Use upsertConfig so the cache is correctly repopulated, not just invalidated
             const config = await fetchConfig(interaction.guildId);
-            const current = config.gallery_channel_ids || [];
-            if (!current.includes(channelId)) {
-                current.push(channelId);
-                await assignChannel(interaction.guildId, 'gallery_channel_ids', current);
+            const current = (config.gallery_channel_ids || []).map(String);
+            if (!current.includes(String(channelId))) {
+                const updated = [...current, String(channelId)];
+                await upsertConfig(interaction.guildId, { gallery_channel_ids: updated });
             }
         } else {
             await assignChannel(interaction.guildId, key, channelId);
@@ -115,9 +116,46 @@ const handleChannelDashboardInteraction = async (interaction) => {
         return handleAssignmentHub(interaction, true, `✅ Linked **${key}** to <#${channelId}>.`);
     }
 
-    if (customId === 'assign_clear_all') {
-        // Logic to clear all assignments would go here
-        return interaction.reply({ content: '⚠️ Clear All functionality is currently locked for safety.', flags: MessageFlags.Ephemeral });
+    // Issue 5: Remove a single gallery channel from the list
+    if (customId === 'gallery_remove_select') {
+        const channelId = interaction.values[0];
+        const config = await fetchConfig(interaction.guildId);
+        const current = (config.gallery_channel_ids || []).map(String);
+        const updated = current.filter(id => id !== String(channelId));
+        await upsertConfig(interaction.guildId, { gallery_channel_ids: updated });
+        return handleAssignmentHub(interaction, true, `🗑️ Removed <#${channelId}> from the Gallery Wing.`);
+    }
+
+
+    // Issue 14 / Issue 5: Show gallery channel picker for removal
+    if (customId === 'gallery_remove_init') {
+        const config = await fetchConfig(interaction.guildId);
+        const galleries = config.gallery_channel_ids || [];
+
+        if (galleries.length === 0) {
+            return safeUpdate(interaction, {
+                content: '⚠️ No gallery channels are currently assigned.',
+                embeds: [], components: []
+            });
+        }
+
+        const selectRow = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('gallery_remove_select')
+                .setPlaceholder('Select a gallery channel to remove...')
+                .addOptions(
+                    galleries.map(id => ({ label: `Channel ID: ${id}`, value: id, description: `Remove <#${id}> from the gallery network.` }))
+                )
+        );
+        const cancelRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('opt_assignment').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+        );
+
+        return safeUpdate(interaction, {
+            content: '🗑️ **Remove Gallery Channel**: Select the channel to unlink from the gallery wing.',
+            embeds: [],
+            components: [selectRow, cancelRow]
+        });
     }
 
     // --- Sorting Interactivity ---
@@ -186,7 +224,10 @@ const handlePinManagement = async (interaction) => {
 
 const handleAssignmentHub = async (interaction, isUpdate = false, successMsg = null) => {
     const config = await fetchConfig(interaction.guildId);
-    
+    const galleryList = config.gallery_channel_ids?.length
+        ? config.gallery_channel_ids.map(id => `<#${id}>`).join(', ')
+        : '*Not Assigned*';
+
     const embed = baseEmbed()
         .setTitle('🔗 Assignment Hub')
         .setDescription('Link server features to specific channels. This ensures the bot knows exactly where to direct its energy.')
@@ -195,8 +236,9 @@ const handleAssignmentHub = async (interaction, isUpdate = false, successMsg = n
             { name: '💬 Greeting (Text)', value: config.greeting_channel_id ? `<#${config.greeting_channel_id}>` : '*Not Assigned*', inline: true },
             { name: '📜 Manager Logs', value: config.logs_channel_id ? `<#${config.logs_channel_id}>` : '*Not Assigned*', inline: true },
             { name: '📡 Airing Alerts', value: config.airing_channel_id ? `<#${config.airing_channel_id}>` : '*Not Assigned*', inline: true },
+            // Issue 18: Level Milestones was displayed but not assignable from the dashboard
             { name: '✨ Level Milestones', value: config.level_up_channel_id ? `<#${config.level_up_channel_id}>` : '*Not Assigned*', inline: true },
-            { name: '🖼️ Visual Gallery', value: config.gallery_channel_ids?.length ? config.gallery_channel_ids.map(id => `<#${id}>`).join(', ') : '*Not Assigned*', inline: false }
+            { name: '🖼️ Visual Gallery', value: galleryList, inline: false }
         );
 
     if (successMsg) embed.setFooter({ text: successMsg });
@@ -211,13 +253,22 @@ const handleAssignmentHub = async (interaction, isUpdate = false, successMsg = n
                 { label: 'Manager Logs', value: 'logs_channel_id', emoji: '📜' },
                 { label: 'Airing Alerts', value: 'airing_channel_id', emoji: '📡' },
                 { label: 'Archive Mirror', value: 'archive_mirror_channel_id', emoji: '📌' },
+                // Issue 18: Level Milestones now assignable from the dashboard
+                { label: 'Level Milestones', value: 'level_up_channel_id', emoji: '✨' },
                 { label: 'Add Gallery Channel', value: 'add_gallery', emoji: '📸' }
             ])
     );
 
+    // Issue 14: Removed the dead "Clear All" button. Added a usable "Remove Gallery" button.
+    const hasGalleries = config.gallery_channel_ids?.length > 0;
     const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('channel_dash_home').setLabel('Back to Dashboard').setStyle(ButtonStyle.Secondary).setEmoji('🏠'),
-        new ButtonBuilder().setCustomId('assign_clear_all').setLabel('Clear All').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder()
+            .setCustomId('gallery_remove_init')
+            .setLabel('Remove Gallery Channel')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('🗑️')
+            .setDisabled(!hasGalleries) // Disabled when no galleries are assigned
     );
 
     await safeUpdate(interaction, { embeds: [embed], components: [row1, row2] });
@@ -420,8 +471,8 @@ module.exports = {
         prefixes: ['channel_dash_', 'assign_', 'zoning_', 'sorting_', 'pin_', 'execute_assign_'],
         ids: [
             'sorting_toggle', 'sorting_pin', 'channel_dash_home', 'opt_assignment', 'opt_sorting', 
-            'opt_zoning', 'opt_archive', 'opt_home', 'pin_select_channel', 'assign_select_feature', 
-            'assign_clear_all'
+            'opt_zoning', 'opt_archive', 'opt_home', 'pin_select_channel', 'assign_select_feature',
+            'gallery_remove_init', 'gallery_remove_select'
         ],
         handle: handleChannelDashboardInteraction
     }

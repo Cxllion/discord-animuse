@@ -69,7 +69,7 @@ const generateActivityCard = async (userMeta, activityData) => {
             const scale = Math.max(baseW / bgImg.width, baseH / bgImg.height);
             const bx = (baseW - bgImg.width * scale) / 2;
             const by = (baseH - bgImg.height * scale) / 2;
-            ctx.drawImage(bgImg, bx, by, bgImg.width * scale, bgImg.height * scale);
+
             ctx.filter = 'blur(30px) saturate(1.6)';
             ctx.globalAlpha = 0.55;
             ctx.drawImage(bgImg, 0, 0, baseW, baseH);
@@ -168,11 +168,12 @@ const generateActivityCard = async (userMeta, activityData) => {
     const cW = baseW - cX - 40;
 
     // Content shield gradient
-    ctx.save();
     const shield = ctx.createLinearGradient(cX - 44, 0, baseW, 0);
     shield.addColorStop(0, 'rgba(0,0,0,0)');
     shield.addColorStop(0.25, 'rgba(0,0,0,0.45)');
     shield.addColorStop(1, 'rgba(0,0,0,0.65)');
+    ctx.fillStyle = shield;
+    ctx.fillRect(cX - 44, 0, baseW - (cX - 44), baseH);
     ctx.restore();
 
 
@@ -356,7 +357,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Action Verb Pill
     const rawStatus = (activityData.status || '').toLowerCase();
     const isManga = media.type === 'MANGA' || rawStatus.includes('chapter') || rawStatus.includes('volume');
-    const verb = isManga ? 'READING' : 'WATCHING';
+
 
     const progStr = String(activityData.progress || '');
     const isRange = progStr.match(/[-–—/]/);
@@ -366,7 +367,7 @@ const generateActivityCard = async (userMeta, activityData) => {
         const rangeNums = progStr.split(/[-–—/]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
         if (rangeNums.length >= 2) {
             const count = Math.max(...rangeNums) - Math.min(...rangeNums) + 1;
-            if (count > 5) bingeMode = true;
+            if (count >= 5) bingeMode = true;
         }
     }
 
@@ -402,7 +403,7 @@ const generateActivityCard = async (userMeta, activityData) => {
     const lStatus = (activityData.status || '').toLowerCase();
     let statusColors = { fill: 'rgba(255,255,255,0.13)', stroke: 'rgba(255,255,255,0.22)' };
     
-    if (lStatus.includes('completed') || (activityData.verb || '').includes('FINISHED')) {
+    if (lStatus.includes('completed') || (activityData.displayVerb || '').includes('FINISHED')) {
         statusColors = { fill: 'rgba(46, 204, 113, 0.16)', stroke: 'rgba(46, 204, 113, 0.5)' }; // Green
     } else if (lStatus.includes('dropped')) {
         statusColors = { fill: 'rgba(231, 76, 60, 0.16)', stroke: 'rgba(231, 76, 60, 0.5)' }; // Red

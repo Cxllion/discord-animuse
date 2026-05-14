@@ -59,10 +59,12 @@ module.exports = {
 
             await interaction.respond(results);
         } else if (subcommand === 'remove') {
-            // Search local tracking
+            // #17: Empty query intentionally returns all subscriptions for quick selection.
+            // This differs from 'add' (which requires 3 chars) since local data is cheap to return in full.
             const subs = await getUserTrackedAnime(interaction.guild.id, interaction.user.id);
-            // Filter by query
-            const filtered = subs.filter(s => s.anime_title.toLowerCase().includes(query.toLowerCase()));
+            const filtered = query
+                ? subs.filter(s => s.anime_title.toLowerCase().includes(query.toLowerCase()))
+                : subs;
             if (interaction.responded) return;
             await interaction.respond(
                 filtered.map(s => ({
@@ -95,6 +97,14 @@ module.exports = {
                 });
             }
 
+            // #4: Block tracking of series that will never receive new episodes
+            if (['FINISHED', 'CANCELLED'].includes(media.status)) {
+                const label = media.status === 'FINISHED' ? 'finished airing' : 'cancelled';
+                return await interaction.editReply({
+                    content: `❌ **Archival Error**: **${media.title.english || media.title.romaji}** has already ${label} and will never produce new episodes. Only airing or upcoming series can be tracked.`
+                });
+            }
+
             const title = media.title.english || media.title.romaji;
             const res = await addTracker(guildId, userId, animeId, title);
 
@@ -106,7 +116,8 @@ module.exports = {
 
             const statusEmoji = {
                 'RELEASING': '📡 Releasing',
-                'NOT_YET_RELEASED': '🆕 Upcoming'
+                'NOT_YET_RELEASED': '🆕 Upcoming',
+                'HIATUS': '⏸️ On Hiatus (no new episodes scheduled currently)',
             }[media.status] || '❓ Unknown';
 
             const embed = baseEmbed(`Observation Initiated: ${title}`, 
@@ -131,8 +142,21 @@ module.exports = {
                 return await interaction.editReply({ content: '❌ **Archival Error**: Please select a valid item to remove from your observation records.' });
             }
 
-            await removeTracker(guildId, userId, animeId);
-            await interaction.editReply({ content: `✅ **As you wish.** I have ceased observation of that series in your name.` });
+            // #13: Show a confirmation step — removal is irreversible
+            const subs = await getUserTrackedAnime(guildId, userId);
+            const target = subs.find(s => s.anilist_id === animeId);
+            const displayTitle = target?.anime_title || `Series #${animeId}`;
+
+            const { ActionRowBuilder: ARB, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
+            const confirmRow = new ARB().addComponents(
+                new BB().setCustomId(`track_confirm_remove_${userId}_${animeId}`).setLabel('Confirm Remove').setStyle(BS.Danger),
+                new BB().setCustomId(`track_cancel_remove_${userId}`).setLabel('Cancel').setStyle(BS.Secondary)
+            );
+
+            await interaction.editReply({
+                content: `⚠️ **Remove Confirmation**\n\nAre you sure you want to stop tracking **${displayTitle}**? This action cannot be undone.`,
+                components: [confirmRow]
+            });
 
         } else if (subcommand === 'sync') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -164,9 +188,18 @@ module.exports = {
             const { toggleTrackSync } = require('../../utils/services/userService');
             await toggleTrackSync(userId, guildId, true);
 
+            // #10: Distinguish between "nothing new" and actual new additions
+            const alreadyTracked = filteredList.length - addedCount;
+            const addedLine = addedCount > 0
+                ? `✅ Added **${addedCount}** new anime to your observation list.`
+                : `📋 All **${filteredList.length}** series were already in your list — nothing new to add.`;
+            const alreadyLine = addedCount > 0 && alreadyTracked > 0
+                ? `\n📋 **${alreadyTracked}** series were already tracked (titles refreshed).`
+                : '';
+
             const embed = baseEmbed('AniList Synchronization Complete', null, interaction.client.user.displayAvatarURL())
                 .setThumbnail(interaction.user.displayAvatarURL())
-                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n✅ Added **${addedCount}** new anime to your observation list.\n\n🛡️ **Auto-Sync Enabled**: I will now automatically add any new ongoing shows you start watching on AniList to your tracking list.`);
+                .setDescription(`Successfully synchronized with your archives for **${linkedUsername}**.\n\n${addedLine}${alreadyLine}\n\n🛡️ **Auto-Sync Enabled**: I will now automatically add any new ongoing shows you start watching on AniList to your tracking list.`);
 
             await interaction.editReply({ embeds: [embed] });
 
@@ -185,10 +218,14 @@ module.exports = {
                 .filter(m => m.nextAiringEpisode)
                 .sort((a, b) => a.nextAiringEpisode.airingAt - b.nextAiringEpisode.airingAt);
 
+            // #15: Count series with no upcoming schedule for the footer note
+            const noScheduleCount = subs.length - ongoing.length;
+
             if (ongoing.length === 0) {
-                return await interaction.editReply({
-                    embeds: [baseEmbed('No Airing Information', 'None of your tracked series have upcoming airing dates scheduled on AniList at the moment.', interaction.client.user.displayAvatarURL())]
-                });
+                const noScheduleEmbed = baseEmbed('No Airing Information', 
+                    `None of your tracked series have upcoming airing dates scheduled on AniList at the moment.\n\nYou are tracking **${subs.length}** series total.`,
+                    interaction.client.user.displayAvatarURL());
+                return await interaction.editReply({ embeds: [noScheduleEmbed] });
             }
 
             const scheduleLines = ongoing.map(m => {
@@ -199,6 +236,11 @@ module.exports = {
 
             const embed = baseEmbed('Observatory Schedule', `Here are the next episodes scheduled for your tracked collection:\n\n${scheduleLines.join('\n')}`, interaction.client.user.displayAvatarURL())
                 .setThumbnail(interaction.user.displayAvatarURL());
+
+            // #15: Surface the count of finished/no-schedule series so users know data isn't missing
+            if (noScheduleCount > 0) {
+                embed.addFields({ name: '📋 Other Tracked Series', value: `**${noScheduleCount}** series in your list have no upcoming episodes (finished, on hiatus, or schedule unavailable).`, inline: false });
+            }
 
             await interaction.editReply({ embeds: [embed] });
 

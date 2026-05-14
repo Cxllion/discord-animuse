@@ -46,7 +46,8 @@ const getGuildTrackers = async (guildId) => {
 
 const getAnimeDueForUpdate = async () => {
     if (!supabase) return [];
-    const futureWindow = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+    // #5: Expanded to 30-min window to match the timeUntilAiring > 1800 guard in scheduler.js
+    const futureWindow = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const { data, error } = await supabase.from('tracked_anime_state').select('anilist_id').or(`next_airing.is.null,next_airing.lte.${futureWindow}`);
     if (error) return [];
     return data.map(r => r.anilist_id);

@@ -79,11 +79,22 @@ const upsertConfig = async (guildId, updates) => {
 const assignChannel = async (guildId, key, channelId) => {
     if (!supabase) return;
     const updates = { [key]: channelId };
-    await supabase.from('guild_configs').update(updates).eq('guild_id', guildId);
-    // Invalidate all related caches
-    configCache.del(guildId);
+    const { data } = await supabase
+        .from('guild_configs')
+        .update(updates)
+        .eq('guild_id', guildId)
+        .select()
+        .single();
+
+    // Repopulate cache with fresh data to close the stale-read race window.
+    // Fall back to invalidation-only if the select returns nothing.
+    if (data) {
+        configCache.set(guildId, data);
+    } else {
+        configCache.del(guildId);
+    }
     configCache.del(`archive_settings:${guildId}`);
-    configCache.del('all_arcade_channels'); 
+    configCache.del('all_arcade_channels');
 };
 
 const getArchiveSettings = async (guildId) => {

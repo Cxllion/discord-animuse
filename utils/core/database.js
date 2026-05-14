@@ -18,7 +18,7 @@ const {
     updateUserTitle, getUserColor, updateUserColor, 
     getUserAvatarConfig, updateUserAvatarConfig, getBulkUserAvatarConfig, getBulkUserTitles, 
     getOwnedTitles, addTitle, addUserFavorite, removeUserFavorite, getUserFavoritesLocal,
-    getLinkedUsersForFeed, updateLastActivityId, getActivityCache, upsertActivityCache, clearActivityCache
+    getLinkedUsersForFeed, getActivityCache, upsertActivityCache, clearActivityCache
 } = require('../services/userService');
 
 const { 
@@ -90,7 +90,7 @@ module.exports = {
     removeUserFavorite,
     getUserFavoritesLocal,
     getLinkedUsersForFeed,
-    updateLastActivityId,
+
     getActivityCache,
     upsertActivityCache,
     clearActivityCache,

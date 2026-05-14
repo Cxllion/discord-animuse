@@ -1453,7 +1453,7 @@ const handleMediaAiring = async (i) => {
         .addFields(
             { name: '📢 Airing Alerts', value: airingStatus, inline: true },
             { name: '🔔 Activity Feed', value: activityStatus, inline: true },
-            { name: '📸 Gallery Wing', value: config.gallery_channel_ids?.length ? `${config.gallery_channel_ids.length} Channels Linked` : '*None Assigned*', inline: true }
+            { name: '📸 Gallery Wing', value: config.gallery_channel_ids?.length ? config.gallery_channel_ids.map(id => `<#${id}>`).join(', ').slice(0, 1024) : '*None Assigned*', inline: true }
         );
 
     const btnRow = new ActionRowBuilder().addComponents(

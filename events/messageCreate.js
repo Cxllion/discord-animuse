@@ -9,13 +9,18 @@ const CONFIG = require('../utils/config');
 const MafiaManager = require('../utils/mafia/MafiaManager');
 const { markAsSpoken } = require('../utils/services/welcomeService');
 const { addXp } = require('../utils/services/leveling');
-
-// 🛡️ [Cyber Librarian] Hoisted media regex for performance and safety
-const GALLERY_MEDIA_REGEX = /(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?/i;
-const DISCORD_CDN_REGEX = /cdn\.discordapp\.com|media\.discordapp\.net/i;
-const GIF_SITE_REGEX = /tenor\.com|giphy\.com/i;
 const { getLinkedAnilist } = require('../utils/services/userService');
 const { pulseUserActivity } = require('../utils/services/scheduler');
+
+// ─── Gallery Constants ───────────────────────────────────────────────────────
+// Issue 15: Named constant so archive duration is easy to locate and make configurable
+const GALLERY_THREAD_ARCHIVE_DURATION = 1440; // 24 hours (Discord: 60, 1440, 4320, 10080)
+
+// Issue 19: Expanded to cover common anime/media sharing sites beyond just Tenor/Giphy
+const GALLERY_MEDIA_REGEX = /(https?:\/\/[^\s]+)\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)(\?[^\s]*)?/i;
+const DISCORD_CDN_REGEX = /cdn\.discordapp\.com|media\.discordapp\.net/i;
+const GIF_SITE_REGEX = /tenor\.com|giphy\.com|imgur\.com|i\.redd\.it|gfycat\.com|catbox\.moe|pbs\.twimg\.com|i\.pximg\.net/i;
+// ────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
     name: Events.MessageCreate,
@@ -24,11 +29,11 @@ module.exports = {
         if (!message.guild) return;
 
         const botType = CONFIG.BOT_TYPE || 'main';
+        // Issue 1 & 2: Single declaration at the top, brace structure fixed
         const isSelfTest = message.client.isTestBot;
 
         // --- Mafia Vigilant Redaction (Silence for the Dead) ---
-        if (botType === 'main' || botType === 'test') {
-        if (message.channel.isThread()) {
+        if ((botType === 'main' || botType === 'test') && message.channel.isThread()) {
             const game = MafiaManager.games.get(message.channel.id);
             if (game && game.state !== 'LOBBY' && game.state !== 'GAME_OVER') {
                 const player = game.players.get(message.author.id);
@@ -39,13 +44,7 @@ module.exports = {
                     } catch (e) {}
                 }
             }
-                }
-            }
         }
-
-        // Skip other automated tasks for test bot
-        // But the Activity Pulse is allowed for live-dev testing
-        const isSelfTest = message.client.isTestBot;
 
         // --- 1. Background Logic (Parallelized) ---
         const backgroundTasks = [
@@ -53,7 +52,7 @@ module.exports = {
             markAsSpoken(message.author.id, message.guild.id).catch(() => {}),
             pulseChannelActivity(message.guild.id, message.channel.id).catch(() => {})
         ];
-        
+
         const [config] = await Promise.all(backgroundTasks);
         if (!config) return;
 
@@ -82,9 +81,9 @@ module.exports = {
                             archiveEmbed.setImage(latestPin.attachments.first().url);
                         }
 
-                        await archiveChannel.send({ 
-                            content: `📌 **New Archive Entry** from <#${message.channel.id}>`, 
-                            embeds: [archiveEmbed] 
+                        await archiveChannel.send({
+                            content: `📌 **New Archive Entry** from <#${message.channel.id}>`,
+                            embeds: [archiveEmbed]
                         });
                     }
                 } catch (err) {
@@ -94,9 +93,11 @@ module.exports = {
         }
 
         // --- Gallery Mode ---
-        if ((botType === 'core' || botType === 'test') && !isSelfTest && config.gallery_channel_ids?.includes(message.channel.id)) {
-            const hasMedia = message.attachments.size > 0 || 
-                             GALLERY_MEDIA_REGEX.test(message.content) || 
+        // Issue 7: Coerce IDs to strings to prevent type-mismatch false negatives
+        const galleryIds = (config.gallery_channel_ids || []).map(String);
+        if ((botType === 'core' || botType === 'test') && !isSelfTest && galleryIds.includes(String(message.channel.id))) {
+            const hasMedia = message.attachments.size > 0 ||
+                             GALLERY_MEDIA_REGEX.test(message.content) ||
                              DISCORD_CDN_REGEX.test(message.content) ||
                              GIF_SITE_REGEX.test(message.content);
 
@@ -104,11 +105,13 @@ module.exports = {
                 // Valid post: Create thread
                 try {
                     const displayName = message.member?.displayName || message.author.displayName || message.author.username;
-                    const threadName = `${displayName}'s Post`;
+                    // Issue 8: Truncate display name to avoid exceeding Discord's 100-char thread name limit
+                    const safeName = displayName.slice(0, 90);
+                    const threadName = `${safeName}'s Post`;
 
                     await message.startThread({
                         name: threadName,
-                        autoArchiveDuration: 1440, // 24 hours
+                        autoArchiveDuration: GALLERY_THREAD_ARCHIVE_DURATION,
                     });
 
                     // Auto-reaction: Just one heart ❤️
@@ -122,16 +125,32 @@ module.exports = {
                 // Invalid post: Delete and warn
                 try {
                     if (message.deletable) {
+                        // Issue 16: Fetch title before delete so both actions are ready
                         const userTitle = await getDynamicUserTitle(message.member);
                         await message.delete();
+
+                        // Issue 16: Warning embed has a proper title and footer branding
                         const embed = baseEmbed()
+                            .setTitle('📵 Gallery Violation')
                             .setDescription(`I'm sorry, **${userTitle}**, but this wing of the gallery is for visual archives only. Please keep the library tidy for other **Readers**! ♡\n\n*(Use the threads for conversation!)*`)
-                            .setColor(CONFIG.COLORS.GALLERY);
+                            .setColor(CONFIG.COLORS.GALLERY) // Issue 3: Now defined in config
+                            .setFooter({ text: CONFIG.THEME.FOOTER });
 
                         const warning = await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed] });
-                        setTimeout(() => {
-                            warning.delete().catch(e => logger.error('Warning delete failed', e, 'MessageEvent'));
+
+                        // Issue 10: Safer cleanup — timeout tracked and errors caught
+                        const cleanupTimeout = setTimeout(async () => {
+                            try {
+                                await warning.delete();
+                            } catch (e) {
+                                if (e.code !== 10008) { // Unknown Message — already gone
+                                    logger.error('Warning delete failed', e, 'MessageEvent');
+                                }
+                            }
                         }, 5000);
+
+                        // Prevent unhandled rejections if warning itself was already deleted
+                        warning.once('delete', () => clearTimeout(cleanupTimeout));
                     }
                 } catch (error) {
                     if (error.code === 10008) return;
@@ -147,32 +166,31 @@ module.exports = {
                 await addXp(message.author.id, message.guild.id, message.member, message);
             }
 
-        // --- AniList Activity Pulse (Instant Tracking) ---
-        if (config.activity_channel_id && !message.client.isTestBot) {
-            const cooldownKey = `${message.author.id}_${message.guild.id}`;
-            const lastPulse = activityPulseCache.get(cooldownKey) || 0;
-            const now = Date.now();
-            const cooldownMs = 2 * 60 * 1000;
+            // --- AniList Activity Pulse (Instant Tracking) ---
+            if (config.activity_channel_id && !isSelfTest) {
+                const cooldownKey = `${message.author.id}_${message.guild.id}`;
+                const lastPulse = activityPulseCache.get(cooldownKey) || 0;
+                const now = Date.now();
+                const cooldownMs = 2 * 60 * 1000;
 
-            if (now - lastPulse > cooldownMs) {
-                const anilistUsername = await getLinkedAnilist(message.author.id, message.guild.id);
-                if (anilistUsername) {
-                    logger.info(`[Activity Pulse] Triggering check for ${message.author.tag} (${anilistUsername})`, 'Scheduler');
-                    const activityChannel = await message.guild.channels.fetch(config.activity_channel_id).catch(() => null);
-                    if (activityChannel) {
-                        const userRow = {
-                            user_id: String(message.author.id),
-                            anilist_username: anilistUsername
-                        };
-                        await pulseUserActivity(message.client, message.guild.id, userRow, activityChannel);
-                        activityPulseCache.set(cooldownKey, now);
+                if (now - lastPulse > cooldownMs) {
+                    const anilistUsername = await getLinkedAnilist(message.author.id, message.guild.id);
+                    if (anilistUsername) {
+                        logger.info(`[Activity Pulse] Triggering check for ${message.author.tag} (${anilistUsername})`, 'Scheduler');
+                        const activityChannel = await message.guild.channels.fetch(config.activity_channel_id).catch(() => null);
+                        if (activityChannel) {
+                            const userRow = {
+                                user_id: String(message.author.id),
+                                anilist_username: anilistUsername
+                            };
+                            await pulseUserActivity(message.client, message.guild.id, userRow, activityChannel);
+                            activityPulseCache.set(cooldownKey, now);
+                        }
                     }
                 }
             }
-        }
 
-        // --- Archive Lobby Bumping ---
-        if (botType === 'main' || botType === 'test') {
+            // --- Archive Lobby Bumping ---
             const lobby = MafiaManager.lobbies.find(g => g.channelId === message.channel.id && g.state === 'LOBBY');
             if (lobby) {
                 lobby.scheduleRefresh(message.channel);
@@ -180,3 +198,4 @@ module.exports = {
         }
     },
 };
+

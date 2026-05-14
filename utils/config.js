@@ -37,7 +37,8 @@ const CONFIG = {
         INVISIBLE: '#2B2D31', // Discord Dark Mode Blend
         ARCHIVE: '#A78BFA',  // Premium Archive Purple
         GOLD: '#FFD700',     // Victory/Achievement
-        NEUTRAL: '#71717A'   // Muted/Disabled
+        NEUTRAL: '#71717A',  // Muted/Disabled
+        GALLERY: '#FF85C2'   // Gallery Wing — vibrant pink for gallery alerts
     },
 
     // Librarian Theme Branding

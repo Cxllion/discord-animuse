@@ -11,7 +11,6 @@ const {
     addTracker,
     getAnimeDueForUpdate,
     getLinkedUsersForFeed,
-    updateLastActivityId,
     getActivityCache,
     upsertActivityCache,
     clearActivityCache,

@@ -84,18 +84,18 @@ module.exports = {
         try {
             const supabase = require('../utils/core/supabaseClient');
             
-            const probeDatabase = () => {
-                return new Promise(async (resolve) => {
-                    const timer = setTimeout(() => resolve({ timeout: true }), 15000);
+            const probeDatabase = async () => {
+                const timeout = new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 15000));
+                const probe = (async () => {
                     try {
-                        const { error } = await supabase.from('activity_posted').select('activity_id').limit(1);
-                        clearTimeout(timer);
-                        resolve({ error });
+                        const { error } = await supabase.from('activity_posted').select('id').limit(1);
+                        return { error };
                     } catch (e) {
-                        clearTimeout(timer);
-                        resolve({ error: e });
+                        return { error: e };
                     }
-                });
+                })();
+
+                return Promise.race([probe, timeout]);
             };
 
             const result = await probeDatabase();

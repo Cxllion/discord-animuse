@@ -2,6 +2,20 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, Emb
 const { fetchConfig, upsertConfig } = require('../../utils/core/database');
 const logger = require('../../utils/core/logger');
 
+// Shared autocomplete choices for assign and unassign subcommands
+const CHANNEL_TYPE_CHOICES = [
+    { name: '✨ Welcome Wing', value: 'welcome' },
+    { name: '👋 Greeting Wing', value: 'greeting' },
+    { name: '📸 Media Gallery', value: 'media' },
+    { name: '🔔 Activity Feed', value: 'activity' },
+    { name: '📢 Airing Tower', value: 'airing' },
+    { name: '📋 Security Logs', value: 'logs' },
+    { name: '🖼️ Identity Dump', value: 'dump' },
+    { name: '🕹️ Arcade Protocol', value: 'arcade' },
+    { name: '💡 Suggestions Box', value: 'suggestions' },
+    { name: '✨ Level Milestones', value: 'levels' }
+];
+
 module.exports = {
     category: 'configuration',
     dbRequired: true,
@@ -27,25 +41,31 @@ module.exports = {
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('unassign')
+                .setDescription('Remove a channel assignment from a feature.')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('The feature type to unassign.')
+                        .setRequired(true)
+                        .setAutocomplete(true))
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('The channel to remove (required for Media Gallery).')
+                        .setRequired(false)
+                        .addChannelTypes(ChannelType.GuildText)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('overview')
                 .setDescription('View the current channel configuration dashboard.')
         ),
 
     async autocomplete(interaction) {
         const focusedValue = interaction.options.getFocused().toLowerCase();
-        const choices = [
-            { name: '✨ Welcome Wing', value: 'welcome' },
-            { name: '👋 Greeting Wing', value: 'greeting' },
-            { name: '📸 Media Gallery', value: 'media' },
-            { name: '🔔 Activity Feed', value: 'activity' },
-            { name: '📢 Airing Tower', value: 'airing' },
-            { name: '📋 Security Logs', value: 'logs' },
-            { name: '🖼️ Identity Dump', value: 'dump' },
-            { name: '🕹️ Arcade Protocol', value: 'arcade' },
-            { name: '💡 Suggestions Box', value: 'suggestions' }
-        ];
-
-        const filtered = choices.filter(choice => choice.name.toLowerCase().includes(focusedValue));
+        const filtered = CHANNEL_TYPE_CHOICES.filter(choice =>
+            choice.name.toLowerCase().includes(focusedValue)
+        );
         await interaction.respond(filtered);
     },
 
@@ -63,7 +83,14 @@ module.exports = {
                 // 0. Permission Verification
                 const me = interaction.guild.members.me;
                 const permissions = channel.permissionsFor(me);
-                const required = ['ViewChannel', 'SendMessages', 'EmbedLinks'];
+
+                // Issue 12: Gallery channels also need ManageMessages + CreatePublicThreads
+                const baseRequired = ['ViewChannel', 'SendMessages', 'EmbedLinks'];
+                const galleryExtra = ['ManageMessages', 'CreatePublicThreads'];
+                const required = type === 'media'
+                    ? [...baseRequired, ...galleryExtra]
+                    : baseRequired;
+
                 const missing = required.filter(p => !permissions.has(p));
 
                 if (missing.length > 0) {
@@ -77,81 +104,75 @@ module.exports = {
 
                 // 2. Handle Assignment Logic
                 if (type === 'welcome') {
-                    // Scalar assignment (Replace)
                     await upsertConfig(guildId, { welcome_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThis wing of the library (${channel}) has been officially designated as the **Welcome Hall**.`
                     });
                 }
                 else if (type === 'activity') {
-                    // Scalar assignment
                     await upsertConfig(guildId, { activity_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThe AniList Activity Feed will now be broadcasted in ${channel}.`
                     });
                 }
                 else if (type === 'airing') {
-                    // Scalar assignment
                     await upsertConfig(guildId, { airing_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThis wing (${channel}) is now the **Broadcast Tower** for anime airing notifications.`
                     });
                 }
                 else if (type === 'greeting') {
-                    // Scalar assignment
                     await upsertConfig(guildId, { greeting_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nVisitors will now be personally greeted in ${channel} upon arrival.`
                     });
                 }
                 else if (type === 'media') {
-                    // Array assignment (Append Unique)
-                    const currentGalleries = config.gallery_channel_ids || [];
-
-                    if (currentGalleries.includes(channel.id)) {
+                    // Issue 5 (assign): Append unique to the array
+                    const currentGalleries = (config.gallery_channel_ids || []).map(String);
+                    if (currentGalleries.includes(String(channel.id))) {
                         return await interaction.editReply({
                             content: `⚠️ **Notice**: The wing ${channel} is already indexed in the Media Gallery network.`
                         });
                     }
-
-                    const newGalleries = [...currentGalleries, channel.id];
+                    const newGalleries = [...currentGalleries, String(channel.id)];
                     await upsertConfig(guildId, { gallery_channel_ids: newGalleries });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nAdded ${channel} to the **Media Gallery** network.\n(Total Galleries: ${newGalleries.length})`
                     });
                 }
                 else if (type === 'logs') {
                     await upsertConfig(guildId, { logs_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThis channel (${channel}) will now receive institutional reports and library incident alerts.`
                     });
                 }
                 else if (type === 'dump') {
                     await upsertConfig(guildId, { banner_dump_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThis channel (${channel}) is now the **Static Identity Archive**. All custom banners will be permanently stored here to prevent CDN invalidation.`
                     });
                 }
                 else if (type === 'arcade') {
                     await upsertConfig(guildId, { arcade_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThe **Arcade Protocol** has been localized to ${channel}. The Arcade archives will now be strictly managed within this wing.`
                     });
                 }
                 else if (type === 'suggestions') {
                     await upsertConfig(guildId, { suggestions_channel_id: channel.id });
-
                     return await interaction.editReply({
                         content: `✅ **Configuration Updated**\nThe **Suggestions Box** has been installed in ${channel}. Members can now share their visions for the library's future here.`
                     });
+                }
+                else if (type === 'levels') {
+                    await upsertConfig(guildId, { level_up_channel_id: channel.id });
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nLevel-up announcements will now be delivered in ${channel}.`
+                    });
+                }
+                else {
+                    return await interaction.editReply({ content: `❌ Unknown feature type: \`${type}\`.` });
                 }
 
             } catch (error) {
@@ -159,6 +180,72 @@ module.exports = {
                 await interaction.editReply({ content: '❌ An internal error occurred while saving configuration.' });
             }
         }
+
+        // --- Issue 5: /channel unassign ---
+        else if (subcommand === 'unassign') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            const type = interaction.options.getString('type');
+            const channel = interaction.options.getChannel('channel');
+            const guildId = interaction.guild.id;
+
+            try {
+                const config = await fetchConfig(guildId);
+
+                if (type === 'media') {
+                    if (!channel) {
+                        return await interaction.editReply({
+                            content: `❌ **Required**: Please provide the \`channel\` option when unassigning a Media Gallery channel.`
+                        });
+                    }
+                    const currentGalleries = (config.gallery_channel_ids || []).map(String);
+                    if (!currentGalleries.includes(String(channel.id))) {
+                        return await interaction.editReply({
+                            content: `⚠️ **Notice**: ${channel} is not currently indexed in the Media Gallery network.`
+                        });
+                    }
+                    const newGalleries = currentGalleries.filter(id => id !== String(channel.id));
+                    await upsertConfig(guildId, { gallery_channel_ids: newGalleries });
+                    return await interaction.editReply({
+                        content: `✅ **Configuration Updated**\nRemoved ${channel} from the **Media Gallery** network.\n(Remaining Galleries: ${newGalleries.length})`
+                    });
+                }
+
+                // For scalar channels, null the relevant key
+                const scalarMap = {
+                    welcome:     'welcome_channel_id',
+                    greeting:    'greeting_channel_id',
+                    activity:    'activity_channel_id',
+                    airing:      'airing_channel_id',
+                    logs:        'logs_channel_id',
+                    dump:        'banner_dump_channel_id',
+                    arcade:      'arcade_channel_id',
+                    suggestions: 'suggestions_channel_id',
+                    levels:      'level_up_channel_id'
+                };
+
+                const key = scalarMap[type];
+                if (!key) {
+                    return await interaction.editReply({ content: `❌ Unknown feature type: \`${type}\`.` });
+                }
+
+                if (!config[key]) {
+                    return await interaction.editReply({
+                        content: `⚠️ **Notice**: No channel is currently assigned for **${type}**.`
+                    });
+                }
+
+                await upsertConfig(guildId, { [key]: null });
+                return await interaction.editReply({
+                    content: `✅ **Configuration Updated**\nThe **${type}** channel assignment has been cleared.`
+                });
+
+            } catch (error) {
+                logger.error('Command Error: /channel unassign', error, 'ChannelCommand');
+                await interaction.editReply({ content: '❌ An internal error occurred while updating configuration.' });
+            }
+        }
+
         else if (subcommand === 'overview') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const guildId = interaction.guild.id;
@@ -171,8 +258,8 @@ module.exports = {
                 const fmtList = (ids) => (ids && ids.length) ? ids.map(id => `<#${id}>`).join(', ') : '`None`';
 
                 const baseEmbed = require('../../utils/generators/baseEmbed');
-                const embed = baseEmbed(`⚙️ Server Architecture: ${interaction.guild.name}`, 
-                    'Current channel assignments for AniMuse library wings and features.', 
+                const embed = baseEmbed(`⚙️ Server Architecture: ${interaction.guild.name}`,
+                    'Current channel assignments for AniMuse library wings and features.',
                     null
                 )
                     .addFields(
@@ -185,6 +272,7 @@ module.exports = {
                         { name: '📜 Security Logs', value: fmt(config?.logs_channel_id), inline: true },
                         { name: '🖼️ Identity Dump', value: fmt(config?.banner_dump_channel_id), inline: true },
                         { name: '💡 Suggestions Box', value: fmt(config?.suggestions_channel_id), inline: true },
+                        { name: '✨ Level Milestones', value: fmt(config?.level_up_channel_id), inline: true },
                         { name: '📸 Media Gallery', value: fmtList(config?.gallery_channel_ids), inline: false }
                     )
                     .setColor(0x3b82f6);

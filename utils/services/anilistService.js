@@ -21,6 +21,7 @@ const mediaCache = cacheManager.getNamespace('anilist_media', { stdTTL: 3600 });
 const searchCache = cacheManager.getNamespace('anilist_search', { stdTTL: 3600 });
 const autoCompleteCache = cacheManager.getNamespace('anilist_autocomplete', { stdTTL: 300 });
 const userIdCache = cacheManager.getNamespace('anilist_user_ids', { stdTTL: 86400 });
+const activityCache = cacheManager.getNamespace('anilist_user_activity', { stdTTL: 240 });
 
 let isAniListMaintenance = false;
 let lastMaintenanceLog = 0;
@@ -388,16 +389,20 @@ const getWatchingList = async (username) => {
 };
 
 /**
- * Fetches multiple media items by ID in a single query.
- * @param {Array<number|string>} ids 
- * @returns {Promise<Array>} List of media objects
+ * Fetches multiple media items by ID, paginating transparently in chunks of 25.
+ * Handles users tracking more than 25 series without silent truncation (#11).
+ * @param {Array<number|string>} ids
+ * @returns {Promise<Array>} Full list of media objects
  */
 const getMediaByIds = async (ids) => {
     if (!ids || ids.length === 0) return [];
 
+    const PAGE_SIZE = 25;
+    const allMedia = [];
+
     const query = `
-    query ($ids: [Int], $page: Int) {
-        Page(page: $page, perPage: 25) {
+    query ($ids: [Int]) {
+        Page(perPage: ${PAGE_SIZE}) {
             media(id_in: $ids) {
                 id
                 title { english romaji }
@@ -416,10 +421,17 @@ const getMediaByIds = async (ids) => {
     }
     `;
 
-    // Note: If ids > 25, AniList pagination would be needed.
-    // Since our buffer max is 25, a single page is sufficient.
-    const data = await queryAnilist(query, { ids, page: 1 });
-    return data.Page.media;
+    for (let i = 0; i < ids.length; i += PAGE_SIZE) {
+        const chunk = ids.slice(i, i + PAGE_SIZE);
+        try {
+            const data = await queryAnilist(query, { ids: chunk });
+            if (data?.Page?.media) allMedia.push(...data.Page.media);
+        } catch (e) {
+            logger.warn(`[getMediaByIds] Chunk failed (offset ${i}): ${e.message}`, 'AniList');
+        }
+    }
+
+    return allMedia;
 };
 
 /**
@@ -668,6 +680,10 @@ const getTrendingMovies = async () => {
  * @returns {Promise<Array>} List of activities
  */
 const getUserActivity = async (userName) => {
+    const cacheKey = `activity_${userName.toLowerCase()}`;
+    const cached = activityCache.get(cacheKey);
+    if (cached) return cached;
+
     // 1. Resolve Username to UserId (AniList Page.activities expects Int userId)
     let userId = userIdCache.get(userName.toLowerCase());
     
@@ -679,8 +695,8 @@ const getUserActivity = async (userName) => {
     }
 
     const query = `
-    query ($userId: Int) {
-        Page(page: 1, perPage: 50) {
+    query ($userId: Int, $page: Int) {
+        Page(page: $page, perPage: 50) {
             activities(userId: $userId, sort: ID_DESC, type: MEDIA_LIST) {
                 ... on ListActivity {
                     id
@@ -712,12 +728,25 @@ const getUserActivity = async (userName) => {
         }
     }
     `;
+
     try {
-        const data = await queryAnilist(query, { userId });
-        // Filter out non-ListActivity items (text posts etc)
-        const filtered = (data.Page?.activities || []).filter(a => a && a.media);
-        return filtered;
+        const fetchPage = async (page) => {
+            const data = await queryAnilist(query, { userId, page });
+            return (data.Page?.activities || []).filter(a => a && a.media);
+        };
+
+        let activities = await fetchPage(1);
+        
+        // Option C, 1: Fetch page 2 if page 1 is full (50 activities)
+        if (activities.length === 50) {
+            const page2 = await fetchPage(2);
+            activities = [...activities, ...page2];
+        }
+
+        activityCache.set(cacheKey, activities);
+        return activities;
     } catch (e) {
+        logger.error(`[AniList] Error fetching activity for ${userName}:`, e, 'AniList');
         return [];
     }
 };
