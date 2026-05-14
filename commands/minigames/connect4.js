@@ -89,10 +89,15 @@ module.exports = {
                 new ButtonBuilder().setCustomId(`${prefix}_decline_${challengerId}_${opponent.id}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
-            const inviteMessage = `🌸 **TACTICAL LINK: INVITATION RECEIVED**\n\nThe patron <@${challengerId}> is requesting to establish a **Connect Muse** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
+            const inviteEmbed = new EmbedBuilder()
+                .setTitle('🌸 TACTICAL LINK: INVITATION RECEIVED')
+                .setDescription(`The patron <@${challengerId}> is requesting to establish a **Connect Muse** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
+                .setColor(0xFFB7C5)
+                .setFooter({ text: 'Awaiting biometric authorization...' });
 
             const payload = {
-                content: `👋 <@${opponent.id}>, a new link request has arrived.\n\n${inviteMessage}`,
+                content: `👋 <@${opponent.id}>, a new link request has arrived.`,
+                embeds: [inviteEmbed],
                 components: [row]
             };
 

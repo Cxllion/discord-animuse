@@ -159,7 +159,11 @@ const handleConnect4Interaction = async (interaction) => {
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
             const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
 
-            const inviteMessage = `🌸 **TACTICAL LINK: REMATCH REQUESTED**\n\n<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
+            const inviteEmbed = new EmbedBuilder()
+                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
+                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
+                .setColor(0xFFB7C5)
+                .setFooter({ text: 'Awaiting biometric authorization...' });
 
             const rematchRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
@@ -171,7 +175,8 @@ const handleConnect4Interaction = async (interaction) => {
 
             // Send fresh invite to channel
             await interaction.channel.send({
-                content: `👋 <@${opponentId}>, a rematch request has arrived!\n\n${inviteMessage}`,
+                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
+                embeds: [inviteEmbed],
                 components: [rematchRow]
             });
 
@@ -313,13 +318,8 @@ const updateConnect4Views = async (interaction, gameState) => {
         } else if (gameState.status === 'FORFEITED') {
             content = `🏳️ **Connect Muse:** <@${gameState.winner === p1Id ? p2Id : p1Id}> severed the link. <@${gameState.winner}> wins by default.`;
         } else if (gameState.status === 'CANCELLED') {
-            return await interaction.editReply({
-                content: '🏳️ **Connect Muse:** The invitation was cancelled by the initiator.',
-                embeds: [],
-                components: [],
-                files: [],
-                attachments: []
-            }).catch(() => {});
+            content = '🏳️ **Connect Muse:** The tactical link was cancelled by the initiator.';
+            components.length = 0; // Clear buttons
         }
 
         if (gameState.status === 'PLAYING') {

@@ -188,6 +188,45 @@ class TicTacToeService {
             this.processingLocks.delete(gameId);
         }
     }
+    /**
+     * Forfeit a game session.
+     */
+    async forfeitGame(gameId, userId) {
+        const game = await this.getGame(gameId);
+        if (!game || game.status !== 'PLAYING') return null;
+
+        const p1 = game.player1;
+        const p2 = game.player2;
+        const winnerId = userId === p1 ? p2 : p1;
+        const moveCount = game.moves || 0;
+
+        // Early Forfeit Forgiveness: If no moves made, just delete the session
+        if (moveCount === 0) {
+            await this.deleteSession(gameId);
+            return { ...game, status: 'CANCELLED' };
+        }
+
+        game.status = 'FORFEITED';
+        game.winner = winnerId;
+        
+        const reward = await minigameService.recordTicTacToeResult(p1, p2, winnerId, { isForfeit: true, guildId: game.guild_id || game.guildId });
+        game.reward = reward;
+        
+        await this.saveSession(gameId, game);
+        return game;
+    }
+
+    /**
+     * Delete a game session.
+     */
+    async deleteSession(gameId) {
+        if (!supabase) return;
+        try {
+            await supabase.from('tictactoe_sessions').delete().eq('id', gameId);
+        } catch (err) {
+            logger.error(`[TicTacToeService] Failed to delete session ${gameId}:`, err);
+        }
+    }
 }
 
 module.exports = new TicTacToeService();

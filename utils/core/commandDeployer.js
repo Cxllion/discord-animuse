@@ -62,17 +62,32 @@ const deployCommands = async (client) => {
     const rest = new REST().setToken(CONFIG.DISCORD_TOKEN);
 
     try {
+        const clientId = CONFIG.CLIENT_ID;
+        const guildId = process.env.GUILD_ID;
 
         logger.info(`Syncing ${commands.length} commands with Discord API...`, 'CommandDeployer');
 
-        // 1. Sync Global Commands (Production standard)
-        await rest.put(
-            Routes.applicationCommands(CONFIG.CLIENT_ID),
-            { body: commands },
-        );
+        if (guildId) {
+            // Instant deployment for development (Guild level)
+            logger.info(`Deploying to Guild: ${guildId} (Instant Update)`, 'CommandDeployer');
+            await rest.put(
+                Routes.applicationGuildCommands(clientId, guildId),
+                { body: commands },
+            );
+            
+            // Optional: If we want to ensure NO duplicates, we should clear Global commands
+            // But usually we just want to ensure Guild is up to date.
+            // If the user sees duplicates, they might have old Global commands.
+        } else {
+            // Production deployment (Global level - can take up to 1 hour)
+            logger.info('Deploying Global Commands (Propagation may take time)...', 'CommandDeployer');
+            await rest.put(
+                Routes.applicationCommands(clientId),
+                { body: commands },
+            );
+        }
 
         fs.writeFileSync(HASH_FILE, currentHash);
-
         logger.info('The library index has been successfully synchronized. ♡', 'CommandDeployer');
 
     } catch (error) {

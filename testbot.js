@@ -23,6 +23,7 @@ if (process.env.TEST_DISCORD_TOKEN) {
 if (process.env.TEST_CLIENT_ID) {
     process.env.CLIENT_ID = process.env.TEST_CLIENT_ID;
 }
+process.env.DEPLOY_ON_START = 'true';
 
 // Now we can safely load bot resources
 const logger = require('./utils/core/logger');

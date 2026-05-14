@@ -105,14 +105,44 @@ const handleTicTacToeInteraction = async (interaction) => {
             await interaction.editReply({ components: thinkingComponents });
 
             await updateTicTacToeViews(interaction, updatedGame);
+        } else if (action === 'forfeit') {
+            const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
+            const confirmRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`${prefix}_forfeitconfirm_${gameId}_${user.id}`).setLabel('Confirm Abandonment').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId(`${prefix}_cancel_${gameId}`).setLabel('Resume Protocol').setStyle(ButtonStyle.Secondary)
+            );
+            await interaction.reply({ content: '⚠️ **Protocol Warning:** Are you sure you wish to sever this tactical link? This will count as a forfeit.', components: [confirmRow], flags: [MessageFlags.Ephemeral] });
+        } else if (action === 'forfeitconfirm') {
+            const allowedUserId = parts[3];
+            if (user.id !== allowedUserId) {
+                return interaction.reply({ content: '🔒 **Unauthorized Access:** You cannot confirm abandonment for another patron.', flags: [MessageFlags.Ephemeral] });
+            }
+            
+            await interaction.update({ content: '🏳️ **Sanctuary Protocol:** Tactical link severed.', components: [] });
+            
+            const updatedGame = await tictactoeService.forfeitGame(gameId, user.id);
+            if (!updatedGame) return;
 
+            const channel = await interaction.client.channels.fetch(updatedGame.publicChannelId || updatedGame.public_channel_id).catch(() => null);
+            if (channel) {
+                const mainMsg = await channel.messages.fetch(updatedGame.publicMessageId || updatedGame.public_message_id).catch(() => null);
+                if (mainMsg) {
+                    await updateTicTacToeViews({ message: mainMsg, client: interaction.client, guild: interaction.guild }, updatedGame);
+                }
+            }
+        } else if (action === 'cancel') {
+            await interaction.update({ content: '⚙️ **Protocol Resumed:** Tactical link remains active.', components: [] });
         } else if (action === 'rematch') {
             await interaction.deferUpdate();
 
             const opponentId = user.id === game.player1 ? game.player2 : game.player1;
             const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
 
-            const inviteMessage = `🌸 **TACTICAL LINK: REMATCH REQUESTED**\n\n<@${user.id}> is challenging <@${opponentId}> to a **Tic Tac Toe** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 1 Arcade Point\n• Board State: Initialized\n\n*Awaiting biometric authorization...*`;
+            const inviteEmbed = new EmbedBuilder()
+                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
+                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Tic Tac Toe** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 1 Arcade Point\n• Board State: Initialized`)
+                .setColor(0xFFB7C5)
+                .setFooter({ text: 'Awaiting biometric authorization...' });
 
             const rematchRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
@@ -122,7 +152,8 @@ const handleTicTacToeInteraction = async (interaction) => {
             await interaction.editReply({ components: [] }).catch(() => {});
 
             await interaction.channel.send({
-                content: `👋 <@${opponentId}>, a rematch request has arrived!\n\n${inviteMessage}`,
+                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
+                embeds: [inviteEmbed],
                 components: [rematchRow]
             });
 
@@ -228,17 +259,50 @@ const updateTicTacToeViews = async (context, gameState) => {
             components.push(row);
         }
 
-        if (isGameOver) {
             const rematchBtn = new ButtonBuilder()
                 .setCustomId(`${prefix}_rematch_${gameState.id}`)
-                .setLabel('Request Rematch')
-                .setStyle(ButtonStyle.Success);
-            const controlsRow = new ActionRowBuilder().addComponents(rematchBtn);
+                .setLabel('Rematch')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔄');
+            
+            const leaderboardBtn = new ButtonBuilder()
+                .setCustomId('leaderboard_minigames')
+                .setLabel('View Leaderboard')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('📊');
+
+            const controlsRow = new ActionRowBuilder().addComponents(rematchBtn, leaderboardBtn);
+            components.push(controlsRow);
+        } else {
+            // Active Game: Add Forfeit Button
+            const forfeitBtn = new ButtonBuilder()
+                .setCustomId(`${prefix}_forfeit_${gameState.id}`)
+                .setLabel('Forfeit')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🏳️');
+            const controlsRow = new ActionRowBuilder().addComponents(forfeitBtn);
             components.push(controlsRow);
         }
 
+        const currentTurn = gameState.current_turn || gameState.currentTurn;
+        let content = '';
+        if (gameState.status === 'PLAYING') {
+            content = `🕹️ **Tactical Link Active:** <@${currentTurn}>'s Turn.`;
+        } else if (gameState.status === 'WON') {
+            content = `🎊 **Tic Tac Toe:** <@${gameState.winner}> has achieved victory!`;
+        } else if (gameState.status === 'DRAW') {
+            content = '🤝 **Tic Tac Toe:** Equilibrium reached. (Draw)';
+        } else if (gameState.status === 'FORFEITED') {
+            const p1Id = gameState.player1;
+            const p2Id = gameState.player2;
+            content = `🏳️ **Tic Tac Toe:** <@${gameState.winner === p1Id ? p2Id : p1Id}> severed the link. <@${gameState.winner}> wins by default.`;
+        } else if (gameState.status === 'CANCELLED') {
+            content = `🏳️ **Tic Tac Toe:** Tactical link cancelled (No moves made).`;
+            components.length = 0;
+        }
+
         const msgOptions = {
-            content: isGameOver ? `🏁 **Match Finalized!**` : `🕹️ **Tactical Link Active:** <@${gameState.current_turn || gameState.currentTurn}>'s Turn.`,
+            content: content,
             files: [attachment],
             components,
             attachments: [] 
