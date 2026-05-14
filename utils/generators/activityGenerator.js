@@ -246,16 +246,28 @@ const generateActivityCard = async (userMeta, activityData) => {
     try {
         if (userMeta.avatarUrl) {
             const aImg = await secureLoadImage(userMeta.avatarUrl);
+            // --- 💎 Improvement 2: Avatar Outer Glow ---
+            ctx.save();
+            ctx.shadowColor = tokens.primary;
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(cX + avatarSize / 2, curY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = tokens.primary;
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+
             ctx.save();
             ctx.beginPath();
             ctx.arc(cX + avatarSize / 2, curY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
             ctx.clip();
             ctx.drawImage(aImg, cX, curY, avatarSize, avatarSize);
             ctx.restore();
+            
             ctx.beginPath();
             ctx.arc(cX + avatarSize / 2, curY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-            ctx.strokeStyle = '#FFF';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+            ctx.lineWidth = 1.5;
             ctx.stroke();
         }
     } catch (e) {}
@@ -422,13 +434,18 @@ const generateActivityCard = async (userMeta, activityData) => {
     const vh = 20;
     const vx = txtX;
     const vy = curY + 27;
+    // --- 💎 Improvement 4: Neon Status Pill ---
+    ctx.save();
+    ctx.shadowColor = statusColors.stroke;
+    ctx.shadowBlur = 10;
     ctx.beginPath();
     ctx.roundRect(vx, vy, vw, vh, 5);
     ctx.fillStyle = statusColors.fill;
     ctx.fill();
     ctx.strokeStyle = statusColors.stroke;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+    ctx.restore();
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -439,10 +456,11 @@ const generateActivityCard = async (userMeta, activityData) => {
     // Centered in the fluid middle zone
     curY = titleStartY;
 
+    // --- 💎 Improvement 5: Cinematic Title Shadow ---
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 5;
+    ctx.shadowColor = 'rgba(0,0,0,0.95)';
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 10;
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
