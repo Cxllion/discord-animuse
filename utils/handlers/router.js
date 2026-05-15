@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { MessageFlags } = require('discord.js');
 const logger = require('../core/logger');
 const registry = require('./routerRegistry');
 const { isUnknownInteraction } = require('../core/errorHandler');
@@ -48,6 +49,33 @@ const routeInteraction = async (interaction) => {
     if (customId.startsWith('local_')) return true;
 
     try {
+        // --- 2. GLOBAL HANDLERS ---
+        if (customId === 'leaderboard_minigames') {
+            try {
+                const leaderboardCommand = require('../../commands/social/leaderboard');
+                
+                // Safe Mocking of options
+                const mockOptions = {
+                    getString: (name) => (name === 'type' ? 'arcade' : null),
+                    getInteger: () => null,
+                    getUser: () => null,
+                    getMember: () => null
+                };
+
+                // Use Object.defineProperty to bypass immutability if it exists
+                Object.defineProperty(interaction, 'options', {
+                    value: mockOptions,
+                    writable: true,
+                    configurable: true
+                });
+
+                return await leaderboardCommand.execute(interaction);
+            } catch (err) {
+                logger.error('[Router] Global Leaderboard failure:', err);
+                return interaction.reply({ content: '❌ **Archive Error:** Failed to synchronize the Arcade leaderboards.', flags: [MessageFlags.Ephemeral] }).catch(() => {});
+            }
+        }
+
         const handler = registry.findHandler(customId);
 
         if (handler) {

@@ -15,6 +15,7 @@ require('dotenv').config();
 
 // 2. Set global flags BEFORE requiring any bot modules
 process.env.TEST_MODE = 'true';
+process.env.BOT_TYPE = 'test';
 
 // 3. Override Discord credentials with Test variants
 if (process.env.TEST_DISCORD_TOKEN) {

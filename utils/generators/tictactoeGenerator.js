@@ -169,8 +169,14 @@ class TicTacToeGenerator {
 
             if (gameState.status === 'DRAW') {
                 statusText = 'MUTUAL ANNIHILATION';
-            } else if (gameState.status === 'FORFEITED') {
-                statusText = `${winnerName} SECURED VICTORY (FORFEIT)`;
+            } else if (gameState.status === 'FORFEITED' || gameState.status === 'CANCELLED') {
+                const loserId = gameState.winner ? (gameState.winner === gameState.player1 ? gameState.player2 : gameState.player1) : gameState.forfeiterId;
+                const loserMeta = loserId === player1Meta?.id ? player1Meta : player2Meta;
+                const loserName = this.getDisplayName(loserMeta?.displayName);
+                statusText = `${loserName} FORFEITED`;
+                // Use loser's color for forfeit text
+                ctx.fillStyle = loserId === gameState.player1 ? this.COLORS.P1_NEON : this.COLORS.P2_NEON;
+                ctx.shadowColor = ctx.fillStyle;
             } else {
                 statusText = `${winnerName} DOMINATED`;
             }
@@ -180,15 +186,7 @@ class TicTacToeGenerator {
             ctx.fillText(statusText, vsX, statusY - 2);
             ctx.shadowBlur = 0;
         } else {
-            // Draw VS only when playing
-            ctx.save();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = `italic 900 24px ${this.FONT_STACK}`;
-            ctx.textAlign = 'center';
-            ctx.shadowColor = this.COLORS.ACCENT;
-            ctx.shadowBlur = 15;
-            ctx.fillText('VS', vsX, vsY + 8);
-            ctx.restore();
+            // VS removed per user request
         }
 
         // 3. Player Profiles (Header Style)
@@ -218,14 +216,15 @@ class TicTacToeGenerator {
             ctx.clip();
             
             try {
-                if (meta && meta.avatarUrl) {
+                const avatarUrl = meta?.avatarURL || meta?.avatarUrl;
+                if (avatarUrl) {
                     let avatar;
-                    if (this.avatarCache.has(meta.avatarUrl)) {
-                        avatar = this.avatarCache.get(meta.avatarUrl);
+                    if (this.avatarCache.has(avatarUrl)) {
+                        avatar = this.avatarCache.get(avatarUrl);
                     } else {
-                        avatar = await loadImage(meta.avatarUrl);
+                        avatar = await loadImage(avatarUrl);
                         if (this.avatarCache.size > 20) this.avatarCache.clear();
-                        this.avatarCache.set(meta.avatarUrl, avatar);
+                        this.avatarCache.set(avatarUrl, avatar);
                     }
                     ctx.drawImage(avatar, x - avatarSize / 2, y - avatarSize / 2, avatarSize, avatarSize);
                 } else {
@@ -249,15 +248,51 @@ class TicTacToeGenerator {
                 ctx.font = `800 ${fontSize}px ${this.FONT_STACK}`;
             }
 
-            ctx.fillStyle = isTurn ? themeColor : 'rgba(255, 255, 255, 0.4)';
+            ctx.fillStyle = isTurn ? '#FFFFFF' : 'rgba(255, 255, 255, 0.4)';
             ctx.textAlign = align;
             const textX = align === 'left' ? x + (avatarSize / 2) + 20 : x - (avatarSize / 2) - 20;
             ctx.fillText(nameStr, textX, y + 5);
 
+            // Piece Indicator Badge
+            const badgeY = y + 25;
+            const badgeRadius = 7;
+            const badgeX = align === 'left' ? textX + badgeRadius : textX - badgeRadius;
+            
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = themeColor;
+            ctx.fillStyle = themeColor;
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw Symbol in Badge (Path-Drawn for Precision)
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            const s = 6; // Symbol size
+            if (isP1) {
+                ctx.beginPath();
+                ctx.moveTo(badgeX - s/2, badgeY - s/2);
+                ctx.lineTo(badgeX + s/2, badgeY + s/2);
+                ctx.moveTo(badgeX + s/2, badgeY - s/2);
+                ctx.lineTo(badgeX - s/2, badgeY + s/2);
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, s/2, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+
             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.font = `600 11px ${this.FONT_STACK}`;
-            const pieceName = isP1 ? '(X)' : '(O)';
-            ctx.fillText(`PLAYER ${align === 'left' ? '1' : '2'} ${pieceName}`, textX, y + 25);
+            const labelX = align === 'left' ? badgeX + 15 : badgeX - 15;
+            ctx.textAlign = align;
+            ctx.textBaseline = 'middle';
+            const rankText = meta?.rank ? `RANK #${meta.rank}` : 'UNRANKED';
+            ctx.fillText(rankText, labelX, badgeY + 0.5);
             ctx.restore();
         };
 

@@ -481,6 +481,12 @@ const initializeDatabase = async () => {
                 moves INTEGER DEFAULT 0,
                 public_message_id TEXT,
                 public_channel_id TEXT,
+                history JSONB DEFAULT '[]'::jsonb,
+                last_move_coord JSONB,
+                guild_id TEXT,
+                player_data JSONB DEFAULT '{}'::jsonb,
+                rematch_requested BOOLEAN DEFAULT FALSE,
+                last_move_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
 
@@ -520,6 +526,8 @@ const initializeDatabase = async () => {
                 history JSONB DEFAULT '[]'::jsonb,
                 last_move_coord JSONB,
                 guild_id TEXT,
+                player_data JSONB DEFAULT '{}'::jsonb,
+                rematch_requested BOOLEAN DEFAULT FALSE,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
 

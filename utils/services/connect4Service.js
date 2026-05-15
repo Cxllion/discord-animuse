@@ -19,30 +19,38 @@ class Connect4Service {
 
         // Active Session Blocking: Prevent concurrent games
         const prefix = process.env.TEST_MODE === 'true' ? 't4-' : 'c4-';
-        const { data: activeGames, error: fetchError } = await supabase
+        const { data: activeGames } = await supabase
             .from('connect4_sessions')
-            .select('id')
+            .select('id, last_move_at, updated_at, started_at')
             .eq('status', 'PLAYING')
             .like('id', `${prefix}%`)
             .or(`player1.eq.${player1Id},player2.eq.${player1Id},player1.eq.${player2Id},player2.eq.${player2Id}`);
 
-        if (fetchError) {
-            logger.error('[Connect4] Failed to check for active sessions:', fetchError);
-            // We proceed if there's an error to avoid blocking users due to DB hiccups, 
-            // but we log it for forensics.
-        }
-
         if (activeGames && activeGames.length > 0) {
-            throw new Error('ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link.');
+            // Check for Staleness: If the latest update was > 15 minutes ago, allow new game
+            const now = Date.now();
+            const staleThreshold = 15 * 60 * 1000; // 15 Minutes
+            
+            const realActiveGames = activeGames.filter(g => {
+                const lastActivity = new Date(g.last_move_at || g.updated_at || g.started_at || 0).getTime();
+                return (now - lastActivity) < staleThreshold;
+            });
+
+            if (realActiveGames.length > 0) {
+                throw new Error(`ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link (Connect 4: ${realActiveGames[0].id}).`);
+            } else {
+                // Background cleanup of stale games
+                for (const staleGame of activeGames) {
+                    supabase.from('connect4_sessions').update({ status: 'ABORTED' }).eq('id', staleGame.id).then(() => {});
+                }
+            }
         }
 
-        // Shuffle Player Slots (Placement Randomization)
-        const players = Math.random() < 0.5 ? [player1Id, player2Id] : [player2Id, player1Id];
-        const p1 = players[0];
-        const p2 = players[1];
-
-        // Randomize Starting Turn
-        const startingPlayer = Math.random() < 0.5 ? p1 : p2;
+        // Randomize who starts first (The person in slot 1 always starts)
+        const isP1Starting = Math.random() < 0.5;
+        const p1 = isP1Starting ? player1Id : player2Id;
+        const p2 = isP1Starting ? player2Id : player1Id;
+        const startingPlayer = p1;
 
         const gameState = {
             id: `${prefix}${Date.now()}-${p1.substring(0, 5)}`,
@@ -74,6 +82,12 @@ class Connect4Service {
                 .select('*')
                 .eq('id', gameId)
                 .maybeSingle();
+            if (data) {
+                data.playerData = data.player_data;
+                data.rematchRequested = data.rematch_requested;
+                data.publicMessageId = data.public_message_id;
+                data.publicChannelId = data.public_channel_id;
+            }
             return data;
         } catch (err) {
             logger.error(`[Connect4Service] Failed to fetch session ${gameId}:`, err);
@@ -82,12 +96,15 @@ class Connect4Service {
     }
 
     async hasActiveSession(userId) {
-        const prefix = process.env.TEST_MODE === 'true' ? 't4-' : 'c4-';
+        if (!supabase) return false;
+        const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+        const threshold = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour threshold
         const { data } = await supabase
             .from('connect4_sessions')
             .select('id')
             .or(`player1.eq.${userId},player2.eq.${userId}`)
             .eq('status', 'PLAYING')
+            .gt('last_move_at', threshold)
             .like('id', `${prefix}%`)
             .maybeSingle();
         return !!data;
@@ -99,7 +116,7 @@ class Connect4Service {
     async saveSession(gameId, state) {
         if (!supabase) return;
         try {
-            await supabase
+            const { error } = await supabase
                 .from('connect4_sessions')
                 .upsert({
                     id: gameId,
@@ -117,10 +134,14 @@ class Connect4Service {
                     history: state.history || [],
                     last_move_coord: state.lastMoveCoord || null,
                     guild_id: state.guildId || null,
+                    player_data: state.playerData || state.player_data || {},
+                    rematch_requested: state.rematch_requested || state.rematchRequested || false,
                     updated_at: new Date().toISOString()
                 });
+            if (error) throw error;
         } catch (err) {
             logger.error(`[Connect4Service] Failed to save session ${gameId}:`, err);
+            throw err;
         }
     }
 
@@ -195,6 +216,8 @@ class Connect4Service {
                     history: game.history, 
                     last_move_coord: game.last_move_coord,
                     last_move_at: game.last_move_at,
+                    player_data: game.playerData || game.player_data || {},
+                    rematch_requested: game.rematch_requested || game.rematchRequested || false,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', gameId)
@@ -228,20 +251,20 @@ class Connect4Service {
         // Early Forfeit Forgiveness: If no moves made, just delete the session
         if (moveCount === 0) {
             await this.deleteSession(gameId);
-            return { ...game, status: 'CANCELLED' };
+            return { ...game, status: 'CANCELLED', forfeiterId: userId };
         }
 
         game.status = 'FORFEITED';
         game.winner = winnerId;
         
-        // Award points unless it's an "Early Abandon" (Turn 1 or 2)
-        const isEarlyForfeit = moveCount < 3;
+        // Award points unless it's an "Early Abandon" (Safe Turn: 2 turns each = 4 moves)
+        const isEarlyForfeit = moveCount < 4;
         
         const reward = await minigameService.recordConnect4Result(
             p1, 
             p2, 
             winnerId, 
-            isEarlyForfeit ? 0 : moveCount, 
+            moveCount, 
             { isForfeit: true, isEarly: isEarlyForfeit, guildId: game.guild_id || game.guildId }
         );
 

@@ -412,16 +412,22 @@ const checkWordleReset = async (client) => {
         if (!lastWordleDate) {
             if (await minigameService.isSyncRequired()) {
                 isWordleResetting = true;
-                await wordleService.forceReset(client).finally(() => isWordleResetting = false);
+                await wordleService.forceReset(client)
+                    .then(() => { lastWordleDate = today; })
+                    .catch((err) => { logger.error('[Scheduler] Initial Wordle Sync Failed:', err); })
+                    .finally(() => isWordleResetting = false);
+            } else {
+                lastWordleDate = today;
             }
-            lastWordleDate = today;
             return;
         }
         if (today !== lastWordleDate && !isWordleResetting) {
             isWordleResetting = true;
             await wordleService.forceReset(client).then(() => { lastWordleDate = today; }).finally(() => isWordleResetting = false);
         }
-    } catch (e) {}
+    } catch (e) {
+        logger.error('[Scheduler] Wordle Reset Logic Failed:', e, 'Scheduler');
+    }
 };
 
 // #19: Lazy-require wordleService and connect4Service inside their functions

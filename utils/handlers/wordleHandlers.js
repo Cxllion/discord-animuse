@@ -367,21 +367,8 @@ module.exports = {
     handleWordleInteraction, 
     handleWordleModals,
     routerConfig: {
-        prefixes: ['wordle_', 'leaderboard_minigames'],
+        prefixes: ['wordle_'],
         handle: async (interaction) => {
-            if (interaction.customId === 'leaderboard_minigames') {
-                const leaderboardCommand = require('../../commands/social/leaderboard');
-                
-                // Mock the options to simulate `/leaderboard type: minigames`
-                interaction.options = {
-                    getString: (name) => {
-                        if (name === 'type') return 'minigames';
-                        return null;
-                    }
-                };
-                
-                return await leaderboardCommand.execute(interaction);
-            }
             if (interaction.isModalSubmit()) return handleWordleModals(interaction);
             return handleWordleInteraction(interaction);
         }

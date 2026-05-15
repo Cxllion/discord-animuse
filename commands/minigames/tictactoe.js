@@ -21,6 +21,27 @@ module.exports = {
         const challengerId = interaction.user.id;
         const opponent = interaction.options.getUser('opponent');
 
+        // 0. Arcade Protocol: Session Locking
+        const minigameService = require('../../utils/services/minigameService');
+        const [challengerBusy, opponentBusy] = await Promise.all([
+            minigameService.isUserInAnyGame(challengerId),
+            minigameService.isUserInAnyGame(opponent.id)
+        ]);
+
+        if (challengerBusy) {
+            return await interaction.reply({ 
+                content: '⚠️ **Terminal Conflict:** You are already engaged in an active Arcade Protocol session. Please conclude your current match first. ♡', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        if (opponentBusy && opponent.id !== interaction.client.user.id) {
+            return await interaction.reply({ 
+                content: `⚠️ **Link Failed:** ${opponent.username} is currently synchronized to another minigame terminal and cannot accept new invitations.`, 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
         if (challengeCooldowns.has(challengerId)) {
             return await interaction.reply({ content: '⏳ **Protocol Throttling:** Please wait for the terminal to cool down before initializing another Tactical Link.', flags: [MessageFlags.Ephemeral] });
         }
@@ -79,13 +100,12 @@ module.exports = {
             );
 
             const inviteEmbed = new EmbedBuilder()
-                .setTitle('🌸 TACTICAL LINK: INVITATION RECEIVED')
-                .setDescription(`The patron <@${challengerId}> is requesting to establish a **Tic Tac Toe** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 1 Arcade Point\n• Board State: Initialized`)
-                .setColor(0xFFB7C5)
-                .setFooter({ text: 'Awaiting biometric authorization...' });
+                .setTitle('Tic Tac Toe Invitation')
+                .setDescription(`<@${challengerId}> is challenging <@${opponent.id}> to a match of **Tic Tac Toe**.`)
+                .setColor(0xFFB7C5);
 
             const msgOptions = {
-                content: `👋 <@${opponent.id}>, a new link request has arrived.`,
+                content: `🕹️ **Incoming Tactical Link:** <@${opponent.id}>`,
                 embeds: [inviteEmbed],
                 components: [row]
             };

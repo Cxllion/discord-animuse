@@ -27,8 +27,32 @@ module.exports = {
         const challengerId = interaction.user.id;
         const opponent = interaction.options.getUser('opponent');
 
-        if (challengeCooldowns.has(challengerId)) {
-            return await interaction.reply({ content: '⏳ **Protocol Throttling:** Please wait for the terminal to cool down before initializing another Tactical Link.', flags: [MessageFlags.Ephemeral] });
+        // 0. Arcade Protocol: Session Locking
+        const minigameService = require('../../utils/services/minigameService');
+        const [challengerBusy, opponentBusy] = await Promise.all([
+            minigameService.isUserInAnyGame(challengerId),
+            minigameService.isUserInAnyGame(opponent.id)
+        ]);
+
+        if (challengerBusy) {
+            return await interaction.reply({ 
+                content: '⚠️ **Terminal Conflict:** You are already engaged in an active Arcade Protocol session. Please conclude your current match first. ♡', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        if (opponentBusy && opponent.id !== interaction.client.user.id) {
+            return await interaction.reply({ 
+                content: `⚠️ **Link Failed:** ${opponent.username} is currently synchronized to another minigame terminal and cannot accept new invitations.`, 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        if (opponent.id === challengerId) {
+            return await interaction.reply({ 
+                content: '🧩 **Self-Link Error:** You cannot synchronize a Tactical Link with yourself.', 
+                flags: [MessageFlags.Ephemeral] 
+            });
         }
         
         challengeCooldowns.add(challengerId);
@@ -90,13 +114,12 @@ module.exports = {
             );
 
             const inviteEmbed = new EmbedBuilder()
-                .setTitle('🌸 TACTICAL LINK: INVITATION RECEIVED')
-                .setDescription(`The patron <@${challengerId}> is requesting to establish a **Connect Muse** sequence with <@${opponent.id}>.\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
-                .setColor(0xFFB7C5)
-                .setFooter({ text: 'Awaiting biometric authorization...' });
+                .setTitle('Connect Muse Invitation')
+                .setDescription(`<@${challengerId}> is challenging <@${opponent.id}> to a match of **Connect 4**.`)
+                .setColor(0xFFB7C5);
 
             const payload = {
-                content: `👋 <@${opponent.id}>, a new link request has arrived.`,
+                content: `🕹️ **Incoming Tactical Link:** <@${opponent.id}>`,
                 embeds: [inviteEmbed],
                 components: [row]
             };

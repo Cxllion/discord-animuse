@@ -41,6 +41,12 @@ class MinigameService {
      */
     async awardPoints(userId, amount, options = {}) {
         if (!supabase) return;
+        
+        // Anti-Farm & Test Safeguard
+        if (process.env.TEST_MODE === 'true') {
+            amount = 0;
+        }
+        
         const { gameId = 'generic', metadata = {}, score = amount, guildId } = options;
 
         try {
@@ -244,6 +250,16 @@ class MinigameService {
         }
 
         // Award via Arcade Protocol
+        if (process.env.TEST_MODE === 'true') {
+            return await this.awardPoints(userId, 0, { 
+                gameId: 'wordle', 
+                isWin: solved, 
+                score: 0,
+                metadata: { streak: streak },
+                guildId: guildId
+            });
+        }
+
         // Update DB
         const result = await this.awardPoints(userId, totalEarned, { 
             gameId: 'wordle', 
@@ -481,45 +497,78 @@ class MinigameService {
     }
 
     /**
+     * isUserInAnyGame: Checks if a user is currently engaged in any active Arcade Protocol match.
+     * Prevents cross-game invitation spam and ensures focused gameplay. ♡
+     */
+    async isUserInAnyGame(userId) {
+        try {
+            // Lazy-require to prevent circular dependency
+            const tictactoeService = require('./tictactoeService');
+            const connect4Service = require('./connect4Service');
+
+            const results = await Promise.all([
+                tictactoeService.hasActiveSession(userId).catch(() => false),
+                connect4Service.hasActiveSession(userId).catch(() => false)
+            ]);
+            
+            const isBusy = results.some(r => r === true);
+            if (isBusy) {
+                logger.debug(`[ArcadeProtocol] Lock Conflict for ${userId}: TTT=${results[0]}, C4=${results[1]}`);
+            }
+            return isBusy;
+        } catch (err) {
+            logger.error(`[ArcadeProtocol] Failed to check active games for ${userId}:`, err);
+            return false;
+        }
+    }
+
+    /**
      * Resets the Daily Word and clears today's play history.
      * Also DEDUCTS points from all users who played today.
      */
     async resetDailyWord() {
-        if (!supabase) return;
+        if (!supabase) return null;
         const today = this.getWordleDate();
 
-        // 0. Fetch Previous Word for broadcast
-        const { data: currentWordData } = await supabase.from('wordle_daily').select('word').eq('date', today).maybeSingle();
-        const previousWord = currentWordData?.word || this.cache.get(today);
+        // 0. Fetch absolute latest entry (the word we are about to archive/replace)
+        const { data: latestEntry } = await supabase.from('wordle_daily').select('word, date').order('date', { ascending: false }).limit(1).maybeSingle();
+        
+        if (!latestEntry) return null;
 
-        // 1. Clear Local Cache
+        const isManualReset = (latestEntry.date === today);
+        const resetTargetDate = latestEntry.date;
+        const previousWord = latestEntry.word;
+
+        // 1. Clear Local Cache for both dates
         this.cache.delete(today);
+        this.cache.delete(resetTargetDate);
 
-        // 2. Reverse points awarded today
-        try {
-            const { data: history } = await supabase.from('wordle_history').select('user_id, metadata').eq('date', today).eq('solved', true);
-            if (history && history.length > 0) {
-                for (const record of history) {
-                    const pts = record.metadata?.awarded_points || 10;
-                    await this.deductPoints(record.user_id, pts, { gameId: 'wordle' });
+        // 2. Point reversal ONLY if it's a manual reset (intended for wiping a day's progress due to leak/error)
+        if (isManualReset) {
+            try {
+                const { data: history } = await supabase.from('wordle_history').select('user_id, metadata').eq('date', resetTargetDate).eq('solved', true);
+                if (history && history.length > 0) {
+                    for (const record of history) {
+                        const pts = record.metadata?.awarded_points || 10;
+                        await this.deductPoints(record.user_id, pts, { gameId: 'wordle' });
+                    }
+                    logger.info(`[ArcadeProtocol] Reversed points for ${history.length} patrons due to manual reset of today's word.`);
                 }
-                logger.info(`[ArcadeProtocol] Reversed points for ${history.length} patrons due to daily reset.`);
+            } catch (e) {
+                logger.error(`[ArcadeProtocol] Failed to reverse points during manual reset: ${e.message}`);
             }
-        } catch (e) {
-            logger.error(`[ArcadeProtocol] Failed to reverse points during reset: ${e.message}`);
+            
+            // Wipe today's history and daily word only if manual
+            await supabase.from('wordle_history').delete().eq('date', resetTargetDate);
+            await supabase.from('wordle_daily').delete().eq('date', resetTargetDate);
         }
 
-        // 3. Remove from DB (Daily Word)
-        await supabase.from('wordle_daily').delete().eq('date', today);
-
-        // 3. Clear today's sessions and history
-        // This allows users to play the fresh word without having "already played" flag
-        await supabase.from('wordle_history').delete().eq('date', today);
-        const { error } = await supabase.from('wordle_sessions').delete().eq('target_word', previousWord);
-        if (error) {
-            await this._saveLocalSessions({}); // Flush local cache
-        }
-
+        // 3. Clear active sessions for the OLD word (Archiving them)
+        await supabase.from('wordle_sessions').delete().eq('target_word', previousWord);
+        
+        // 🛡️ Always flush local fallback cache during reset to ensure no stale sessions survive.
+        await this._saveLocalSessions({}); 
+        
         // Clear memory cache of locks
         const wordleService = require('./wordleService');
         if (wordleService && wordleService.processingLocks) {
@@ -677,18 +726,27 @@ class MinigameService {
     }
 
     async clearWordleSession(userId) {
-        if (!supabase) return;
+        if (!supabase) {
+            const localData = await this._getLocalSessions();
+            if (localData[userId]) {
+                delete localData[userId];
+                await this._saveLocalSessions(localData);
+            }
+            return;
+        }
+
         try {
-            const { error } = await supabase.from('wordle_sessions').delete().eq('user_id', userId);
-            if (error) {
-                const localData = await this._getLocalSessions();
-                if (localData[userId]) {
-                    delete localData[userId];
-                    await this._saveLocalSessions(localData);
-                }
+            // 1. Wipe from Supabase
+            await supabase.from('wordle_sessions').delete().eq('user_id', userId);
+            
+            // 2. Wipe from Local Fallback (Always, to prevent stale resurrection)
+            const localData = await this._getLocalSessions();
+            if (localData[userId]) {
+                delete localData[userId];
+                await this._saveLocalSessions(localData);
             }
         } catch (err) {
-            logger.error(`[ArcadeProtocol] Failed to clear Wordle session for ${userId}:`, err);
+            logger.error(`[Wordle] Failed to clear session for ${userId}:`, err);
         }
     }
 
@@ -792,9 +850,9 @@ class MinigameService {
         
         let pointsAwarded = 0;
         
-        // Anti-Farm Check: Do not award points for self-play or early abandons (Turn 1 or 2)
+        // Anti-Farm Check: Do not award points for self-play or early abandons (Safe Turn: 2 turns each = 4 moves)
         const isSelfPlay = p1Id === p2Id;
-        const isEarlyAbandon = options.isEarly || (moves > 0 && moves < 3);
+        const isEarlyAbandon = options.isEarly || (moves > 0 && moves < 4);
         
         // Only award points if there is a winner (not a draw), it's not a self-play game, and not an early abandon
         if (winnerId && !isSelfPlay && !isEarlyAbandon) {
@@ -812,6 +870,9 @@ class MinigameService {
                 if (count < 3) {
                     // Standard points for natural win or late forfeit
                     pointsAwarded = moves <= 10 ? 5 : 3;
+                    
+                    if (process.env.TEST_MODE === 'true') pointsAwarded = 0;
+
                     await this.awardPoints(winnerId, pointsAwarded, { gameId: 'connect4', isWin: true, guildId });
                 } else {
                     // Still record the game played stat
@@ -867,15 +928,17 @@ class MinigameService {
      * Rule: Max 3 point-yielding games against the same opponent per day.
      * Points: 1 point per win.
      */
-    async recordTicTacToeResult(p1Id, p2Id, winnerId, options = {}) {
+    async recordTicTacToeResult(p1Id, p2Id, winnerId, moves = 0, options = {}) {
         if (!supabase) return { pointsAwarded: 0 };
         const { guildId } = options;
         const today = this.getWordleDate();
         
         let pointsAwarded = 0;
         const isSelfPlay = p1Id === p2Id;
+        // Anti-Farm Check: 1 turn each = 2 moves
+        const isEarlyAbandon = options.isEarly || (moves > 0 && moves < 2);
         
-        if (winnerId && !isSelfPlay) {
+        if (winnerId && !isSelfPlay && !isEarlyAbandon) {
             const loserId = winnerId === p1Id ? p2Id : p1Id;
 
             try {
@@ -889,6 +952,7 @@ class MinigameService {
 
                 if (count < 3) {
                     pointsAwarded = 1;
+                    if (process.env.TEST_MODE === 'true') pointsAwarded = 0;
                     await this.awardPoints(winnerId, pointsAwarded, { gameId: 'tictactoe', isWin: true, guildId });
                 } else {
                     await this.awardPoints(winnerId, 0, { gameId: 'tictactoe', isWin: true, guildId });
@@ -897,7 +961,7 @@ class MinigameService {
             } catch (err) {
                 logger.error(`[ArcadeProtocol] Failed to check TicTacToe limits: ${err.message}`);
             }
-        } else if (winnerId && isSelfPlay) {
+        } else if (winnerId && (isSelfPlay || isEarlyAbandon)) {
             await this.awardPoints(winnerId, 0, { gameId: 'tictactoe', isWin: true });
             const loserId = winnerId === p1Id ? p2Id : p1Id;
             await this.awardPoints(loserId, 0, { gameId: 'tictactoe' });

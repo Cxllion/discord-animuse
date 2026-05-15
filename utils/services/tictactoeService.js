@@ -19,28 +19,38 @@ class TicTacToeService {
 
         // Active Session Blocking: Prevent concurrent games
         const prefix = process.env.TEST_MODE === 'true' ? 't3t-' : 't3-';
-        const { data: activeGames, error: fetchError } = await supabase
+        const { data: activeGames } = await supabase
             .from('tictactoe_sessions')
-            .select('id')
+            .select('id, last_move_at, updated_at')
             .eq('status', 'PLAYING')
             .like('id', `${prefix}%`)
             .or(`player1.eq.${player1Id},player2.eq.${player1Id},player1.eq.${player2Id},player2.eq.${player2Id}`);
 
-        if (fetchError) {
-            logger.error('[TicTacToe] Failed to check for active sessions:', fetchError);
-        }
-
         if (activeGames && activeGames.length > 0) {
-            throw new Error('ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link (Tic Tac Toe).');
+            // Check for Staleness: If the latest update was > 15 minutes ago, allow new game
+            const now = Date.now();
+            const staleThreshold = 15 * 60 * 1000; // 15 Minutes
+            
+            const realActiveGames = activeGames.filter(g => {
+                const lastActivity = new Date(g.last_move_at || g.updated_at || 0).getTime();
+                return (now - lastActivity) < staleThreshold;
+            });
+
+            if (realActiveGames.length > 0) {
+                throw new Error(`ACTIVE_LINK_DETECTED: One or more patrons are already engaged in a Tactical Link (Tic Tac Toe: ${realActiveGames[0].id}).`);
+            } else {
+                // Background cleanup of stale games
+                for (const staleGame of activeGames) {
+                    supabase.from('tictactoe_sessions').update({ status: 'ABORTED' }).eq('id', staleGame.id).then(() => {});
+                }
+            }
         }
 
-        // Shuffle Player Slots
-        const players = Math.random() < 0.5 ? [player1Id, player2Id] : [player2Id, player1Id];
-        const p1 = players[0];
-        const p2 = players[1];
-
-        // Randomize Starting Turn
-        const startingPlayer = Math.random() < 0.5 ? p1 : p2;
+        // Randomize who starts first (The person in slot 1/X always starts)
+        const isP1Starting = Math.random() < 0.5;
+        const p1 = isP1Starting ? player1Id : player2Id;
+        const p2 = isP1Starting ? player2Id : player1Id;
+        const startingPlayer = p1;
 
         const gameState = {
             id: `${prefix}${Date.now()}-${p1.substring(0, 5)}`,
@@ -72,11 +82,32 @@ class TicTacToeService {
                 .select('*')
                 .eq('id', gameId)
                 .maybeSingle();
+            if (data) {
+                data.playerData = data.player_data;
+                data.rematchRequested = data.rematch_requested;
+                data.publicMessageId = data.public_message_id;
+                data.publicChannelId = data.public_channel_id;
+            }
             return data;
         } catch (err) {
             logger.error(`[TicTacToeService] Failed to fetch session ${gameId}:`, err);
             return null;
         }
+    }
+
+    async hasActiveSession(userId) {
+        if (!supabase) return false;
+        const prefix = process.env.TEST_MODE === 'true' ? 'ttt-' : 'tt-';
+        const threshold = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour threshold
+        const { data } = await supabase
+            .from('tictactoe_sessions')
+            .select('id')
+            .or(`player1.eq.${userId},player2.eq.${userId}`)
+            .eq('status', 'PLAYING')
+            .gt('last_move_at', threshold)
+            .like('id', `${prefix}%`)
+            .maybeSingle();
+        return !!data;
     }
 
     /**
@@ -85,7 +116,7 @@ class TicTacToeService {
     async saveSession(gameId, state) {
         if (!supabase) return;
         try {
-            await supabase
+            const { error } = await supabase
                 .from('tictactoe_sessions')
                 .upsert({
                     id: gameId,
@@ -103,10 +134,14 @@ class TicTacToeService {
                     history: state.history || [],
                     last_move_coord: state.lastMoveCoord || null,
                     guild_id: state.guildId || null,
+                    player_data: state.playerData || state.player_data || {},
+                    rematch_requested: state.rematch_requested || state.rematchRequested || false,
                     updated_at: new Date().toISOString()
                 });
+            if (error) throw error;
         } catch (err) {
             logger.error(`[TicTacToeService] Failed to save session ${gameId}:`, err);
+            throw err;
         }
     }
 
@@ -155,7 +190,7 @@ class TicTacToeService {
                 game.winner = userId;
                 game.winningTiles = win.tiles;
                 
-                const reward = await minigameService.recordTicTacToeResult(p1, p2, userId, { guildId: game.guild_id || game.guildId });
+                const reward = await minigameService.recordTicTacToeResult(p1, p2, userId, game.moves, { guildId: game.guild_id || game.guildId });
                 game.reward = reward;
             } else if (tictactoeEngine.isBoardFull(game.board)) {
                 game.status = 'DRAW';
@@ -179,6 +214,8 @@ class TicTacToeService {
                     history: game.history, 
                     last_move_coord: game.last_move_coord,
                     last_move_at: game.last_move_at,
+                    player_data: game.playerData || game.player_data || {},
+                    rematch_requested: game.rematch_requested || game.rematchRequested || false,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', gameId);
@@ -203,13 +240,13 @@ class TicTacToeService {
         // Early Forfeit Forgiveness: If no moves made, just delete the session
         if (moveCount === 0) {
             await this.deleteSession(gameId);
-            return { ...game, status: 'CANCELLED' };
+            return { ...game, status: 'CANCELLED', forfeiterId: userId };
         }
 
         game.status = 'FORFEITED';
         game.winner = winnerId;
         
-        const reward = await minigameService.recordTicTacToeResult(p1, p2, winnerId, { isForfeit: true, guildId: game.guild_id || game.guildId });
+        const reward = await minigameService.recordTicTacToeResult(p1, p2, winnerId, moveCount, { isForfeit: true, guildId: game.guild_id || game.guildId });
         game.reward = reward;
         
         await this.saveSession(gameId, game);

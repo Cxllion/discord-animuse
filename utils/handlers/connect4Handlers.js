@@ -14,12 +14,17 @@ const toastGenerator = require('../generators/toastGenerator');
 const { fetchConfig } = require('../core/database');
 const logger = require('../core/logger');
 
+// Memory locks for initialization to prevent race conditions
+const initLocks = new Set();
+
 // Strict memory-based rate limiting to prevent database DOS attacks from button spam
 const rateLimitCache = new Set();
 
 /**
  * Connect4 Handlers: Manages real-time interactions for the Tactical Link minigame.
  */
+
+const { handleInteractionError } = require('../core/errorHandler');
 
 const handleConnect4Interaction = async (interaction) => {
     const { customId, user, guildId } = interaction;
@@ -86,7 +91,7 @@ const handleConnect4Interaction = async (interaction) => {
             
             // [20] Interactive Thinking State
             // Defer update immediately to prevent 3s timeout
-            await interaction.deferUpdate();
+            // No deferUpdate here for immediate response speed
 
             // Fetch old state to preserve metadata (like playerData)
             const oldGame = await connect4Service.getGame(gameId);
@@ -95,7 +100,7 @@ const handleConnect4Interaction = async (interaction) => {
             // Validate Turn
             const currentTurn = oldGame.current_turn || oldGame.currentTurn;
             if (user.id !== currentTurn) {
-                return interaction.followUp({
+                return interaction.reply({
                     content: '⚠️ **Protocol Deviation:** It is not your turn in this link sequence. Please wait for your opponent.',
                     flags: [MessageFlags.Ephemeral]
                 });
@@ -109,22 +114,7 @@ const handleConnect4Interaction = async (interaction) => {
                 updatedGame.playerData = oldGame.playerData;
             }
 
-            // Disable buttons to show synchronization
-            const originalComponents = interaction.message.components;
-            const thinkingComponents = originalComponents.map(row => {
-                const newRow = ActionRowBuilder.from(row);
-                newRow.components.forEach(btn => {
-                    const btnData = btn.toJSON();
-                    if (btnData.custom_id === customId) {
-                        btn.setLabel('...').setDisabled(true);
-                    } else {
-                        btn.setDisabled(true);
-                    }
-                });
-                return newRow;
-            });
-            await interaction.editReply({ components: thinkingComponents });
-
+            // Respond immediately with the updated view for maximum speed
             await updateConnect4Views(interaction, updatedGame);
         } else if (action === 'forfeit') {
             // [4] Forfeit Confirmation
@@ -154,31 +144,46 @@ const handleConnect4Interaction = async (interaction) => {
                 }
             }
         } else if (action === 'rematch') {
+            const opponentId = user.id === game.player1 ? game.player2 : game.player1;
+            const initLockId = `c4_rematch_${gameId}`;
+            
+            if (initLocks.has(initLockId)) return;
+            initLocks.add(initLockId);
+
+            if (game.rematch_requested || game.rematchRequested) {
+                initLocks.delete(initLockId);
+                return interaction.reply({ content: '⚠️ **Protocol Active:** A rematch request has already been broadcast for this link.', flags: [MessageFlags.Ephemeral] }).catch(() => {});
+            }
+
             await interaction.deferUpdate();
 
-            const opponentId = user.id === game.player1 ? game.player2 : game.player1;
-            const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+            try {
+                const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+
+                // Lock session for rematch
+                await connect4Service.saveSession(gameId, { ...game, rematch_requested: true });
 
             const inviteEmbed = new EmbedBuilder()
-                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
-                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Connect Muse** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 3 Arcade Points\n• Board State: Initialized`)
+                .setTitle('Connect Muse Rematch Invitation')
+                .setDescription(`<@${user.id}> is requesting a **Connect 4** rematch with <@${opponentId}>.`)
                 .setColor(0xFFB7C5)
-                .setFooter({ text: 'Awaiting biometric authorization...' });
+                .setFooter({ text: 'This request will expire in 5 minutes.' });
 
             const rematchRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept Rematch').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId(`${prefix}_decline_${user.id}_${opponentId}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
-            // Clear buttons on old board so it can't be interacted with again
             await interaction.editReply({ components: [] }).catch(() => {});
 
-            // Send fresh invite to channel
             await interaction.channel.send({
-                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
+                content: `🕹️ **Rematch Requested:** <@${opponentId}>`,
                 embeds: [inviteEmbed],
                 components: [rematchRow]
             });
+            } finally {
+                initLocks.delete(initLockId);
+            }
 
         } else if (action === 'accept') {
             const challengerId = parts[2];
@@ -189,6 +194,24 @@ const handleConnect4Interaction = async (interaction) => {
             if (user.id !== opponentId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** Only the invited patron can accept this tactical link.', flags: [MessageFlags.Ephemeral] });
             }
+
+            // 0. Arcade Protocol: Session Locking
+            const [challengerBusy, opponentBusy] = await Promise.all([
+                minigameService.isUserInAnyGame(challengerId),
+                minigameService.isUserInAnyGame(opponentId)
+            ]);
+
+            if (challengerBusy || opponentBusy) {
+                const busyUser = challengerBusy ? (challengerId === user.id ? 'You are' : 'The challenger is') : 'You are';
+                return interaction.reply({ 
+                    content: `⚠️ **Link Failed:** ${busyUser} currently engaged in another active Arcade Protocol session.`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
+
+            const initLockId = `c4_init_${challengerId}_${opponentId}`;
+            if (initLocks.has(initLockId)) return;
+            initLocks.add(initLockId);
 
             await interaction.deferUpdate();
 
@@ -231,17 +254,63 @@ const handleConnect4Interaction = async (interaction) => {
                 };
 
                 // Set public message tracking and cached data
-                gameState.publicMessageId = interaction.message.id;
+                // Generate initial views
+                const prefix = process.env.TEST_MODE === 'true' ? 't4' : 'c4';
+                const boardBuffer = await connect4Generator.generateBoard(gameState, { p1Data: playerData.p1, p2Data: playerData.p2 });
+                const attachment = new AttachmentBuilder(boardBuffer, { name: 'connect4-board.webp' });
+                
+                const components = [];
+                for (let c = 0; c < 7; c++) {
+                    const row = new ActionRowBuilder();
+                    // We only need one row for the 7 drop buttons
+                    // But Discord allows 5 buttons per row. 
+                    // So we use 2 rows for the 7 columns.
+                }
+                // Wait, I should use the standard component generation from updateConnect4Views
+                
+                const dropRow1 = new ActionRowBuilder();
+                const dropRow2 = new ActionRowBuilder();
+                for (let c = 0; c < 7; c++) {
+                    const btn = new ButtonBuilder()
+                        .setCustomId(`${prefix}_drop_${gameState.id}_${c}`)
+                        .setLabel(`${c + 1}`)
+                        .setStyle(ButtonStyle.Secondary);
+                    if (c < 4) dropRow1.addComponents(btn);
+                    else dropRow2.addComponents(btn);
+                }
+                const controlsRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger)
+                );
+                
+                const initialComponents = [dropRow1, dropRow2, controlsRow];
+
+                // NEW: Send board as a NEW message to keep the channel clean
+                const isGameOver = ['WON', 'DRAW', 'FORFEITED', 'CANCELLED'].includes(gameState.status);
+                const turnText = isGameOver ? 'Protocol Terminated.' : `<@${gameState.current_turn}>'s Turn.`;
+
+                const gameMessage = await interaction.channel.send({
+                    content: `🕹️ **Connect Muse Active:** ${turnText}`,
+                    files: [attachment],
+                    components: initialComponents
+                });
+
+                gameState.publicMessageId = gameMessage.id;
                 gameState.publicChannelId = interaction.channelId;
                 gameState.playerData = playerData;
                 await connect4Service.saveSession(gameState.id, gameState);
 
-                await updateConnect4Views(interaction, gameState);
+                // Delete the invitation
+                await interaction.deleteReply().catch(() => null);
 
 
             } catch (innerError) {
                 logger.error('[Connect4] Accept Logic Failure:', innerError);
-                await interaction.followUp({ content: `❌ **Protocol Error:** ${innerError.message}`, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+                const errorMsg = innerError.message.includes('ACTIVE_LINK_DETECTED') 
+                    ? '🛡️ **Engagement Error:** One or more patrons are already engaged in an active Tactical Link. Please finalize your current match first.'
+                    : `❌ **Protocol Error:** ${innerError.message}`;
+                await interaction.followUp({ content: errorMsg, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+            } finally {
+                initLocks.delete(`c4_init_${challengerId}_${opponentId}`);
             }
         } else if (action === 'decline') {
             const opponentId = parts[3];
@@ -251,12 +320,7 @@ const handleConnect4Interaction = async (interaction) => {
             await interaction.update({ content: '🏳️ **Connect Muse:** The invitation was declined.', components: [] });
         }
     } catch (error) {
-        logger.error('[Connect4] Interaction failure:', error);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.followUp({ content: `❌ **Protocol Error:** ${error.message}`, flags: [MessageFlags.Ephemeral] }).catch(()=>null);
-        } else {
-            await interaction.reply({ content: `❌ **Protocol Error:** ${error.message}`, flags: [MessageFlags.Ephemeral] }).catch(()=>null);
-        }
+        await handleInteractionError(interaction, error, 'An error occurred within the Connect Muse protocol.');
     }
 };
 
@@ -299,6 +363,8 @@ const updateConnect4Views = async (interaction, gameState) => {
             };
         }
 
+        const isGameOver = ['WON', 'DRAW', 'FORFEITED', 'CANCELLED'].includes(gameState.status);
+
         // [1] Turn Expiry Calculation
         const lastMove = new Date(gameState.last_move_at || gameState.startedAt).getTime();
         const expiryTimestamp = Math.floor((lastMove + (120 * 1000)) / 1000);
@@ -311,19 +377,10 @@ const updateConnect4Views = async (interaction, gameState) => {
         let content = '';
         if (gameState.status === 'PLAYING') {
             content = `🎮 **Connect Muse:** It is <@${currentTurn}>'s turn! (Expires <t:${expiryTimestamp}:R>)`;
-        } else if (gameState.status === 'WON') {
-            content = `🎊 **Connect Muse:** <@${gameState.winner}> has achieved total domination!`;
-        } else if (gameState.status === 'DRAW') {
-            content = '🤝 **Connect Muse:** Tactical stalemate achieved. Mutual annihilation.';
-        } else if (gameState.status === 'FORFEITED') {
-            content = `🏳️ **Connect Muse:** <@${gameState.winner === p1Id ? p2Id : p1Id}> severed the link. <@${gameState.winner}> wins by default.`;
-        } else if (gameState.status === 'CANCELLED') {
-            content = '🏳️ **Connect Muse:** The tactical link was cancelled by the initiator.';
-            components.length = 0; // Clear buttons
-        }
-
-        if (gameState.status === 'PLAYING') {
             content += `\n*Protocol Sequence: ${gameState.moves} moves | 2-minute move limit enforced*`;
+        } else {
+            // Game Over: Clear text
+            content = '';
         }
 
         // Build Interface
@@ -348,12 +405,25 @@ const updateConnect4Views = async (interaction, gameState) => {
                 new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger).setEmoji('🏳️')
             );
             components.push(row1, row2);
-        } else if (['WON', 'DRAW', 'FORFEITED'].includes(gameState.status)) {
-            const endRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`${prefix}_rematch_${gameState.id}`).setLabel('Rematch').setStyle(ButtonStyle.Primary).setEmoji('🔄'),
-                new ButtonBuilder().setCustomId('leaderboard_minigames').setLabel('View Leaderboard').setStyle(ButtonStyle.Secondary).setEmoji('📊')
-            );
-            components.push(endRow);
+        } else if (isGameOver) {
+            content = ''; // Clear text for any game over state
+            // Only show Rematch/Leaderboard for natural end games (not forfeits)
+            if (['WON', 'DRAW'].includes(gameState.status)) {
+                const rematchBtn = new ButtonBuilder()
+                    .setCustomId(`${prefix}_rematch_${gameState.id}`)
+                    .setLabel('Rematch')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🔄');
+                
+                const leaderboardBtn = new ButtonBuilder()
+                    .setCustomId('leaderboard_minigames')
+                    .setLabel('View Leaderboard')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📊');
+
+                const controlsRow = new ActionRowBuilder().addComponents(rematchBtn, leaderboardBtn);
+                components.push(controlsRow);
+            }
         }
 
         // Update the message
@@ -364,15 +434,19 @@ const updateConnect4Views = async (interaction, gameState) => {
             components: components
         };
 
-        if (interaction.editReply) {
+        if (interaction.isButton && interaction.isButton() && !interaction.deferred && !interaction.replied) {
+            await interaction.update(payload);
+        } else if (interaction.editReply && (interaction.deferred || interaction.replied)) {
             await interaction.editReply(payload);
-        } else if (interaction.message) {
+        } else if (interaction.edit) {
+            await interaction.edit(payload);
+        } else if (interaction.message && interaction.message.edit) {
             await interaction.message.edit(payload);
         }
 
 
         // 🏆 Winner Broadcaster (Success Slip)
-        if (gameState.status === 'WON' && gameState.reward?.pointsAwarded > 0) {
+        if (isGameOver && gameState.reward?.pointsAwarded > 0) {
             const winnerId = gameState.winner;
             const winnerData = winnerId === p1Id ? p1Data : p2Data;
             
@@ -386,6 +460,18 @@ const updateConnect4Views = async (interaction, gameState) => {
             await interaction.channel.send({
                 files: [new AttachmentBuilder(toastBuffer, { name: 'victory-slip.webp' })]
             }).catch(err => logger.error('[Connect Muse] Failed to send victory slip:', err));
+        }
+
+        // Auto-cleanup for game over buttons
+        if (isGameOver && (interaction.editReply || (interaction.message && interaction.message.edit))) {
+            setTimeout(async () => {
+                try {
+                    const finalMsg = interaction.message || (await interaction.fetchReply().catch(() => null));
+                    if (finalMsg) {
+                        await finalMsg.edit({ components: [] }).catch(() => null);
+                    }
+                } catch (e) {}
+            }, 60000); // 1 Minute cleanup
         }
     } catch (err) {
         logger.error('[Connect4] View update failure:', err);

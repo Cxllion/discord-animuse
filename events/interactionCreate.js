@@ -66,7 +66,16 @@ module.exports = {
             if (interaction.inGuild()) {
                 const testerRoleId = CONFIG.TESTER_ROLE_ID;
                 isTester = testerRoleId ? interaction.member?.roles.cache.has(testerRoleId) : false;
-            } else if (interaction.customId?.startsWith('archive_') || interaction.customId?.startsWith('mafia_')) {
+            } 
+            
+            if (
+                interaction.customId?.startsWith('archive_') || 
+                interaction.customId?.startsWith('mafia_') ||
+                interaction.customId?.startsWith('c4_') ||
+                interaction.customId?.startsWith('t4_') ||
+                interaction.customId?.startsWith('t3_') ||
+                interaction.customId?.startsWith('t3t_')
+            ) {
                 isTester = true;
             }
 

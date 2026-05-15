@@ -12,6 +12,10 @@ const minigameService = require('../services/minigameService');
 const { getResolvableName } = require('../core/visualUtils');
 const toastGenerator = require('../generators/toastGenerator');
 const logger = require('../core/logger');
+const { handleInteractionError } = require('../core/errorHandler');
+
+// Memory locks for initialization to prevent race conditions
+const initLocks = new Set();
 
 const rateLimitCache = new Set();
 
@@ -69,14 +73,14 @@ const handleTicTacToeInteraction = async (interaction) => {
                 return interaction.reply({ content: '❌ **Protocol Error:** Invalid navigational coordinates received.', flags: [MessageFlags.Ephemeral] });
             }
             
-            await interaction.deferUpdate();
+            // No deferUpdate here for immediate response speed
 
             const oldGame = await tictactoeService.getGame(gameId);
             if (!oldGame) return;
 
             const currentTurn = oldGame.current_turn || oldGame.currentTurn;
             if (user.id !== currentTurn) {
-                return interaction.followUp({
+                return interaction.reply({
                     content: '⚠️ **Protocol Deviation:** It is not your turn in this link sequence. Please wait for your opponent.',
                     flags: [MessageFlags.Ephemeral]
                 });
@@ -89,21 +93,7 @@ const handleTicTacToeInteraction = async (interaction) => {
                 updatedGame.playerData = oldGame.playerData;
             }
 
-            const originalComponents = interaction.message.components;
-            const thinkingComponents = originalComponents.map(compRow => {
-                const newRow = ActionRowBuilder.from(compRow);
-                newRow.components.forEach(btn => {
-                    const btnData = btn.toJSON();
-                    if (btnData.custom_id === customId) {
-                        btn.setLabel('...').setDisabled(true);
-                    } else {
-                        btn.setDisabled(true);
-                    }
-                });
-                return newRow;
-            });
-            await interaction.editReply({ components: thinkingComponents });
-
+            // Respond immediately with the updated view for maximum speed
             await updateTicTacToeViews(interaction, updatedGame);
         } else if (action === 'forfeit') {
             const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
@@ -133,29 +123,47 @@ const handleTicTacToeInteraction = async (interaction) => {
         } else if (action === 'cancel') {
             await interaction.update({ content: '⚙️ **Protocol Resumed:** Tactical link remains active.', components: [] });
         } else if (action === 'rematch') {
+            const opponentId = user.id === game.player1 ? game.player2 : game.player1;
+            const initLockId = `ttt_rematch_${gameId}`;
+            
+            if (initLocks.has(initLockId)) return;
+            initLocks.add(initLockId);
+
+            if (game.rematch_requested || game.rematchRequested) {
+                initLocks.delete(initLockId);
+                return interaction.reply({ content: '⚠️ **Protocol Active:** A rematch request has already been broadcast for this link.', flags: [MessageFlags.Ephemeral] }).catch(() => {});
+            }
+
             await interaction.deferUpdate();
 
-            const opponentId = user.id === game.player1 ? game.player2 : game.player1;
-            const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
+            try {
+                const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
+
+                // Lock session for rematch
+                await tictactoeService.saveSession(gameId, { ...game, rematch_requested: true });
 
             const inviteEmbed = new EmbedBuilder()
-                .setTitle('🌸 TACTICAL LINK: REMATCH REQUESTED')
-                .setDescription(`<@${user.id}> is challenging <@${opponentId}> to a **Tic Tac Toe** rematch!\n\n**Protocol Details:**\n• Turn Limit: 2 Minutes\n• Victory Prize: 1 Arcade Point\n• Board State: Initialized`)
+                .setTitle('Tic Tac Toe Rematch Invitation')
+                .setDescription(`<@${user.id}> is requesting a **Tic Tac Toe** rematch with <@${opponentId}>.`)
                 .setColor(0xFFB7C5)
-                .setFooter({ text: 'Awaiting biometric authorization...' });
+                .setFooter({ text: 'This request will expire in 5 minutes.' });
 
             const rematchRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`${prefix}_accept_${user.id}_${opponentId}`).setLabel('Accept Rematch').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId(`${prefix}_decline_${user.id}_${opponentId}`).setLabel('Decline').setStyle(ButtonStyle.Secondary)
             );
 
             await interaction.editReply({ components: [] }).catch(() => {});
 
             await interaction.channel.send({
-                content: `👋 <@${opponentId}>, a rematch request has arrived!`,
+                content: `🕹️ **Rematch Requested:** <@${opponentId}>`,
                 embeds: [inviteEmbed],
                 components: [rematchRow]
             });
+
+            } finally {
+                initLocks.delete(initLockId);
+            }
 
         } else if (action === 'accept') {
             const challengerId = parts[2];
@@ -164,6 +172,24 @@ const handleTicTacToeInteraction = async (interaction) => {
             if (user.id !== opponentId) {
                 return interaction.reply({ content: '🔒 **Unauthorized Access:** Only the invited patron can accept this tactical link.', flags: [MessageFlags.Ephemeral] });
             }
+
+            // 0. Arcade Protocol: Session Locking
+            const [challengerBusy, opponentBusy] = await Promise.all([
+                minigameService.isUserInAnyGame(challengerId),
+                minigameService.isUserInAnyGame(opponentId)
+            ]);
+
+            if (challengerBusy || opponentBusy) {
+                const busyUser = challengerBusy ? (challengerId === user.id ? 'You are' : 'The challenger is') : 'You are';
+                return interaction.reply({ 
+                    content: `⚠️ **Link Failed:** ${busyUser} currently engaged in another active Arcade Protocol session.`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
+
+            const initLockId = `ttt_init_${challengerId}_${opponentId}`;
+            if (initLocks.has(initLockId)) return;
+            initLocks.add(initLockId);
 
             await interaction.deferUpdate();
 
@@ -202,16 +228,55 @@ const handleTicTacToeInteraction = async (interaction) => {
                     }
                 };
 
-                gameState.publicMessageId = interaction.message.id;
+                // Generate initial views
+                const prefix = process.env.TEST_MODE === 'true' ? 't3t' : 't3';
+                const boardBuffer = await tictactoeGenerator.generateBoard(gameState, playerData.p1, playerData.p2);
+                const attachment = new AttachmentBuilder(boardBuffer, { name: 'tictactoe-board.webp' });
+                
+                const components = [];
+                for (let r = 0; r < 3; r++) {
+                    const row = new ActionRowBuilder();
+                    for (let c = 0; c < 3; c++) {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`${prefix}_drop_${gameState.id}_${r}_${c}`)
+                                .setStyle(ButtonStyle.Secondary)
+                                .setLabel('\u200b')
+                        );
+                    }
+                    components.push(row);
+                }
+                const controlsRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`${prefix}_forfeit_${gameState.id}`).setLabel('Forfeit').setStyle(ButtonStyle.Danger)
+                );
+                components.push(controlsRow);
+
+                // NEW: Send board as a NEW message to keep the channel clean
+                const isGameOver = gameState.status !== 'PLAYING';
+                const turnText = isGameOver ? 'Link Terminated.' : `<@${gameState.current_turn}>'s Turn.`;
+                
+                const gameMessage = await interaction.channel.send({
+                    content: `🕹️ **Tactical Link Active:** ${turnText}`,
+                    files: [attachment],
+                    components: components
+                });
+
+                gameState.publicMessageId = gameMessage.id;
                 gameState.publicChannelId = interaction.channelId;
                 gameState.playerData = playerData;
                 await tictactoeService.saveSession(gameState.id, gameState);
 
-                await updateTicTacToeViews(interaction, gameState);
+                // Delete the invitation to keep the channel clean
+                await interaction.deleteReply().catch(() => null);
 
             } catch (innerError) {
                 logger.error('[TicTacToe] Accept Logic Failure:', innerError);
-                await interaction.followUp({ content: `❌ **Protocol Error:** ${innerError.message}`, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+                const errorMsg = innerError.message.includes('ACTIVE_LINK_DETECTED') 
+                    ? '🛡️ **Engagement Error:** One or more patrons are already engaged in an active Tactical Link. Please finalize your current match first.'
+                    : `❌ **Protocol Error:** ${innerError.message}`;
+                await interaction.followUp({ content: errorMsg, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+            } finally {
+                initLocks.delete(`ttt_init_${challengerId}_${opponentId}`);
             }
         } else if (action === 'decline') {
             const opponentId = parts[3];
@@ -221,10 +286,7 @@ const handleTicTacToeInteraction = async (interaction) => {
             await interaction.update({ content: '❌ **Protocol Terminated:** The requested patron has declined the tactical link.', embeds: [], components: [] });
         }
     } catch (error) {
-        logger.error('[TicTacToe] Handler Error:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ **Critical System Failure:** ' + error.message, flags: [MessageFlags.Ephemeral] });
-        }
+        await handleInteractionError(interaction, error, 'An error occurred within the Tic Tac Toe protocol.');
     }
 };
 
@@ -237,42 +299,47 @@ const updateTicTacToeViews = async (context, gameState) => {
         const boardBuffer = await tictactoeGenerator.generateBoard(gameState, p1Meta, p2Meta);
         const attachment = new AttachmentBuilder(boardBuffer, { name: 'tictactoe-board.webp' });
 
-        const isGameOver = gameState.status !== 'PLAYING';
+        const isGameOver = ['WON', 'DRAW', 'FORFEITED', 'CANCELLED'].includes(gameState.status);
         
-        // Build 3x3 Grid of Buttons
+        // Build 3x3 Grid of Buttons (Only if active)
         const components = [];
-        for (let r = 0; r < 3; r++) {
-            const row = new ActionRowBuilder();
-            for (let c = 0; c < 3; c++) {
-                const val = gameState.board[r][c];
-                const btn = new ButtonBuilder()
-                    .setCustomId(`${prefix}_drop_${gameState.id}_${r}_${c}`)
-                    .setStyle(val === 1 ? ButtonStyle.Primary : (val === 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))
-                    .setDisabled(isGameOver || val !== 0);
+        if (!isGameOver) {
+            for (let r = 0; r < 3; r++) {
+                const row = new ActionRowBuilder();
+                for (let c = 0; c < 3; c++) {
+                    const val = gameState.board[r][c];
+                    const btn = new ButtonBuilder()
+                        .setCustomId(`${prefix}_drop_${gameState.id}_${r}_${c}`)
+                        .setStyle(val === 1 ? ButtonStyle.Danger : (val === 2 ? ButtonStyle.Primary : ButtonStyle.Secondary))
+                        .setDisabled(val !== 0);
 
-                if (val === 1) btn.setEmoji('✖️');
-                else if (val === 2) btn.setEmoji('⭕');
-                else btn.setLabel('\u200b'); // Empty Space
+                    if (val === 1) btn.setEmoji('✖️');
+                    else if (val === 2) btn.setEmoji('⭕');
+                    else btn.setLabel('\u200b'); // Empty Space
 
-                row.addComponents(btn);
+                    row.addComponents(btn);
+                }
+                components.push(row);
             }
-            components.push(row);
         }
+        if (isGameOver) {
+            // Only show Rematch/Leaderboard for natural end games (not forfeits)
+            if (['WON', 'DRAW'].includes(gameState.status)) {
+                const rematchBtn = new ButtonBuilder()
+                    .setCustomId(`${prefix}_rematch_${gameState.id}`)
+                    .setLabel('Rematch')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🔄');
+                
+                const leaderboardBtn = new ButtonBuilder()
+                    .setCustomId('leaderboard_minigames')
+                    .setLabel('View Leaderboard')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📊');
 
-            const rematchBtn = new ButtonBuilder()
-                .setCustomId(`${prefix}_rematch_${gameState.id}`)
-                .setLabel('Rematch')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('🔄');
-            
-            const leaderboardBtn = new ButtonBuilder()
-                .setCustomId('leaderboard_minigames')
-                .setLabel('View Leaderboard')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('📊');
-
-            const controlsRow = new ActionRowBuilder().addComponents(rematchBtn, leaderboardBtn);
-            components.push(controlsRow);
+                const controlsRow = new ActionRowBuilder().addComponents(rematchBtn, leaderboardBtn);
+                components.push(controlsRow);
+            }
         } else {
             // Active Game: Add Forfeit Button
             const forfeitBtn = new ButtonBuilder()
@@ -288,17 +355,9 @@ const updateTicTacToeViews = async (context, gameState) => {
         let content = '';
         if (gameState.status === 'PLAYING') {
             content = `🕹️ **Tactical Link Active:** <@${currentTurn}>'s Turn.`;
-        } else if (gameState.status === 'WON') {
-            content = `🎊 **Tic Tac Toe:** <@${gameState.winner}> has achieved victory!`;
-        } else if (gameState.status === 'DRAW') {
-            content = '🤝 **Tic Tac Toe:** Equilibrium reached. (Draw)';
-        } else if (gameState.status === 'FORFEITED') {
-            const p1Id = gameState.player1;
-            const p2Id = gameState.player2;
-            content = `🏳️ **Tic Tac Toe:** <@${gameState.winner === p1Id ? p2Id : p1Id}> severed the link. <@${gameState.winner}> wins by default.`;
-        } else if (gameState.status === 'CANCELLED') {
-            content = `🏳️ **Tic Tac Toe:** Tactical link cancelled (No moves made).`;
-            components.length = 0;
+        } else {
+            // Game Over: Clear the content as requested
+            content = '';
         }
 
         const msgOptions = {
@@ -309,17 +368,19 @@ const updateTicTacToeViews = async (context, gameState) => {
         };
 
         let messageUpdated = false;
-        if (context.editReply && !context.replied && context.deferred) {
+        if (context.isButton && context.isButton() && !context.deferred && !context.replied) {
+            await context.update(msgOptions);
+        } else if (context.editReply && (context.deferred || context.replied)) {
             await context.editReply(msgOptions);
-            messageUpdated = true;
+        } else if (context.edit) {
+            await context.edit(msgOptions);
         } else if (context.message && context.message.edit) {
             await context.message.edit(msgOptions);
-            messageUpdated = true;
         } else {
             await context.channel.send(msgOptions);
         }
 
-        if (isGameOver && gameState.reward && gameState.winner) {
+        if (isGameOver && gameState.reward?.pointsAwarded > 0 && gameState.winner) {
             const winnerMeta = gameState.winner === p1Meta.id ? p1Meta : p2Meta;
             const themeColor = gameState.winner === p1Meta.id ? tictactoeGenerator.COLORS.P1_NEON : tictactoeGenerator.COLORS.P2_NEON;
             
@@ -338,6 +399,18 @@ const updateTicTacToeViews = async (context, gameState) => {
                     files: [new AttachmentBuilder(slipBuffer, { name: 'success-slip.webp' })]
                 });
             }
+        }
+        
+        // Auto-cleanup for game over buttons
+        if (isGameOver && (context.editReply || context.message?.edit)) {
+            setTimeout(async () => {
+                try {
+                    const finalMsg = context.message || (await context.fetchReply().catch(() => null));
+                    if (finalMsg) {
+                        await finalMsg.edit({ components: [] }).catch(() => null);
+                    }
+                } catch (e) {}
+            }, 60000); // 1 Minute cleanup
         }
     } catch (e) {
         logger.error('[TicTacToe] Visual Update Failure:', e);

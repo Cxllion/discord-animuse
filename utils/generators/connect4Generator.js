@@ -28,13 +28,14 @@ class Connect4Generator {
             P1_BASE: '#FFB7C5',       // Sakura Pink
             P1_GLOW: 'rgba(255, 183, 197, 0.6)',
             P2_BASE: '#22D3EE',       // Neon Cyan
-            P2_GLOW: 'rgba(34, 211, 238, 0.7)',
+            P2_GLOW: 'rgba(34, 211, 238, 0.6)',
+            ACCENT: '#FFACD1',        // Soft Pastel Pink
             TEXT: '#FFFFFF',
-            ACCENT: '#C084FC',        // Lavender Accent
-            BORDER: 'rgba(255, 255, 255, 0.1)'
+            TEXT_MUTED: 'rgba(255, 255, 255, 0.4)'
         };
 
         this.avatarCache = new Map();
+        this.FONT_STACK = "'monalqo', 'Inter', 'Segoe UI', Roboto, sans-serif";
         this.envCache = null;
     }
 
@@ -211,8 +212,14 @@ class Connect4Generator {
 
             if (gameState.status === 'DRAW') {
                 statusText = 'MUTUAL ANNIHILATION';
-            } else if (gameState.status === 'FORFEITED') {
-                statusText = `${winnerName} SECURED VICTORY (FORFEIT)`;
+            } else if (gameState.status === 'FORFEITED' || gameState.status === 'CANCELLED') {
+                const loserId = gameState.winner ? (gameState.winner === gameState.player1 ? gameState.player2 : gameState.player1) : gameState.forfeiterId;
+                const loserData = loserId === gameState.player1 ? p1 : p2;
+                const loserName = this.getDisplayName(loserData?.displayName);
+                statusText = `${loserName} FORFEITED`;
+                // Use loser's color for forfeit text
+                ctx.fillStyle = loserId === gameState.player1 ? this.COLORS.P1_BASE : this.COLORS.P2_BASE;
+                ctx.shadowColor = ctx.fillStyle;
             } else {
                 statusText = `${winnerName} DOMINATED`;
             }
@@ -268,18 +275,18 @@ class Connect4Generator {
         ctx.clip();
         
         try {
-            if (user && user.avatarURL) {
+            const avatarUrl = user?.avatarURL || user?.avatarUrl;
+            if (avatarUrl) {
                 let avatar;
-                if (this.avatarCache.has(user.avatarURL)) {
-                    avatar = this.avatarCache.get(user.avatarURL);
+                if (this.avatarCache.has(avatarUrl)) {
+                    avatar = this.avatarCache.get(avatarUrl);
                 } else {
-                    const avatarPromise = loadImage(user.avatarURL);
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Avatar fetch timeout')), 1500));
+                    const avatarPromise = loadImage(avatarUrl);
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Avatar fetch timeout')), 2500));
                     avatar = await Promise.race([avatarPromise, timeoutPromise]);
                     
-                    // Simple LRU-ish: Clear cache if too big
                     if (this.avatarCache.size > 20) this.avatarCache.clear();
-                    this.avatarCache.set(user.avatarURL, avatar);
+                    this.avatarCache.set(avatarUrl, avatar);
                 }
                 ctx.drawImage(avatar, x - avatarSize / 2, y - avatarSize / 2, avatarSize, avatarSize);
             } else {
@@ -297,23 +304,40 @@ class Connect4Generator {
         
         // Dynamic Name Sizing
         let fontSize = 18;
-        ctx.font = `800 ${fontSize}px 'monalqo', sans-serif`;
+        ctx.font = `800 ${fontSize}px ${this.FONT_STACK}`;
         const maxWidth = 150;
         
         while (ctx.measureText(name).width > maxWidth && fontSize > 10) {
             fontSize--;
-            ctx.font = `800 ${fontSize}px 'monalqo', sans-serif`;
+            ctx.font = `800 ${fontSize}px ${this.FONT_STACK}`;
         }
 
-        ctx.fillStyle = isActive ? themeColor : 'rgba(255, 255, 255, 0.4)';
+        ctx.fillStyle = isActive ? '#FFFFFF' : 'rgba(255, 255, 255, 0.4)';
         ctx.textAlign = align;
         const textX = align === 'left' ? x + (avatarSize / 2) + 20 : x - (avatarSize / 2) - 20;
         ctx.fillText(name, textX, y + 5);
 
+        // Piece Indicator Badge (Colored Circle)
+        const badgeY = y + 25;
+        const badgeRadius = 7;
+        const badgeX = align === 'left' ? textX + badgeRadius : textX - badgeRadius;
+        
+        ctx.save();
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = themeColor;
+        ctx.fillStyle = themeColor;
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.font = `600 11px 'monalqo', sans-serif`;
-        const rankText = user?.rank ? ` | RANK #${user.rank}` : '';
-        ctx.fillText(`PLAYER ${align === 'left' ? '1' : '2'}${rankText}`, textX, y + 25);
+        ctx.font = `600 11px ${this.FONT_STACK}`;
+        const labelX = align === 'left' ? badgeX + 15 : badgeX - 15;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'middle'; // Align vertically with badge
+        const rankText = user?.rank ? `RANK #${user.rank}` : 'UNRANKED';
+        ctx.fillText(rankText, labelX, badgeY); 
         ctx.restore();
     }
 
